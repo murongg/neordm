@@ -43,6 +43,13 @@
 }
 
 @layer utilities {
+  [data-theme="nord"] {
+    --color-primary: oklch(62% 0.145 232.661);
+    --color-primary-content: oklch(18% 0.03 232.661);
+    --color-success: oklch(58% 0.14 181.911);
+    --color-success-content: oklch(98% 0.01 181.911);
+  }
+
   .user-select-text {
     user-select: text;
     -webkit-user-select: text;

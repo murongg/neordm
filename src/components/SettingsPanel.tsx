@@ -327,8 +327,8 @@ function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: Them
         <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
           <rect width="80" height="52" rx="4" fill="#f0f4f8" />
           <rect width="18" height="52" fill="#e2e8f0" />
-          <rect x="4" y="8" width="10" height="10" rx="2" fill="#4f8ef7" fillOpacity="0.2" />
-          <circle cx="9" cy="13" r="3" fill="#4f8ef7" />
+          <rect x="4" y="8" width="10" height="10" rx="2" fill="#059669" fillOpacity="0.2" />
+          <circle cx="9" cy="13" r="3" fill="#059669" />
           <rect x="4" y="22" width="10" height="2" rx="1" fill="#cbd5e1" />
           <rect x="4" y="26" width="8" height="2" rx="1" fill="#e2e8f0" />
           <rect x="4" y="30" width="10" height="2" rx="1" fill="#cbd5e1" />
@@ -337,7 +337,7 @@ function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: Them
           <rect x="22" y="16" width="50" height="3" rx="1" fill="#e2e8f0" />
           <rect x="22" y="21" width="44" height="3" rx="1" fill="#e2e8f0" />
           <rect x="22" y="26" width="48" height="3" rx="1" fill="#e2e8f0" />
-          <rect x="22" y="6" width="10" height="6" rx="2" fill="#4f8ef7" />
+          <rect x="22" y="6" width="10" height="6" rx="2" fill="#059669" />
         </svg>
       ),
     },
