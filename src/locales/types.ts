@@ -57,6 +57,9 @@ export interface Messages {
     save: string;
     cancel: string;
     clear: string;
+    copy: string;
+    copied: string;
+    refresh: string;
     reset: string;
     settings: string;
     edit: string;

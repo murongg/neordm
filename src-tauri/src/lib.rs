@@ -50,6 +50,42 @@ struct RedisKeysRenameInput {
     renames: Vec<RedisKeyRenamePairInput>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisHashEntryUpdateInput {
+    connection: RedisConnectionTestInput,
+    key: String,
+    old_field: String,
+    new_field: String,
+    value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisHashEntryDeleteInput {
+    connection: RedisConnectionTestInput,
+    key: String,
+    field: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisZSetEntryUpdateInput {
+    connection: RedisConnectionTestInput,
+    key: String,
+    old_member: String,
+    new_member: String,
+    score: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisZSetEntryDeleteInput {
+    connection: RedisConnectionTestInput,
+    key: String,
+    member: String,
+}
+
 #[derive(Debug, Serialize)]
 struct RedisKeySummary {
     key: String,
@@ -548,6 +584,158 @@ return "OK"
     Ok(())
 }
 
+#[tauri::command]
+async fn update_redis_hash_entry(input: RedisHashEntryUpdateInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.old_field.is_empty() || input.new_field.is_empty() {
+        return Err("Field cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local old_field = ARGV[1]
+local new_field = ARGV[2]
+local next_value = ARGV[3]
+
+if redis.call("HEXISTS", key, old_field) == 0 then
+  return redis.error_reply("Source field does not exist")
+end
+
+if old_field ~= new_field and redis.call("HEXISTS", key, new_field) == 1 then
+  return redis.error_reply("Target field already exists")
+end
+
+if old_field == new_field then
+  redis.call("HSET", key, new_field, next_value)
+  return 1
+end
+
+redis.call("HDEL", key, old_field)
+redis.call("HSET", key, new_field, next_value)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.old_field)
+        .arg(&input.new_field)
+        .arg(&input.value)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to update hash field: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_redis_hash_entry(input: RedisHashEntryDeleteInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.field.is_empty() {
+        return Err("Field cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let removed: i64 = redis::cmd("HDEL")
+        .arg(&input.key)
+        .arg(&input.field)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to delete hash field: {error}"))?;
+
+    if removed == 0 {
+        return Err("Field does not exist".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_redis_zset_entry(input: RedisZSetEntryUpdateInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.old_member.is_empty() || input.new_member.is_empty() {
+        return Err("Member cannot be empty".to_string());
+    }
+
+    if !input.score.is_finite() {
+        return Err("Score must be a finite number".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local old_member = ARGV[1]
+local new_member = ARGV[2]
+local next_score = ARGV[3]
+
+if redis.call("ZSCORE", key, old_member) == false then
+  return redis.error_reply("Source member does not exist")
+end
+
+if old_member ~= new_member and redis.call("ZSCORE", key, new_member) ~= false then
+  return redis.error_reply("Target member already exists")
+end
+
+if old_member == new_member then
+  redis.call("ZADD", key, "XX", next_score, new_member)
+  return 1
+end
+
+redis.call("ZREM", key, old_member)
+redis.call("ZADD", key, next_score, new_member)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.old_member)
+        .arg(&input.new_member)
+        .arg(input.score)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to update sorted set member: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_redis_zset_entry(input: RedisZSetEntryDeleteInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.member.is_empty() {
+        return Err("Member cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let removed: i64 = redis::cmd("ZREM")
+        .arg(&input.key)
+        .arg(&input.member)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to delete sorted set member: {error}"))?;
+
+    if removed == 0 {
+        return Err("Member does not exist".to_string());
+    }
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -560,7 +748,11 @@ pub fn run() {
             get_redis_key_value,
             run_redis_command,
             rename_redis_key,
-            rename_redis_keys
+            rename_redis_keys,
+            update_redis_hash_entry,
+            delete_redis_hash_entry,
+            update_redis_zset_entry,
+            delete_redis_zset_entry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

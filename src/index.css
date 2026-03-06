@@ -64,3 +64,19 @@
     border-color: #1e293b;
   }
 }
+
+.neordm-json-editor .cm-content {
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent 0,
+    transparent calc(2ch - 1px),
+    oklch(var(--bc) / 0.04) calc(2ch - 1px),
+    oklch(var(--bc) / 0.04) 2ch
+  );
+}
+
+.neordm-json-editor > .cm-theme,
+.neordm-json-editor > .cm-editor,
+.neordm-json-editor .cm-editor {
+  height: 100%;
+}

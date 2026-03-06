@@ -80,11 +80,15 @@ function ConnectionStatusBadge({
   onDisconnect,
   onContextMenu,
   disconnectLabel,
+  onShowTooltip,
+  onHideTooltip,
 }: {
   status: RedisConnection["status"];
   onDisconnect?: () => void;
   onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
   disconnectLabel?: string;
+  onShowTooltip?: (target: HTMLElement, content: string) => void;
+  onHideTooltip?: () => void;
 }) {
   const [displayStatus, setDisplayStatus] = useState(status);
   const [isVisible, setIsVisible] = useState(true);
@@ -137,9 +141,20 @@ function ConnectionStatusBadge({
         type="button"
         onClick={onDisconnect}
         onContextMenu={onContextMenu}
+        onMouseEnter={(event) => {
+          if (disconnectLabel) {
+            onShowTooltip?.(event.currentTarget, disconnectLabel);
+          }
+        }}
+        onMouseLeave={onHideTooltip}
+        onFocus={(event) => {
+          if (disconnectLabel) {
+            onShowTooltip?.(event.currentTarget, disconnectLabel);
+          }
+        }}
+        onBlur={onHideTooltip}
         className={`${badgeClassName} cursor-pointer hover:scale-105 hover:bg-success/18 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-success`}
         aria-label={disconnectLabel}
-        title={disconnectLabel}
       >
         {STATUS_ICONS[displayStatus]}
       </button>
@@ -167,7 +182,6 @@ export function Sidebar({
   onSetPanelTab,
   onOpenSettings,
 }: SidebarProps) {
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renderedContextMenu, setRenderedContextMenu] =
     useState<ContextMenuState | null>(null);
@@ -183,6 +197,11 @@ export function Sidebar({
     y: number;
     width: number;
     height: number;
+  } | null>(null);
+  const [sidebarTooltip, setSidebarTooltip] = useState<{
+    content: string;
+    x: number;
+    y: number;
   } | null>(null);
 
   const listContainerRef = useRef<HTMLDivElement | null>(null);
@@ -207,6 +226,23 @@ export function Sidebar({
     (item) =>
       item.connection.id === activeConnectionId && item.phase !== "exiting"
   );
+
+  const showSidebarTooltip = useCallback(
+    (target: HTMLElement, content: string) => {
+      const rect = target.getBoundingClientRect();
+
+      setSidebarTooltip({
+        content,
+        x: rect.right + 12,
+        y: rect.top + rect.height / 2,
+      });
+    },
+    []
+  );
+
+  const hideSidebarTooltip = useCallback(() => {
+    setSidebarTooltip(null);
+  }, []);
 
   const updateActiveIndicatorPosition = useCallback(() => {
     const listContainer = listContainerRef.current;
@@ -350,12 +386,6 @@ export function Sidebar({
     };
   }, [renderedConnections]);
 
-  useEffect(() => {
-    if (hoveredId && !renderedConnections.some((item) => item.connection.id === hoveredId)) {
-      setHoveredId(null);
-    }
-  }, [hoveredId, renderedConnections]);
-
   useLayoutEffect(() => {
     updateActiveIndicatorPosition();
   }, [activeConnectionId, renderedConnections, updateActiveIndicatorPosition]);
@@ -461,7 +491,7 @@ export function Sidebar({
     connectionId: string
   ) => {
     event.preventDefault();
-    setHoveredId(null);
+    hideSidebarTooltip();
 
     const menuWidth = 168;
     const menuHeight = 176;
@@ -499,7 +529,21 @@ export function Sidebar({
   };
 
   return (
-    <aside className="flex flex-col w-14 bg-base-300 border-r border-base-100/50 h-full z-10">
+    <aside className="relative z-20 flex h-full w-14 flex-col border-r border-base-100/50 bg-base-300">
+      {sidebarTooltip ? (
+        <div
+          className="pointer-events-none fixed z-[140] -translate-y-1/2"
+          style={{
+            left: sidebarTooltip.x,
+            top: sidebarTooltip.y,
+          }}
+        >
+          <div className="rounded-lg border border-base-content/10 bg-base-100 px-2.5 py-1.5 text-[11px] font-mono leading-snug text-base-content shadow-lg">
+            {sidebarTooltip.content}
+          </div>
+        </div>
+      ) : null}
+
       <div
         data-tauri-drag-region
         className="flex items-center justify-center h-12 border-b border-base-100/50 shrink-0 select-none"
@@ -536,7 +580,7 @@ export function Sidebar({
             <div
               key={conn.id}
               data-connection-item="true"
-              className="w-full flex justify-center overflow-hidden transition-[max-height,margin-bottom,opacity,transform] duration-200 ease-out motion-reduce:transition-none"
+              className="w-full flex justify-center overflow-y-hidden overflow-x-visible transition-[max-height,margin-bottom,opacity,transform] duration-200 ease-out motion-reduce:transition-none"
               style={{
                 maxHeight: shouldCollapseLayout ? 0 : CONNECTION_ITEM_HEIGHT,
                 marginBottom: shouldCollapseLayout ? 0 : CONNECTION_ITEM_SPACING,
@@ -553,14 +597,19 @@ export function Sidebar({
                   }}
                   onClick={() => onSelectConnection(conn.id)}
                   onContextMenu={(event) => openContextMenu(event, conn.id)}
-                  onMouseEnter={() => setHoveredId(conn.id)}
-                  onMouseLeave={() => setHoveredId(null)}
-                  title={conn.name}
+                  onMouseEnter={(event) =>
+                    showSidebarTooltip(event.currentTarget, conn.name)
+                  }
+                  onMouseLeave={hideSidebarTooltip}
+                  onFocus={(event) =>
+                    showSidebarTooltip(event.currentTarget, conn.name)
+                  }
+                  onBlur={hideSidebarTooltip}
                   aria-haspopup="menu"
                   aria-expanded={contextMenu?.connectionId === conn.id}
                   className={`
-                    w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer
-                    transition-all duration-200 relative
+                    relative flex h-9 w-9 items-center justify-center rounded-xl cursor-pointer
+                    transition-all duration-200
                     ${
                       isActive
                         ? "scale-[1.03]"
@@ -570,7 +619,7 @@ export function Sidebar({
                   aria-label={conn.name}
                 >
                   <div
-                    className="w-2.5 h-2.5 rounded-full"
+                    className="h-2.5 w-2.5 rounded-full"
                     style={{ backgroundColor: conn.color }}
                   />
                 </button>
@@ -580,18 +629,9 @@ export function Sidebar({
                   onDisconnect={() => onDisconnectConnection(conn.id)}
                   onContextMenu={(event) => openContextMenu(event, conn.id)}
                   disconnectLabel={messages.common.disconnect}
+                  onShowTooltip={showSidebarTooltip}
+                  onHideTooltip={hideSidebarTooltip}
                 />
-
-                {hoveredId === conn.id &&
-                  renderedContextMenu?.connectionId !== conn.id && (
-                    <div className="absolute left-12 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                      <div className="bg-base-100 border border-base-content/10 rounded-lg px-2.5 py-1.5 shadow-xl whitespace-nowrap">
-                        <p className="text-xs font-medium font-mono">
-                          {conn.name}
-                        </p>
-                      </div>
-                    </div>
-                  )}
               </div>
             </div>
           );

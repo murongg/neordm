@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Bot, Send, Sparkles, Terminal, User, Copy, Check } from "lucide-react";
 import type { ChatMessage } from "../types";
 import { useI18n } from "../i18n";
+import { useToast } from "./ToastProvider";
 
 interface AIAgentProps {
   messages: ChatMessage[];
@@ -10,6 +11,7 @@ interface AIAgentProps {
 
 export function AIAgent({ messages, onSend }: AIAgentProps) {
   const { messages: i18nMessages } = useI18n();
+  const { showToast } = useToast();
   const [input, setInput] = useState("");
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -25,9 +27,14 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
   };
 
   const handleCopyCmd = (cmd: string) => {
-    navigator.clipboard.writeText(cmd);
-    setCopiedCmd(cmd);
-    setTimeout(() => setCopiedCmd(null), 2000);
+    void navigator.clipboard.writeText(cmd).then(() => {
+      setCopiedCmd(cmd);
+      showToast({
+        message: i18nMessages.common.copied,
+        tone: "success",
+      });
+      window.setTimeout(() => setCopiedCmd(null), 2000);
+    });
   };
 
   return (

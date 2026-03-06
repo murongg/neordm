@@ -5,6 +5,8 @@ import {
   persistConnections,
 } from "../lib/connectionStore";
 import {
+  deleteRedisHashEntry,
+  deleteRedisZSetEntry,
   getRedisErrorMessage,
   getRedisKeyValue,
   listRedisKeys,
@@ -12,6 +14,8 @@ import {
   renameRedisKeys,
   runRedisCommand,
   testRedisConnection,
+  updateRedisHashEntry,
+  updateRedisZSetEntry,
 } from "../lib/redis";
 import type {
   RedisConnection,
@@ -150,13 +154,28 @@ export function useAppStore() {
     [updateConnection]
   );
 
+  const removeKeyFromState = useCallback((key: string) => {
+    setKeys((previous) => previous.filter((item) => item.key !== key));
+    setSelectedKey((previous) => (previous?.key === key ? null : previous));
+    keyValueRequestRef.current += 1;
+    setKeyValue((previous) => (previous?.key === key ? null : previous));
+  }, []);
+
   const loadKeyValue = useCallback(
-    async (connection: RedisConnection, key: RedisKey, db: number) => {
+    async (
+      connection: RedisConnection,
+      key: RedisKey,
+      db: number,
+      options: { preserveValue?: boolean } = {}
+    ) => {
       const requestId = ++keyValueRequestRef.current;
 
       setSelectedKey(key);
       setPanelTab("editor");
-      setKeyValue(null);
+
+      if (!options.preserveValue) {
+        setKeyValue(null);
+      }
 
       try {
         const value = await getRedisKeyValue(
@@ -438,6 +457,16 @@ export function useAppStore() {
     } catch {}
   }, [activeConnection, loadKeys, selectedDb]);
 
+  const refreshKeyValue = useCallback(async () => {
+    if (!activeConnection || !selectedKey) {
+      return;
+    }
+
+    await loadKeyValue(activeConnection, selectedKey, selectedDb, {
+      preserveValue: true,
+    });
+  }, [activeConnection, loadKeyValue, selectedDb, selectedKey]);
+
   const selectKey = useCallback(
     async (key: RedisKey) => {
       if (!activeConnection) return;
@@ -568,6 +597,283 @@ export function useAppStore() {
     ]
   );
 
+  const updateHashEntry = useCallback(
+    async (
+      key: string,
+      oldField: string,
+      nextField: string,
+      nextValue: string
+    ) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!nextField.length) {
+        throw new Error("Field cannot be empty");
+      }
+
+      if (oldField === nextField && keyValue?.type === "hash") {
+        const currentEntries =
+          keyValue.value &&
+          typeof keyValue.value === "object" &&
+          !Array.isArray(keyValue.value)
+            ? (keyValue.value as Record<string, string>)
+            : null;
+
+        if (currentEntries?.[oldField] === nextValue) {
+          return;
+        }
+      }
+
+      await updateRedisHashEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        {
+          oldField,
+          newField: nextField,
+          value: nextValue,
+        }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "hash" ||
+          !previous.value ||
+          typeof previous.value !== "object" ||
+          Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const nextEntries = Object.entries(previous.value as Record<string, string>)
+          .map(([field, value]) =>
+            field === oldField ? ([nextField, nextValue] as const) : ([field, value] as const)
+          );
+
+        return {
+          ...previous,
+          value: Object.fromEntries(nextEntries),
+        };
+      });
+    },
+    [
+      activeConnection,
+      keyValue?.type,
+      keyValue?.value,
+      messages.app.status.notConnected,
+      selectedDb,
+    ]
+  );
+
+  const deleteHashEntry = useCallback(
+    async (key: string, field: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!field.length) {
+        throw new Error("Field cannot be empty");
+      }
+
+      await deleteRedisHashEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { field }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "hash" ||
+          !previous.value ||
+          typeof previous.value !== "object" ||
+          Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const nextEntries = Object.entries(previous.value as Record<string, string>).filter(
+          ([entryField]) => entryField !== field
+        );
+
+        if (!nextEntries.length) {
+          return null;
+        }
+
+        return {
+          ...previous,
+          value: Object.fromEntries(nextEntries),
+        };
+      });
+
+      const currentEntries =
+        keyValue?.key === key &&
+        keyValue.type === "hash" &&
+        keyValue.value &&
+        typeof keyValue.value === "object" &&
+        !Array.isArray(keyValue.value)
+          ? (keyValue.value as Record<string, string>)
+          : null;
+
+      if (currentEntries && Object.keys(currentEntries).length <= 1) {
+        removeKeyFromState(key);
+      }
+    },
+    [
+      activeConnection,
+      keyValue,
+      messages.app.status.notConnected,
+      removeKeyFromState,
+      selectedDb,
+    ]
+  );
+
+  const updateZSetEntry = useCallback(
+    async (
+      key: string,
+      oldMember: string,
+      nextMember: string,
+      nextScore: number
+    ) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!nextMember.length) {
+        throw new Error("Member cannot be empty");
+      }
+
+      if (!Number.isFinite(nextScore)) {
+        throw new Error("Score must be a finite number");
+      }
+
+      if (keyValue?.type === "zset" && Array.isArray(keyValue.value)) {
+        const currentMember = (keyValue.value as Array<{ member: string; score: number }>).find(
+          (item) => item.member === oldMember
+        );
+
+        if (
+          currentMember &&
+          currentMember.member === nextMember &&
+          currentMember.score === nextScore
+        ) {
+          return;
+        }
+      }
+
+      await updateRedisZSetEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        {
+          oldMember,
+          newMember: nextMember,
+          score: nextScore,
+        }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "zset" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const nextMembers = (previous.value as Array<{ member: string; score: number }>)
+          .map((item) =>
+            item.member === oldMember
+              ? {
+                  member: nextMember,
+                  score: nextScore,
+                }
+              : item
+          )
+          .sort((left, right) => {
+            if (left.score === right.score) {
+              return left.member.localeCompare(right.member);
+            }
+
+            return left.score - right.score;
+          });
+
+        return {
+          ...previous,
+          value: nextMembers,
+        };
+      });
+    },
+    [
+      activeConnection,
+      keyValue?.type,
+      keyValue?.value,
+      messages.app.status.notConnected,
+      selectedDb,
+    ]
+  );
+
+  const deleteZSetEntry = useCallback(
+    async (key: string, member: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!member.length) {
+        throw new Error("Member cannot be empty");
+      }
+
+      await deleteRedisZSetEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { member }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "zset" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const nextMembers = (previous.value as Array<{ member: string; score: number }>).filter(
+          (item) => item.member !== member
+        );
+
+        if (!nextMembers.length) {
+          return null;
+        }
+
+        return {
+          ...previous,
+          value: nextMembers,
+        };
+      });
+
+      const currentMembers =
+        keyValue?.key === key && keyValue.type === "zset" && Array.isArray(keyValue.value)
+          ? (keyValue.value as Array<{ member: string; score: number }>)
+          : null;
+
+      if (currentMembers && currentMembers.length <= 1) {
+        removeKeyFromState(key);
+      }
+    },
+    [
+      activeConnection,
+      keyValue,
+      messages.app.status.notConnected,
+      removeKeyFromState,
+      selectedDb,
+    ]
+  );
+
   const sendChatMessage = useCallback((content: string) => {
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -652,10 +958,15 @@ export function useAppStore() {
     keys,
     isLoadingKeys,
     refreshKeys,
+    refreshKeyValue,
     selectedKey,
     selectKey,
     renameKey,
     renameGroup,
+    updateHashEntry,
+    deleteHashEntry,
+    updateZSetEntry,
+    deleteZSetEntry,
     keyValue,
     searchQuery,
     setSearchQuery,

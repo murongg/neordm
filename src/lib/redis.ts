@@ -6,6 +6,26 @@ export interface RedisKeyRenamePair {
   newKey: string;
 }
 
+export interface RedisHashEntryUpdate {
+  oldField: string;
+  newField: string;
+  value: string;
+}
+
+export interface RedisZSetEntryUpdate {
+  oldMember: string;
+  newMember: string;
+  score: number;
+}
+
+export interface RedisHashEntryDelete {
+  field: string;
+}
+
+export interface RedisZSetEntryDelete {
+  member: string;
+}
+
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
   "host" | "port" | "db" | "tls"
@@ -100,6 +120,66 @@ export async function renameRedisKeys(
     input: {
       connection: toConnectionInput(connection),
       renames,
+    },
+  });
+}
+
+export async function updateRedisHashEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  update: RedisHashEntryUpdate
+) {
+  await invoke("update_redis_hash_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      oldField: update.oldField,
+      newField: update.newField,
+      value: update.value,
+    },
+  });
+}
+
+export async function updateRedisZSetEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  update: RedisZSetEntryUpdate
+) {
+  await invoke("update_redis_zset_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      oldMember: update.oldMember,
+      newMember: update.newMember,
+      score: update.score,
+    },
+  });
+}
+
+export async function deleteRedisHashEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  entry: RedisHashEntryDelete
+) {
+  await invoke("delete_redis_hash_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      field: entry.field,
+    },
+  });
+}
+
+export async function deleteRedisZSetEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  entry: RedisZSetEntryDelete
+) {
+  await invoke("delete_redis_zset_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      member: entry.member,
     },
   });
 }

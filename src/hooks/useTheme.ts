@@ -16,6 +16,7 @@ function applyTheme(mode: ThemeMode) {
   const resolved = mode === "system" ? getSystemTheme() : mode;
   const theme = resolved === "dark" ? DARK_THEME : LIGHT_THEME;
   document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.setAttribute("data-color-mode", resolved);
 }
 
 const STORAGE_KEY = "neordm-theme-mode";
