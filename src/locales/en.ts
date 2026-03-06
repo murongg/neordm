@@ -21,6 +21,11 @@ export const en: Messages = {
     connection: {
       tls: "TLS",
     },
+    emptyState: {
+      title: "No connection",
+      description: "Create one to browse keys.",
+      action: "New connection",
+    },
   },
   sidebar: {
     newConnection: "New connection",

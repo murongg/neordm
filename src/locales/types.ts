@@ -73,6 +73,11 @@ export interface Messages {
     connection: {
       tls: string;
     };
+    emptyState: {
+      title: string;
+      description: string;
+      action: string;
+    };
   };
   sidebar: {
     newConnection: string;

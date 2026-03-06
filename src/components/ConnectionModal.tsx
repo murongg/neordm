@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { X, Loader, Wifi, Lock, Database } from "lucide-react";
+import { X, Wifi, Lock, Database } from "lucide-react";
 import type { RedisConnection } from "../types";
 import { useI18n } from "../i18n";
 
@@ -24,20 +24,9 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
     tls: false,
     color: COLORS[0],
   });
-  const [testing, setTesting] = useState(false);
-  const [testResult, setTestResult] = useState<"ok" | "error" | null>(null);
 
   const update = (field: string, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [field]: value }));
-
-  const handleTest = () => {
-    setTesting(true);
-    setTestResult(null);
-    setTimeout(() => {
-      setTesting(false);
-      setTestResult("ok");
-    }, 1200);
-  };
 
   const handleSave = () => {
     onAdd({
@@ -172,40 +161,10 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
               </label>
             </div>
           </div>
-
-          {/* Test result */}
-          {testResult && (
-            <div
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-mono ${
-                testResult === "ok"
-                  ? "bg-success/10 text-success"
-                  : "bg-error/10 text-error"
-              }`}
-            >
-              <Wifi size={12} />
-              {testResult === "ok"
-                ? messages.connectionModal.success
-                : messages.connectionModal.failure}
-            </div>
-          )}
         </div>
 
         {/* Footer */}
-        <div className="flex gap-2 px-5 py-4 border-t border-base-content/10">
-          <button
-            onClick={handleTest}
-            disabled={testing}
-            className="btn btn-ghost btn-sm flex-1 cursor-pointer font-mono"
-          >
-            {testing ? (
-              <span className="flex items-center gap-1.5">
-                <Loader size={13} className="animate-spin" />
-                {messages.connectionModal.testing}
-              </span>
-            ) : (
-              messages.connectionModal.testConnection
-            )}
-          </button>
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-base-content/10">
           <button onClick={onClose} className="btn btn-ghost btn-sm cursor-pointer font-mono">
             {messages.common.cancel}
           </button>

@@ -21,6 +21,11 @@ export const ja: Messages = {
     connection: {
       tls: "TLS",
     },
+    emptyState: {
+      title: "接続がありません",
+      description: "接続を作成するとキーを表示できます。",
+      action: "新しい接続",
+    },
   },
   sidebar: {
     newConnection: "新しい接続",

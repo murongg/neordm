@@ -21,6 +21,11 @@ export const zh: Messages = {
     connection: {
       tls: "TLS",
     },
+    emptyState: {
+      title: "暂无连接",
+      description: "新建连接后即可查看 Key。",
+      action: "新建连接",
+    },
   },
   sidebar: {
     newConnection: "新建连接",

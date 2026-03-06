@@ -21,6 +21,11 @@ export const es: Messages = {
     connection: {
       tls: "TLS",
     },
+    emptyState: {
+      title: "Sin conexión",
+      description: "Crea una para ver las claves.",
+      action: "Nueva conexión",
+    },
   },
   sidebar: {
     newConnection: "Nueva conexión",

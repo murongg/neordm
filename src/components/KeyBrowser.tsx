@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { RedisConnection, RedisKey, RedisKeyType } from "../types";
 import { useI18n } from "../i18n";
+import { EmptyConnectionsIllustration } from "./EmptyConnectionsIllustration";
 
 interface KeyBrowserProps {
   connection?: RedisConnection;
@@ -102,12 +103,10 @@ export function KeyBrowser({
   searchQuery,
   onSearchChange,
 }: KeyBrowserProps) {
-  void connection; // reserved for future connection-aware filtering
   const { messages } = useI18n();
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(["user", "cache", "queue", "leaderboard"])
-  );
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasConnection = Boolean(connection);
 
   const filtered = useMemo(() => {
     const q = searchQuery.replace(/\*/g, "").toLowerCase();
@@ -127,6 +126,7 @@ export function KeyBrowser({
   };
 
   const handleRefresh = () => {
+    if (!hasConnection) return;
     setIsRefreshing(true);
     setTimeout(() => setIsRefreshing(false), 800);
   };
@@ -148,7 +148,8 @@ export function KeyBrowser({
           </div>
           <button
             onClick={handleRefresh}
-            className="btn btn-ghost btn-xs w-6 h-6 p-0 cursor-pointer"
+            disabled={!hasConnection}
+            className={`btn btn-ghost btn-xs w-6 h-6 p-0 ${hasConnection ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}
             aria-label={messages.keyBrowser.refresh}
           >
             <RefreshCw
@@ -162,7 +163,8 @@ export function KeyBrowser({
         <select
           value={selectedDb}
           onChange={(e) => onSelectDb(Number(e.target.value))}
-          className="select select-xs w-full bg-base-300 border-base-100/50 font-mono text-xs cursor-pointer mb-2"
+          disabled={!hasConnection}
+          className={`select select-xs w-full bg-base-300 border-base-100/50 font-mono text-xs mb-2 ${hasConnection ? "cursor-pointer" : "cursor-not-allowed opacity-60"}`}
         >
           {Array.from({ length: 16 }, (_, i) => (
             <option key={i} value={i}>
@@ -178,6 +180,7 @@ export function KeyBrowser({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
+            disabled={!hasConnection}
             placeholder={messages.keyBrowser.filterPlaceholder}
             className="grow font-mono text-xs bg-transparent outline-none user-select-text"
           />
@@ -186,55 +189,64 @@ export function KeyBrowser({
 
       {/* Key list */}
       <div className="flex-1 overflow-y-auto py-1">
-        {/* Grouped keys */}
-        {Object.entries(grouped).map(([group, groupKeys]) => {
-          const isExpanded = expandedGroups.has(group);
-          return (
-            <div key={group}>
-              <button
-                onClick={() => toggleGroup(group)}
-                className="flex items-center gap-1.5 w-full px-3 py-1.5 hover:bg-base-100/40 transition-colors duration-150 cursor-pointer group"
-              >
-                <ChevronDown
-                  size={11}
-                  className={`text-base-content/40 transition-transform duration-200 shrink-0 ${
-                    isExpanded ? "" : "-rotate-90"
-                  }`}
-                />
-                <span className="text-xs font-mono text-base-content/60 truncate group-hover:text-base-content/80">
-                  {group}
-                </span>
-                <span className="ml-auto badge badge-xs badge-ghost font-mono text-[9px] shrink-0">
-                  {groupKeys.length}
-                </span>
-              </button>
-              {isExpanded && (
-                <div>
-                  {groupKeys.map((key) => (
-                    <KeyRow
-                      key={key.key}
-                      redisKey={key}
-                      isSelected={selectedKey?.key === key.key}
-                      onClick={() => onSelectKey(key)}
-                      typeConfig={typeConfig}
-                      indent
+        {!hasConnection ? (
+          <div className="flex h-full flex-col items-center justify-center px-4 py-8 text-center">
+            <EmptyConnectionsIllustration />
+            <h3 className="mt-5 text-sm text-base-content/90">
+              {messages.app.emptyState.title}
+            </h3>
+          </div>
+        ) : (
+          <>
+            {Object.entries(grouped).map(([group, groupKeys]) => {
+              const isExpanded = expandedGroups.has(group);
+              return (
+                <div key={group}>
+                  <button
+                    onClick={() => toggleGroup(group)}
+                    className="flex items-center gap-1.5 w-full px-3 py-1.5 hover:bg-base-100/40 transition-colors duration-150 cursor-pointer group"
+                  >
+                    <ChevronDown
+                      size={11}
+                      className={`text-base-content/40 transition-transform duration-200 shrink-0 ${
+                        isExpanded ? "" : "-rotate-90"
+                      }`}
                     />
-                  ))}
+                    <span className="text-xs font-mono text-base-content/60 truncate group-hover:text-base-content/80">
+                      {group}
+                    </span>
+                    <span className="ml-auto badge badge-xs badge-ghost font-mono text-[9px] shrink-0">
+                      {groupKeys.length}
+                    </span>
+                  </button>
+                  {isExpanded && (
+                    <div>
+                      {groupKeys.map((key) => (
+                        <KeyRow
+                          key={key.key}
+                          redisKey={key}
+                          isSelected={selectedKey?.key === key.key}
+                          onClick={() => onSelectKey(key)}
+                          typeConfig={typeConfig}
+                          indent
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-        {/* Ungrouped keys */}
-        {singles.map((key) => (
-          <KeyRow
-            key={key.key}
-            redisKey={key}
-            isSelected={selectedKey?.key === key.key}
-            onClick={() => onSelectKey(key)}
-            typeConfig={typeConfig}
-          />
-        ))}
+              );
+            })}
+            {singles.map((key) => (
+              <KeyRow
+                key={key.key}
+                redisKey={key}
+                isSelected={selectedKey?.key === key.key}
+                onClick={() => onSelectKey(key)}
+                typeConfig={typeConfig}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );
