@@ -1,20 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import { Bot, Send, Sparkles, Terminal, User, Copy, Check } from "lucide-react";
 import type { ChatMessage } from "../types";
+import { useI18n } from "../i18n";
 
 interface AIAgentProps {
   messages: ChatMessage[];
   onSend: (msg: string) => void;
 }
 
-const SUGGESTIONS = [
-  "Find all keys with TTL < 5 minutes",
-  "Explain the leaderboard structure",
-  "How to optimize this hash?",
-  "Generate SCAN for user keys",
-];
-
 export function AIAgent({ messages, onSend }: AIAgentProps) {
+  const { messages: i18nMessages } = useI18n();
   const [input, setInput] = useState("");
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -43,14 +38,18 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
           <Bot size={14} className="text-success" />
         </div>
         <div>
-          <h3 className="text-xs font-semibold font-mono">Redis AI Agent</h3>
+          <h3 className="text-xs font-semibold font-mono">
+            {i18nMessages.ai.title}
+          </h3>
           <p className="text-[10px] text-base-content/40">
-            Powered by Claude · Context-aware
+            {i18nMessages.ai.subtitle}
           </p>
         </div>
         <div className="ml-auto flex items-center gap-1">
           <span className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-          <span className="text-[10px] text-base-content/40">Online</span>
+          <span className="text-[10px] text-base-content/40">
+            {i18nMessages.ai.online}
+          </span>
         </div>
       </div>
 
@@ -71,10 +70,10 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
       {messages.length <= 2 && (
         <div className="px-4 pb-2 shrink-0">
           <p className="text-[10px] text-base-content/30 mb-1.5 flex items-center gap-1">
-            <Sparkles size={9} /> Quick actions
+            <Sparkles size={9} /> {i18nMessages.ai.quickActions}
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {SUGGESTIONS.map((s) => (
+            {i18nMessages.ai.suggestions.map((s) => (
               <button
                 key={s}
                 onClick={() => onSend(s)}
@@ -95,14 +94,14 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
-            placeholder="Ask about your Redis data..."
+            placeholder={i18nMessages.ai.placeholder}
             className="input input-sm flex-1 bg-base-200 border-base-content/10 font-mono text-xs user-select-text"
           />
           <button
             onClick={handleSend}
             disabled={!input.trim()}
             className="btn btn-sm btn-success cursor-pointer disabled:cursor-not-allowed"
-            aria-label="Send"
+            aria-label={i18nMessages.ai.send}
           >
             <Send size={13} />
           </button>
@@ -121,6 +120,7 @@ function MessageBubble({
   copiedCmd: string | null;
   onCopyCmd: (cmd: string) => void;
 }) {
+  const { localeTag, messages } = useI18n();
   const isUser = message.role === "user";
 
   return (
@@ -160,6 +160,7 @@ function MessageBubble({
             <button
               onClick={() => onCopyCmd(message.command!)}
               className="btn btn-ghost btn-xs w-5 h-5 p-0 cursor-pointer"
+              aria-label={messages.ai.copyCommand}
             >
               {copiedCmd === message.command ? (
                 <Check size={9} className="text-success" />
@@ -171,7 +172,7 @@ function MessageBubble({
         )}
 
         <span className="text-[9px] text-base-content/30 font-mono">
-          {message.timestamp.toLocaleTimeString([], {
+          {message.timestamp.toLocaleTimeString(localeTag, {
             hour: "2-digit",
             minute: "2-digit",
           })}

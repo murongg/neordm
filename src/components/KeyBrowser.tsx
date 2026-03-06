@@ -12,6 +12,7 @@ import {
   Braces,
 } from "lucide-react";
 import type { RedisConnection, RedisKey, RedisKeyType } from "../types";
+import { useI18n } from "../i18n";
 
 interface KeyBrowserProps {
   connection?: RedisConnection;
@@ -102,6 +103,7 @@ export function KeyBrowser({
   onSearchChange,
 }: KeyBrowserProps) {
   void connection; // reserved for future connection-aware filtering
+  const { messages } = useI18n();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(["user", "cache", "queue", "leaderboard"])
   );
@@ -138,7 +140,7 @@ export function KeyBrowser({
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-mono font-semibold text-base-content/70 uppercase tracking-wider">
-              Keys
+              {messages.keyBrowser.title}
             </span>
             <span className="badge badge-xs badge-ghost font-mono">
               {filtered.length}
@@ -147,7 +149,7 @@ export function KeyBrowser({
           <button
             onClick={handleRefresh}
             className="btn btn-ghost btn-xs w-6 h-6 p-0 cursor-pointer"
-            aria-label="Refresh"
+            aria-label={messages.keyBrowser.refresh}
           >
             <RefreshCw
               size={11}
@@ -164,7 +166,7 @@ export function KeyBrowser({
         >
           {Array.from({ length: 16 }, (_, i) => (
             <option key={i} value={i}>
-              db{i} {i === 0 ? "(active)" : ""}
+              db{i} {i === 0 ? messages.keyBrowser.activeDb : ""}
             </option>
           ))}
         </select>
@@ -176,7 +178,7 @@ export function KeyBrowser({
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Filter keys..."
+            placeholder={messages.keyBrowser.filterPlaceholder}
             className="grow font-mono text-xs bg-transparent outline-none user-select-text"
           />
         </label>

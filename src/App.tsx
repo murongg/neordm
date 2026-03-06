@@ -9,10 +9,12 @@ import { RedisCLI } from "./components/RedisCLI";
 import { ConnectionModal } from "./components/ConnectionModal";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Bot, Terminal, Edit3, Wifi, Server, Info } from "lucide-react";
+import { useI18n } from "./i18n";
 
 function App() {
   const store = useAppStore();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
+  const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
 
   return (
@@ -57,19 +59,19 @@ function App() {
                 onClick={() => store.setPanelTab("editor")}
                 className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${store.panelTab === "editor" ? "tab-active" : ""}`}
               >
-                <Edit3 size={11} /> Editor
+                <Edit3 size={11} /> {messages.app.tabs.editor}
               </button>
               <button
                 onClick={() => store.setPanelTab("ai")}
                 className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${store.panelTab === "ai" ? "tab-active" : ""}`}
               >
-                <Bot size={11} /> AI Agent
+                <Bot size={11} /> {messages.app.tabs.ai}
               </button>
               <button
                 onClick={() => store.setPanelTab("cli")}
                 className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${store.panelTab === "cli" ? "tab-active" : ""}`}
               >
-                <Terminal size={11} /> CLI
+                <Terminal size={11} /> {messages.app.tabs.cli}
               </button>
             </div>
 
@@ -98,7 +100,9 @@ function App() {
                   {store.activeConnection.tls && (
                     <div className="flex items-center gap-0.5 text-success/60">
                       <Wifi size={11} />
-                      <span className="text-[10px] font-mono">TLS</span>
+                      <span className="text-[10px] font-mono">
+                        {messages.app.connection.tls}
+                      </span>
                     </div>
                   )}
                 </>
@@ -119,7 +123,7 @@ function App() {
                 connectionName={
                   store.activeConnection
                     ? `${store.activeConnection.host}:${store.activeConnection.port}`
-                    : "Not connected"
+                    : messages.app.status.notConnected
                 }
               />
             )}
@@ -147,11 +151,13 @@ function App() {
 }
 
 function StatusBar({ store }: { store: ReturnType<typeof useAppStore> }) {
+  const { messages, format } = useI18n();
+
   return (
     <div className="flex items-center justify-between px-4 h-7 border-t border-base-100/50 shrink-0">
       <div className="flex items-center gap-4">
         <span className="text-[10px] font-mono text-base-content/30">
-          {store.keys.length} keys
+          {format(messages.app.status.keysCount, { count: store.keys.length })}
         </span>
         {store.selectedKey && (
           <>

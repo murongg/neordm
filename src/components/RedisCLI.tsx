@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Terminal, ChevronRight, Trash2, Copy } from "lucide-react";
 import type { CliEntry } from "../types";
+import { useI18n } from "../i18n";
 
 interface RedisCLIProps {
   history: CliEntry[];
@@ -9,6 +10,7 @@ interface RedisCLIProps {
 }
 
 export function RedisCLI({ history, onRun, connectionName }: RedisCLIProps) {
+  const { messages } = useI18n();
   const [input, setInput] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -55,7 +57,9 @@ export function RedisCLI({ history, onRun, connectionName }: RedisCLIProps) {
           <Terminal size={14} className="text-base-content/60" />
         </div>
         <div>
-          <h3 className="text-xs font-semibold font-mono">Redis CLI</h3>
+          <h3 className="text-xs font-semibold font-mono">
+            {messages.cli.title}
+          </h3>
           <p className="text-[10px] text-base-content/40 font-mono">
             {connectionName}
           </p>
@@ -64,13 +68,13 @@ export function RedisCLI({ history, onRun, connectionName }: RedisCLIProps) {
           <button
             onClick={() => navigator.clipboard.writeText(history.map(e => e.content).join('\n'))}
             className="btn btn-ghost btn-xs cursor-pointer"
-            aria-label="Copy history"
+            aria-label={messages.cli.copyHistory}
           >
             <Copy size={11} />
           </button>
           <button
             className="btn btn-ghost btn-xs cursor-pointer text-base-content/40 hover:text-error"
-            aria-label="Clear"
+            aria-label={messages.cli.clear}
           >
             <Trash2 size={11} />
           </button>
@@ -95,7 +99,7 @@ export function RedisCLI({ history, onRun, connectionName }: RedisCLIProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type a Redis command..."
+            placeholder={messages.cli.placeholder}
             className="flex-1 bg-transparent outline-none font-mono text-xs text-base-content user-select-text caret-success"
             spellCheck={false}
             autoComplete="off"
@@ -104,7 +108,7 @@ export function RedisCLI({ history, onRun, connectionName }: RedisCLIProps) {
           <kbd className="kbd kbd-xs text-base-content/30">Enter</kbd>
         </div>
         <p className="text-[9px] text-base-content/20 mt-1.5 font-mono">
-          ↑↓ history · Tab autocomplete · Ctrl+L clear
+          {messages.cli.hint}
         </p>
       </div>
     </div>

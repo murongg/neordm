@@ -14,6 +14,7 @@ import {
   EyeOff,
   RotateCcw,
 } from "lucide-react";
+import { useI18n, type Locale } from "../i18n";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -32,20 +33,25 @@ type SettingsCategory =
 
 const CATEGORIES: {
   id: SettingsCategory;
-  label: string;
   icon: React.ReactNode;
 }[] = [
-  { id: "general", label: "General", icon: <Sliders size={14} /> },
-  { id: "appearance", label: "Appearance", icon: <Palette size={14} /> },
-  { id: "editor", label: "Editor", icon: <ChevronRight size={14} /> },
-  { id: "ai", label: "AI Agent", icon: <Bot size={14} /> },
-  { id: "cli", label: "CLI", icon: <Terminal size={14} /> },
-  { id: "shortcuts", label: "Shortcuts", icon: <Keyboard size={14} /> },
-  { id: "privacy", label: "Privacy", icon: <Shield size={14} /> },
+  { id: "general", icon: <Sliders size={14} /> },
+  { id: "appearance", icon: <Palette size={14} /> },
+  { id: "editor", icon: <ChevronRight size={14} /> },
+  { id: "ai", icon: <Bot size={14} /> },
+  { id: "cli", icon: <Terminal size={14} /> },
+  { id: "shortcuts", icon: <Keyboard size={14} /> },
+  { id: "privacy", icon: <Shield size={14} /> },
 ];
 
 export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPanelProps) {
+  const { messages } = useI18n();
   const [category, setCategory] = useState<SettingsCategory>("general");
+  const categoryLabels = messages.settings.categories;
+  const categories = CATEGORIES.map((item) => ({
+    ...item,
+    label: categoryLabels[item.id],
+  }));
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -54,11 +60,11 @@ export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPan
         <nav className="w-48 bg-base-300 flex flex-col shrink-0">
           <div className="px-4 pt-5 pb-3 border-b border-base-content/10">
             <h2 className="text-xs font-mono font-semibold text-base-content/50 uppercase tracking-widest">
-              Settings
+              {messages.common.settings}
             </h2>
           </div>
           <ul className="flex-1 py-2 overflow-y-auto">
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <li key={c.id}>
                 <button
                   onClick={() => setCategory(c.id)}
@@ -95,7 +101,7 @@ export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPan
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-base-content/10 shrink-0">
             <h3 className="text-sm font-mono font-semibold">
-              {CATEGORIES.find((c) => c.id === category)?.label}
+              {categories.find((c) => c.id === category)?.label}
             </h3>
             <button
               onClick={onClose}
@@ -206,34 +212,37 @@ function SelectInput({
 // ─── Category panels ─────────────────────────────────────────────────────────
 
 function GeneralSettings() {
+  const { locale, localeOptions, setLocale, messages } = useI18n();
+  const general = messages.settings.general;
   const [autoConnect, setAutoConnect] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(true);
   const [keySeparator, setKeySeparator] = useState(":");
   const [maxKeys, setMaxKeys] = useState("10000");
   const [scanCount, setScanCount] = useState("200");
-  const [language, setLanguage] = useState("en");
 
   return (
     <>
-      <Section title="Startup">
-        <Row label="Auto-connect on startup" description="Reconnect to last used connection">
+      <Section title={general.startup}>
+        <Row
+          label={general.autoConnect}
+          description={general.autoConnectDescription}
+        >
           <Toggle checked={autoConnect} onChange={setAutoConnect} />
         </Row>
-        <Row label="Language">
+        <Row label={general.language}>
           <SelectInput
-            value={language}
-            onChange={setLanguage}
-            options={[
-              { value: "en", label: "English" },
-              { value: "zh", label: "中文" },
-              { value: "ja", label: "日本語" },
-            ]}
+            value={locale}
+            onChange={(value) => setLocale(value as Locale)}
+            options={localeOptions}
           />
         </Row>
       </Section>
 
-      <Section title="Key Browser">
-        <Row label="Key separator" description="Used to group keys in tree view">
+      <Section title={general.keyBrowser}>
+        <Row
+          label={general.keySeparator}
+          description={general.keySeparatorDescription}
+        >
           <input
             type="text"
             value={keySeparator}
@@ -241,7 +250,7 @@ function GeneralSettings() {
             className="input input-xs w-16 bg-base-300 border-base-content/10 font-mono text-center user-select-text"
           />
         </Row>
-        <Row label="Max keys to load" description="SCAN limit per page">
+        <Row label={general.maxKeys} description={general.maxKeysDescription}>
           <input
             type="number"
             value={maxKeys}
@@ -249,7 +258,10 @@ function GeneralSettings() {
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
-        <Row label="SCAN count" description="COUNT hint per iteration">
+        <Row
+          label={general.scanCount}
+          description={general.scanCountDescription}
+        >
           <input
             type="number"
             value={scanCount}
@@ -259,8 +271,11 @@ function GeneralSettings() {
         </Row>
       </Section>
 
-      <Section title="Safety">
-        <Row label="Confirm before delete" description="Show dialog before DEL / FLUSHDB">
+      <Section title={general.safety}>
+        <Row
+          label={general.confirmDelete}
+          description={general.confirmDeleteDescription}
+        >
           <Toggle checked={confirmDelete} onChange={setConfirmDelete} />
         </Row>
       </Section>
@@ -271,10 +286,11 @@ function GeneralSettings() {
 // ─── Theme Picker ────────────────────────────────────────────────────────────
 
 function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: ThemeMode) => void }) {
+  const { messages } = useI18n();
   const options: { mode: ThemeMode; label: string; preview: React.ReactNode }[] = [
     {
       mode: "light",
-      label: "Light",
+      label: messages.settings.appearance.themes.light,
       preview: (
         <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
           <rect width="80" height="52" rx="4" fill="#f0f4f8" />
@@ -295,7 +311,7 @@ function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: Them
     },
     {
       mode: "dark",
-      label: "Dark",
+      label: messages.settings.appearance.themes.dark,
       preview: (
         <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
           <rect width="80" height="52" rx="4" fill="#0f172a" />
@@ -316,7 +332,7 @@ function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: Them
     },
     {
       mode: "system",
-      label: "System",
+      label: messages.settings.appearance.themes.system,
       preview: (
         <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
           <defs>
@@ -382,6 +398,8 @@ function AppearanceSettings({
   themeMode: ThemeMode;
   onThemeChange: (m: ThemeMode) => void;
 }) {
+  const { messages } = useI18n();
+  const appearance = messages.settings.appearance;
   const [fontSize, setFontSize] = useState("13");
   const [compactMode, setCompactMode] = useState(false);
   const [showKeyType, setShowKeyType] = useState(true);
@@ -390,14 +408,14 @@ function AppearanceSettings({
 
   return (
     <>
-      <Section title="Theme">
+      <Section title={appearance.theme}>
         <div className="px-3 py-2">
           <ThemePicker value={themeMode} onChange={onThemeChange} />
         </div>
       </Section>
 
-      <Section title="Font">
-        <Row label="Font size">
+      <Section title={appearance.font}>
+        <Row label={appearance.fontSize}>
           <div className="flex items-center gap-2">
             <input
               type="range"
@@ -414,17 +432,20 @@ function AppearanceSettings({
         </Row>
       </Section>
 
-      <Section title="Layout">
-        <Row label="Compact mode" description="Reduce padding and spacing">
+      <Section title={appearance.layout}>
+        <Row
+          label={appearance.compactMode}
+          description={appearance.compactModeDescription}
+        >
           <Toggle checked={compactMode} onChange={setCompactMode} />
         </Row>
-        <Row label="Show key type badge">
+        <Row label={appearance.showKeyType}>
           <Toggle checked={showKeyType} onChange={setShowKeyType} />
         </Row>
-        <Row label="Show TTL in key list">
+        <Row label={appearance.showTtl}>
           <Toggle checked={showTTL} onChange={setShowTTL} />
         </Row>
-        <Row label="Enable animations">
+        <Row label={appearance.enableAnimations}>
           <Toggle checked={animationsEnabled} onChange={setAnimationsEnabled} />
         </Row>
       </Section>
@@ -433,6 +454,8 @@ function AppearanceSettings({
 }
 
 function EditorSettings() {
+  const { messages } = useI18n();
+  const editor = messages.settings.editor;
   const [autoFormat, setAutoFormat] = useState(true);
   const [wordWrap, setWordWrap] = useState(true);
   const [syntaxHighlight, setSyntaxHighlight] = useState(true);
@@ -442,17 +465,23 @@ function EditorSettings() {
 
   return (
     <>
-      <Section title="JSON / String">
-        <Row label="Auto-format JSON" description="Pretty print detected JSON values">
+      <Section title={editor.jsonString}>
+        <Row
+          label={editor.autoFormatJson}
+          description={editor.autoFormatJsonDescription}
+        >
           <Toggle checked={autoFormat} onChange={setAutoFormat} />
         </Row>
-        <Row label="Syntax highlighting">
+        <Row label={editor.syntaxHighlighting}>
           <Toggle checked={syntaxHighlight} onChange={setSyntaxHighlight} />
         </Row>
-        <Row label="Word wrap">
+        <Row label={editor.wordWrap}>
           <Toggle checked={wordWrap} onChange={setWordWrap} />
         </Row>
-        <Row label="Max value size (MB)" description="Truncate display above this size">
+        <Row
+          label={editor.maxValueSize}
+          description={editor.maxValueSizeDescription}
+        >
           <input
             type="number"
             value={maxValueSize}
@@ -465,8 +494,8 @@ function EditorSettings() {
         </Row>
       </Section>
 
-      <Section title="Defaults">
-        <Row label="Default TTL (seconds)" description="-1 = no expiry">
+      <Section title={editor.defaults}>
+        <Row label={editor.defaultTtl} description={editor.defaultTtlDescription}>
           <input
             type="number"
             value={defaultTTL}
@@ -474,13 +503,13 @@ function EditorSettings() {
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
-        <Row label="Hash display mode">
+        <Row label={editor.hashDisplayMode}>
           <SelectInput
             value={hashDisplayMode}
             onChange={setHashDisplayMode}
             options={[
-              { value: "table", label: "Table" },
-              { value: "json", label: "JSON" },
+              { value: "table", label: editor.hashDisplayModes.table },
+              { value: "json", label: editor.hashDisplayModes.json },
             ]}
           />
         </Row>
@@ -490,6 +519,8 @@ function EditorSettings() {
 }
 
 function AISettings() {
+  const { messages } = useI18n();
+  const ai = messages.settings.ai;
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [model, setModel] = useState("claude-sonnet-4-6");
@@ -499,14 +530,14 @@ function AISettings() {
 
   return (
     <>
-      <Section title="API Configuration">
-        <Row label="Anthropic API Key">
+      <Section title={ai.apiConfiguration}>
+        <Row label={ai.apiKey}>
           <div className="flex items-center gap-1.5">
             <input
               type={showKey ? "text" : "password"}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-ant-..."
+              placeholder={ai.apiKeyPlaceholder}
               className="input input-xs w-48 bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
             />
             <button
@@ -517,7 +548,7 @@ function AISettings() {
             </button>
           </div>
         </Row>
-        <Row label="Model">
+        <Row label={ai.model}>
           <SelectInput
             value={model}
             onChange={setModel}
@@ -528,7 +559,7 @@ function AISettings() {
             ]}
           />
         </Row>
-        <Row label="Max tokens">
+        <Row label={ai.maxTokens}>
           <input
             type="number"
             value={maxTokens}
@@ -538,16 +569,13 @@ function AISettings() {
         </Row>
       </Section>
 
-      <Section title="Behavior">
-        <Row
-          label="Auto-suggest commands"
-          description="Generate Redis commands from natural language"
-        >
+      <Section title={ai.behavior}>
+        <Row label={ai.autoSuggest} description={ai.autoSuggestDescription}>
           <Toggle checked={autoSuggest} onChange={setAutoSuggest} />
         </Row>
         <Row
-          label="Include key context"
-          description="Send selected key info to AI"
+          label={ai.includeKeyContext}
+          description={ai.includeKeyContextDescription}
         >
           <Toggle checked={contextKeys} onChange={setContextKeys} />
         </Row>
@@ -555,7 +583,7 @@ function AISettings() {
 
       <div className="mt-2">
         <button className="btn btn-success btn-sm w-full gap-2 cursor-pointer font-mono">
-          <Check size={13} /> Save API Key
+          <Check size={13} /> {ai.saveApiKey}
         </button>
       </div>
     </>
@@ -563,6 +591,8 @@ function AISettings() {
 }
 
 function CLISettings() {
+  const { messages } = useI18n();
+  const cli = messages.settings.cli;
   const [historySize, setHistorySize] = useState("500");
   const [timeout, setTimeout] = useState("30");
   const [showTimestamps, setShowTimestamps] = useState(false);
@@ -571,8 +601,8 @@ function CLISettings() {
 
   return (
     <>
-      <Section title="History">
-        <Row label="Max history entries">
+      <Section title={cli.history}>
+        <Row label={cli.maxHistoryEntries}>
           <input
             type="number"
             value={historySize}
@@ -580,16 +610,16 @@ function CLISettings() {
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
-        <Row label="Show timestamps">
+        <Row label={cli.showTimestamps}>
           <Toggle checked={showTimestamps} onChange={setShowTimestamps} />
         </Row>
-        <Row label="Syntax highlighting">
+        <Row label={cli.syntaxHighlighting}>
           <Toggle checked={syntaxHighlight} onChange={setSyntaxHighlight} />
         </Row>
       </Section>
 
-      <Section title="Execution">
-        <Row label="Command timeout (s)">
+      <Section title={cli.execution}>
+        <Row label={cli.commandTimeout}>
           <input
             type="number"
             value={timeout}
@@ -597,18 +627,15 @@ function CLISettings() {
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
-        <Row
-          label="Pipeline mode"
-          description="Buffer commands and send in batch"
-        >
+        <Row label={cli.pipelineMode} description={cli.pipelineModeDescription}>
           <Toggle checked={pipelineMode} onChange={setPipelineMode} />
         </Row>
       </Section>
 
-      <Section title="Actions">
-        <Row label="Clear history" description="Remove all CLI history entries">
+      <Section title={cli.actions}>
+        <Row label={cli.clearHistory} description={cli.clearHistoryDescription}>
           <button className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error">
-            <RotateCcw size={11} /> Clear
+            <RotateCcw size={11} /> {messages.common.clear}
           </button>
         </Row>
       </Section>
@@ -616,28 +643,18 @@ function CLISettings() {
   );
 }
 
-const SHORTCUTS = [
-  { action: "New connection", keys: ["⌘", "N"] },
-  { action: "Refresh keys", keys: ["⌘", "R"] },
-  { action: "Search keys", keys: ["⌘", "F"] },
-  { action: "Focus CLI", keys: ["⌘", "`"] },
-  { action: "Open AI agent", keys: ["⌘", "Shift", "A"] },
-  { action: "Delete key", keys: ["⌫"] },
-  { action: "Copy value", keys: ["⌘", "C"] },
-  { action: "Toggle sidebar", keys: ["⌘", "B"] },
-  { action: "Close panel", keys: ["Esc"] },
-];
-
 function ShortcutsSettings() {
+  const { messages } = useI18n();
+
   return (
     <>
-      <Section title="Keyboard Shortcuts">
-        {SHORTCUTS.map((s) => (
-          <Row key={s.action} label={s.action}>
+      <Section title={messages.settings.shortcuts.title}>
+        {messages.settings.shortcuts.items.map((shortcut) => (
+          <Row key={shortcut.action} label={shortcut.action}>
             <div className="flex items-center gap-1">
-              {s.keys.map((k) => (
-                <kbd key={k} className="kbd kbd-xs font-mono">
-                  {k}
+              {shortcut.keys.map((key) => (
+                <kbd key={key} className="kbd kbd-xs font-mono">
+                  {key}
                 </kbd>
               ))}
             </div>
@@ -649,6 +666,8 @@ function ShortcutsSettings() {
 }
 
 function PrivacySettings() {
+  const { messages } = useI18n();
+  const privacy = messages.settings.privacy;
   const [telemetry, setTelemetry] = useState(false);
   const [crashReports, setCrashReports] = useState(false);
   const [savePasswords, setSavePasswords] = useState(true);
@@ -656,40 +675,43 @@ function PrivacySettings() {
 
   return (
     <>
-      <Section title="Data Collection">
+      <Section title={privacy.dataCollection}>
         <Row
-          label="Anonymous telemetry"
-          description="Help improve NeoRDM by sending usage data"
+          label={privacy.anonymousTelemetry}
+          description={privacy.anonymousTelemetryDescription}
         >
           <Toggle checked={telemetry} onChange={setTelemetry} />
         </Row>
         <Row
-          label="Crash reports"
-          description="Automatically send crash reports"
+          label={privacy.crashReports}
+          description={privacy.crashReportsDescription}
         >
           <Toggle checked={crashReports} onChange={setCrashReports} />
         </Row>
       </Section>
 
-      <Section title="Security">
+      <Section title={privacy.security}>
         <Row
-          label="Save connection passwords"
-          description="Stored in system keychain"
+          label={privacy.savePasswords}
+          description={privacy.savePasswordsDescription}
         >
           <Toggle checked={savePasswords} onChange={setSavePasswords} />
         </Row>
         <Row
-          label="Enable audit log"
-          description="Log all executed commands locally"
+          label={privacy.auditLog}
+          description={privacy.auditLogDescription}
         >
           <Toggle checked={auditLog} onChange={setAuditLog} />
         </Row>
       </Section>
 
-      <Section title="Data">
-        <Row label="Clear all cached data" description="Remove local cache and preferences">
+      <Section title={privacy.data}>
+        <Row
+          label={privacy.clearCachedData}
+          description={privacy.clearCachedDataDescription}
+        >
           <button className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error">
-            <RotateCcw size={11} /> Reset
+            <RotateCcw size={11} /> {messages.common.reset}
           </button>
         </Row>
       </Section>

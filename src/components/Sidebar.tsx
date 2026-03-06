@@ -11,6 +11,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { RedisConnection, PanelTab } from "../types";
+import { useI18n } from "../i18n";
 
 interface SidebarProps {
   connections: RedisConnection[];
@@ -39,6 +40,7 @@ export function Sidebar({
   onOpenSettings,
 }: SidebarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const { messages } = useI18n();
 
   return (
     <aside className="flex flex-col w-14 bg-base-300 border-r border-base-100/50 h-full z-10">
@@ -94,7 +96,7 @@ export function Sidebar({
         <button
           onClick={onNewConnection}
           className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer hover:bg-base-100/50 transition-all duration-200 text-base-content/30 hover:text-success border border-dashed border-base-content/20 hover:border-success/50"
-          aria-label="New connection"
+          aria-label={messages.sidebar.newConnection}
         >
           <Plus size={14} />
         </button>
@@ -109,7 +111,7 @@ export function Sidebar({
               ? "bg-success/20 text-success"
               : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
           }`}
-          aria-label="CLI"
+          aria-label={messages.sidebar.cli}
         >
           <Terminal size={15} />
         </button>
@@ -120,11 +122,15 @@ export function Sidebar({
               ? "bg-success/20 text-success"
               : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
           }`}
-          aria-label="AI Agent"
+          aria-label={messages.sidebar.aiAgent}
         >
           <Bot size={15} />
         </button>
-        <button onClick={onOpenSettings} className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-base-content/40 hover:bg-base-100/50 hover:text-base-content">
+        <button
+          onClick={onOpenSettings}
+          className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
+          aria-label={messages.sidebar.settings}
+        >
           <Settings size={15} />
         </button>
       </div>

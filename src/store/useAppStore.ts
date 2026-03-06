@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type {
   RedisConnection,
   RedisKey,
@@ -7,8 +7,8 @@ import type {
   ChatMessage,
   CliEntry,
 } from "../types";
+import { useI18n, type Messages } from "../i18n";
 
-// Demo data
 const DEMO_CONNECTIONS: RedisConnection[] = [
   {
     id: "1",
@@ -60,17 +60,8 @@ const DEMO_KEYS: RedisKey[] = [
   { key: "events:stream", type: "stream", ttl: -1 },
 ];
 
-const DEMO_CHAT: ChatMessage[] = [
-  {
-    id: "1",
-    role: "assistant",
-    content:
-      "Hi! I'm your Redis AI assistant. I can help you query, analyze, and manage your Redis data. What would you like to do?",
-    timestamp: new Date(Date.now() - 60000),
-  },
-];
-
 export function useAppStore() {
+  const { messages, format } = useI18n();
   const [connections, setConnections] =
     useState<RedisConnection[]>(DEMO_CONNECTIONS);
   const [activeConnectionId, setActiveConnectionId] = useState<string>("1");
@@ -80,54 +71,77 @@ export function useAppStore() {
   const [keyValue, setKeyValue] = useState<KeyValue | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("*");
   const [panelTab, setPanelTab] = useState<PanelTab>("editor");
-  const [chatMessages, setChatMessages] =
-    useState<ChatMessage[]>(DEMO_CHAT);
-  const [cliHistory, setCliHistory] = useState<CliEntry[]>([
-    {
-      id: "1",
-      type: "output",
-      content: "Connected to 127.0.0.1:6379",
-      timestamp: new Date(),
-    },
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() =>
+    createDemoChat(messages)
+  );
+  const [cliHistory, setCliHistory] = useState<CliEntry[]>(() =>
+    createInitialCliHistory(messages, format)
+  );
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const activeConnection = connections.find(
-    (c) => c.id === activeConnectionId
-  );
+  const activeConnection = connections.find((connection) => {
+    return connection.id === activeConnectionId;
+  });
+
+  useEffect(() => {
+    setChatMessages((previous) => {
+      if (
+        previous.length === 1 &&
+        previous[0]?.id === "1" &&
+        previous[0]?.role === "assistant"
+      ) {
+        return createDemoChat(messages);
+      }
+
+      return previous;
+    });
+  }, [messages]);
+
+  useEffect(() => {
+    setCliHistory((previous) => {
+      if (
+        previous.length === 1 &&
+        previous[0]?.id === "1" &&
+        previous[0]?.type === "output"
+      ) {
+        return createInitialCliHistory(messages, format);
+      }
+
+      return previous;
+    });
+  }, [format, messages]);
 
   const selectKey = useCallback((key: RedisKey) => {
     setSelectedKey(key);
-    // Simulate loading value
-    const mockValue = getMockValue(key);
-    setKeyValue(mockValue);
+    setKeyValue(getMockValue(key));
     setPanelTab("editor");
   }, []);
 
   const sendChatMessage = useCallback(
     (content: string) => {
-      const userMsg: ChatMessage = {
+      const userMessage: ChatMessage = {
         id: Date.now().toString(),
         role: "user",
         content,
         timestamp: new Date(),
       };
-      setChatMessages((prev) => [...prev, userMsg]);
 
-      // Simulate AI response
+      setChatMessages((previous) => [...previous, userMessage]);
+
       setTimeout(() => {
-        const aiMsg: ChatMessage = {
+        const assistantMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: generateAIResponse(content, selectedKey),
+          content: generateAIResponse(content, selectedKey, messages, format),
           command: generateSuggestedCommand(content, selectedKey),
           timestamp: new Date(),
         };
-        setChatMessages((prev) => [...prev, aiMsg]);
+
+        setChatMessages((previous) => [...previous, assistantMessage]);
       }, 800);
     },
-    [selectedKey]
+    [format, messages, selectedKey]
   );
 
   const runCliCommand = useCallback((cmd: string) => {
@@ -137,9 +151,9 @@ export function useAppStore() {
       content: cmd,
       timestamp: new Date(),
     };
-    setCliHistory((prev) => [...prev, entry]);
 
-    // Simulate output
+    setCliHistory((previous) => [...previous, entry]);
+
     setTimeout(() => {
       const output: CliEntry = {
         id: (Date.now() + 1).toString(),
@@ -147,25 +161,33 @@ export function useAppStore() {
         content: simulateRedisOutput(cmd),
         timestamp: new Date(),
       };
-      setCliHistory((prev) => [...prev, output]);
+
+      setCliHistory((previous) => [...previous, output]);
     }, 100);
   }, []);
 
-  const addConnection = useCallback((conn: Omit<RedisConnection, "id" | "status">) => {
-    const newConn: RedisConnection = {
-      ...conn,
-      id: Date.now().toString(),
-      status: "connecting",
-    };
-    setConnections((prev) => [...prev, newConn]);
-    setTimeout(() => {
-      setConnections((prev) =>
-        prev.map((c) =>
-          c.id === newConn.id ? { ...c, status: "connected" } : c
-        )
-      );
-    }, 1200);
-  }, []);
+  const addConnection = useCallback(
+    (connection: Omit<RedisConnection, "id" | "status">) => {
+      const newConnection: RedisConnection = {
+        ...connection,
+        id: Date.now().toString(),
+        status: "connecting",
+      };
+
+      setConnections((previous) => [...previous, newConnection]);
+
+      setTimeout(() => {
+        setConnections((previous) =>
+          previous.map((current) =>
+            current.id === newConnection.id
+              ? { ...current, status: "connected" }
+              : current
+          )
+        );
+      }, 1200);
+    },
+    []
+  );
 
   return {
     connections,
@@ -194,7 +216,33 @@ export function useAppStore() {
   };
 }
 
-// Helpers
+function createDemoChat(messages: Messages): ChatMessage[] {
+  return [
+    {
+      id: "1",
+      role: "assistant",
+      content: messages.store.greeting,
+      timestamp: new Date(Date.now() - 60000),
+    },
+  ];
+}
+
+function createInitialCliHistory(
+  messages: Messages,
+  format: (template: string, values?: Record<string, string | number>) => string
+): CliEntry[] {
+  return [
+    {
+      id: "1",
+      type: "output",
+      content: format(messages.cli.connectedTo, {
+        hostPort: "127.0.0.1:6379",
+      }),
+      timestamp: new Date(),
+    },
+  ];
+}
+
 function getMockValue(key: RedisKey): KeyValue {
   switch (key.type) {
     case "hash":
@@ -228,7 +276,12 @@ function getMockValue(key: RedisKey): KeyValue {
         key: key.key,
         type: "set",
         ttl: key.ttl,
-        value: ["session:abc123", "session:def456", "session:ghi789", "session:jkl012"],
+        value: [
+          "session:abc123",
+          "session:def456",
+          "session:ghi789",
+          "session:jkl012",
+        ],
       };
     case "zset":
       return {
@@ -248,59 +301,109 @@ function getMockValue(key: RedisKey): KeyValue {
         key: key.key,
         type: "string",
         ttl: key.ttl,
-        value:
-          key.key.includes("lock")
-            ? "1"
-            : key.key.includes("session")
-            ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMDAxIn0.abc123"
-            : JSON.stringify({ status: "ok", ts: Date.now() }),
+        value: key.key.includes("lock")
+          ? "1"
+          : key.key.includes("session")
+          ? "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMDAxIn0.abc123"
+          : JSON.stringify({ status: "ok", ts: Date.now() }),
       };
   }
 }
 
-function generateAIResponse(input: string, key: RedisKey | null): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("ttl") || lower.includes("expir")) {
-    return key
-      ? `The key \`${key.key}\` has TTL: **${key.ttl === -1 ? "No expiry" : key.ttl + "s"}**. Use \`EXPIRE ${key.key} <seconds>\` to set expiry, or \`PERSIST ${key.key}\` to remove it.`
-      : "Select a key first, then I can tell you its TTL details.";
+function generateAIResponse(
+  input: string,
+  key: RedisKey | null,
+  messages: Messages,
+  format: (template: string, values?: Record<string, string | number>) => string
+): string {
+  if (containsKeyword(input, ["ttl", "expir", "过期", "失效"])) {
+    if (!key) {
+      return messages.store.selectKeyFirst;
+    }
+
+    const ttlText =
+      key.ttl === -1 ? messages.valueEditor.noExpiry : `${key.ttl}s`;
+
+    return [
+      format(messages.store.ttlDetails, {
+        key: key.key,
+        ttl: ttlText,
+      }),
+      format(messages.store.ttlSetHint, { key: key.key }),
+      format(messages.store.ttlClearHint, { key: key.key }),
+    ].join(" ");
   }
-  if (lower.includes("delete") || lower.includes("del")) {
-    return key
-      ? `To delete \`${key.key}\`, run:\n\`\`\`\nDEL ${key.key}\n\`\`\`\n⚠️ This is irreversible. Make sure you want to delete it.`
-      : "Which key would you like to delete? Select one from the key browser.";
+
+  if (containsKeyword(input, ["delete", "del", "删除"])) {
+    if (!key) {
+      return messages.store.selectKeyDelete;
+    }
+
+    return [
+      format(messages.store.deleteKey, { key: key.key }),
+      messages.store.deleteWarning,
+    ].join(" ");
   }
-  if (lower.includes("count") || lower.includes("how many")) {
-    return "Run `DBSIZE` to get the total number of keys, or use `SCAN 0 MATCH user:* COUNT 100` to count keys matching a pattern.";
+
+  if (containsKeyword(input, ["count", "how many", "数量", "多少"])) {
+    return messages.store.countResponse;
   }
-  if (lower.includes("slow") || lower.includes("performance")) {
-    return "Check your slow log with `SLOWLOG GET 10`. Commands taking >10ms are logged. You can also run `INFO stats` for throughput metrics.";
+
+  if (containsKeyword(input, ["slow", "performance", "慢", "性能"])) {
+    return messages.store.performanceResponse;
   }
-  return `I can help with Redis operations! Try asking me to:\n- Explain a key's value\n- Suggest commands for data patterns\n- Optimize your Redis usage\n- Help with TTL management`;
+
+  return messages.store.fallback;
 }
 
-function generateSuggestedCommand(input: string, key: RedisKey | null): string | undefined {
-  const lower = input.toLowerCase();
-  if (lower.includes("ttl") && key) return `TTL ${key.key}`;
-  if (lower.includes("delete") && key) return `DEL ${key.key}`;
-  if (lower.includes("count")) return "DBSIZE";
-  if (lower.includes("slow")) return "SLOWLOG GET 10";
+function generateSuggestedCommand(
+  input: string,
+  key: RedisKey | null
+): string | undefined {
+  if (containsKeyword(input, ["ttl", "过期"]) && key) return `TTL ${key.key}`;
+  if (containsKeyword(input, ["delete", "del", "删除"]) && key) {
+    return `DEL ${key.key}`;
+  }
+  if (containsKeyword(input, ["count", "how many", "数量", "多少"])) {
+    return "DBSIZE";
+  }
+  if (containsKeyword(input, ["slow", "performance", "慢", "性能"])) {
+    return "SLOWLOG GET 10";
+  }
+
   return undefined;
+}
+
+function containsKeyword(input: string, keywords: string[]) {
+  const normalized = input.toLowerCase();
+
+  return keywords.some((keyword) => normalized.includes(keyword));
 }
 
 function simulateRedisOutput(cmd: string): string {
   const parts = cmd.trim().split(/\s+/);
   const command = parts[0]?.toUpperCase();
+
   switch (command) {
-    case "PING": return "PONG";
-    case "DBSIZE": return "(integer) 15";
-    case "INFO": return "# Server\nredis_version:7.2.3\nredis_mode:standalone\nos:Linux\n# Keyspace\ndb0:keys=15,expires=6,avg_ttl=3600000";
-    case "SET": return "OK";
-    case "GET": return `"${parts[2] || "value"}"`;
-    case "DEL": return "(integer) 1";
-    case "TTL": return "(integer) 3600";
-    case "KEYS": return `1) "${parts[1] || "*"}"`;
-    case "FLUSHDB": return "OK";
-    default: return `(error) ERR unknown command '${parts[0]}'`;
+    case "PING":
+      return "PONG";
+    case "DBSIZE":
+      return "(integer) 15";
+    case "INFO":
+      return "# Server\nredis_version:7.2.3\nredis_mode:standalone\nos:Linux\n# Keyspace\ndb0:keys=15,expires=6,avg_ttl=3600000";
+    case "SET":
+      return "OK";
+    case "GET":
+      return `"${parts[2] || "value"}"`;
+    case "DEL":
+      return "(integer) 1";
+    case "TTL":
+      return "(integer) 3600";
+    case "KEYS":
+      return `1) "${parts[1] || "*"}"`;
+    case "FLUSHDB":
+      return "OK";
+    default:
+      return `(error) ERR unknown command '${parts[0]}'`;
   }
 }

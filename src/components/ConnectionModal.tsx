@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { X, Loader, Wifi, Lock, Database } from "lucide-react";
 import type { RedisConnection } from "../types";
+import { useI18n } from "../i18n";
 
 interface ConnectionModalProps {
   onClose: () => void;
@@ -13,6 +14,7 @@ const COLORS = [
 ];
 
 export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
+  const { messages } = useI18n();
   const [form, setForm] = useState({
     name: "",
     host: "127.0.0.1",
@@ -55,7 +57,9 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
       <div className="bg-base-200 rounded-2xl w-full max-w-md mx-4 shadow-2xl border border-base-content/10 overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-base-content/10">
-          <h2 className="text-sm font-semibold font-mono">New Connection</h2>
+          <h2 className="text-sm font-semibold font-mono">
+            {messages.connectionModal.title}
+          </h2>
           <button
             onClick={onClose}
             className="btn btn-ghost btn-xs btn-circle cursor-pointer"
@@ -70,7 +74,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
           <div className="flex gap-3 items-end">
             <div className="shrink-0">
               <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 block">
-                Color
+                {messages.connectionModal.color}
               </label>
               <div className="flex gap-1.5 flex-wrap w-20">
                 {COLORS.map((c) => (
@@ -87,13 +91,13 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
             </div>
             <div className="flex-1">
               <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 block">
-                Name
+                {messages.connectionModal.name}
               </label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => update("name", e.target.value)}
-                placeholder="My Redis Server"
+                placeholder={messages.connectionModal.namePlaceholder}
                 className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
               />
             </div>
@@ -103,7 +107,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
           <div className="flex gap-3">
             <div className="flex-1">
               <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Wifi size={9} /> Host
+                <Wifi size={9} /> {messages.connectionModal.host}
               </label>
               <input
                 type="text"
@@ -114,7 +118,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
             </div>
             <div className="w-24">
               <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 block">
-                Port
+                {messages.connectionModal.port}
               </label>
               <input
                 type="number"
@@ -128,13 +132,13 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
           {/* Password */}
           <div>
             <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Lock size={9} /> Password
+              <Lock size={9} /> {messages.connectionModal.password}
             </label>
             <input
               type="password"
               value={form.password}
               onChange={(e) => update("password", e.target.value)}
-              placeholder="Optional"
+              placeholder={messages.connectionModal.passwordPlaceholder}
               className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
             />
           </div>
@@ -143,7 +147,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
           <div className="flex gap-3 items-end">
             <div className="w-24">
               <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Database size={9} /> Database
+                <Database size={9} /> {messages.connectionModal.database}
               </label>
               <input
                 type="number"
@@ -163,7 +167,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
                   className="toggle toggle-sm toggle-success cursor-pointer"
                 />
                 <span className="text-xs font-mono text-base-content/70">
-                  TLS / SSL
+                  {messages.connectionModal.tls}
                 </span>
               </label>
             </div>
@@ -180,8 +184,8 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
             >
               <Wifi size={12} />
               {testResult === "ok"
-                ? "Connection successful!"
-                : "Connection failed. Check your settings."}
+                ? messages.connectionModal.success
+                : messages.connectionModal.failure}
             </div>
           )}
         </div>
@@ -194,19 +198,22 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
             className="btn btn-ghost btn-sm flex-1 cursor-pointer font-mono"
           >
             {testing ? (
-              <Loader size={13} className="animate-spin" />
+              <span className="flex items-center gap-1.5">
+                <Loader size={13} className="animate-spin" />
+                {messages.connectionModal.testing}
+              </span>
             ) : (
-              "Test Connection"
+              messages.connectionModal.testConnection
             )}
           </button>
           <button onClick={onClose} className="btn btn-ghost btn-sm cursor-pointer font-mono">
-            Cancel
+            {messages.common.cancel}
           </button>
           <button
             onClick={handleSave}
             className="btn btn-success btn-sm cursor-pointer font-mono"
           >
-            Save
+            {messages.common.save}
           </button>
         </div>
       </div>

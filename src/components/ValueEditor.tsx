@@ -10,12 +10,21 @@ import {
   ChevronRight,
 } from "lucide-react";
 import type { KeyValue, ZSetMember } from "../types";
+import { useI18n } from "../i18n";
 
 interface ValueEditorProps {
   keyValue: KeyValue | null;
 }
 
+interface TtlUnits {
+  second: string;
+  minute: string;
+  hour: string;
+  day: string;
+}
+
 export function ValueEditor({ keyValue }: ValueEditorProps) {
+  const { messages } = useI18n();
   const [copied, setCopied] = useState(false);
   const [editingTTL, setEditingTTL] = useState(false);
   const [ttlInput, setTtlInput] = useState("");
@@ -26,7 +35,7 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
         <div className="w-16 h-16 rounded-2xl bg-base-200 flex items-center justify-center">
           <ChevronRight size={24} />
         </div>
-        <p className="text-sm font-mono">Select a key to view its value</p>
+        <p className="text-sm font-mono">{messages.valueEditor.emptyState}</p>
       </div>
     );
   }
@@ -43,14 +52,13 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
 
   const ttlDisplay =
     keyValue.ttl === -1
-      ? "No expiry"
+      ? messages.valueEditor.noExpiry
       : keyValue.ttl === -2
-      ? "Expired"
-      : formatTTLFull(keyValue.ttl);
+      ? messages.valueEditor.expired
+      : formatTTLFull(keyValue.ttl, messages.units.full);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Key header */}
       <div className="px-4 py-3 border-b border-base-200/50 shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -62,12 +70,13 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
               </span>
               {keyValue.ttl > 0 && (
                 <span className="badge badge-xs badge-warning font-mono">
-                  TTL {formatTTL(keyValue.ttl)}
+                  {messages.valueEditor.ttlBadge}{" "}
+                  {formatTTL(keyValue.ttl, messages.units.compact)}
                 </span>
               )}
               {keyValue.ttl === -1 && (
                 <span className="badge badge-xs badge-ghost font-mono">
-                  persistent
+                  {messages.valueEditor.persistent}
                 </span>
               )}
             </div>
@@ -80,7 +89,7 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
             <button
               onClick={handleCopy}
               className="btn btn-ghost btn-xs gap-1 cursor-pointer"
-              aria-label="Copy value"
+              aria-label={messages.valueEditor.copyValue}
             >
               {copied ? (
                 <Check size={12} className="text-success" />
@@ -90,14 +99,13 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
             </button>
             <button
               className="btn btn-ghost btn-xs cursor-pointer text-error hover:bg-error/10"
-              aria-label="Delete key"
+              aria-label={messages.valueEditor.deleteKey}
             >
               <Trash2 size={12} />
             </button>
           </div>
         </div>
 
-        {/* TTL editor */}
         <div className="flex items-center gap-2 mt-2">
           <Clock size={11} className="text-base-content/40" />
           {editingTTL ? (
@@ -107,7 +115,7 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
                 value={ttlInput}
                 onChange={(e) => setTtlInput(e.target.value)}
                 className="input input-xs w-24 font-mono bg-base-200 user-select-text"
-                placeholder="seconds"
+                placeholder={messages.valueEditor.ttlInputPlaceholder}
                 autoFocus
               />
               <button
@@ -138,7 +146,6 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
         </div>
       </div>
 
-      {/* Value content */}
       <div className="flex-1 overflow-auto p-4">
         {keyValue.type === "string" && (
           <StringViewer value={keyValue.value as string} />
@@ -160,9 +167,8 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
   );
 }
 
-// ─── Sub-viewers ────────────────────────────────────────────────────────────
-
 function StringViewer({ value }: { value: string }) {
+  const { messages } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editVal, setEditVal] = useState(value);
 
@@ -187,13 +193,13 @@ function StringViewer({ value }: { value: string }) {
             onClick={() => setIsEditing(false)}
             className="btn btn-success btn-sm gap-1.5 cursor-pointer"
           >
-            <Save size={13} /> Save
+            <Save size={13} /> {messages.common.save}
           </button>
           <button
             onClick={() => setIsEditing(false)}
             className="btn btn-ghost btn-sm cursor-pointer"
           >
-            Cancel
+            {messages.common.cancel}
           </button>
         </div>
       </div>
@@ -220,23 +226,31 @@ function StringViewer({ value }: { value: string }) {
 }
 
 function HashViewer({ value }: { value: Record<string, string> }) {
+  const { messages } = useI18n();
   const entries = Object.entries(value);
+
   return (
     <div className="overflow-auto rounded-xl border border-base-200/50">
       <table className="table table-xs w-full">
         <thead>
           <tr className="bg-base-200/80">
-            <th className="font-mono text-base-content/50 w-8 text-center">#</th>
-            <th className="font-mono text-base-content/50">Field</th>
-            <th className="font-mono text-base-content/50">Value</th>
+            <th className="font-mono text-base-content/50 w-8 text-center">
+              {messages.valueEditor.headers.index}
+            </th>
+            <th className="font-mono text-base-content/50">
+              {messages.valueEditor.field}
+            </th>
+            <th className="font-mono text-base-content/50">
+              {messages.valueEditor.value}
+            </th>
             <th className="w-8" />
           </tr>
         </thead>
         <tbody>
-          {entries.map(([field, val], i) => (
+          {entries.map(([field, val], index) => (
             <tr key={field} className="hover:bg-base-200/30 group">
               <td className="font-mono text-base-content/30 text-center text-[10px]">
-                {i + 1}
+                {index + 1}
               </td>
               <td className="font-mono text-success text-xs">{field}</td>
               <td className="font-mono text-xs text-base-content/80 max-w-xs truncate user-select-text">
@@ -258,13 +272,13 @@ function HashViewer({ value }: { value: Record<string, string> }) {
 function ListViewer({ value }: { value: string[] }) {
   return (
     <div className="flex flex-col gap-1.5">
-      {value.map((item, i) => (
+      {value.map((item, index) => (
         <div
-          key={i}
+          key={index}
           className="flex items-start gap-3 p-2.5 rounded-lg bg-base-200/50 hover:bg-base-200 transition-colors duration-150 group"
         >
           <span className="text-[10px] font-mono text-base-content/30 mt-0.5 w-5 text-right shrink-0">
-            {i}
+            {index}
           </span>
           <span className="text-xs font-mono text-base-content/80 flex-1 min-w-0 break-all user-select-text">
             {item}
@@ -281,9 +295,9 @@ function ListViewer({ value }: { value: string[] }) {
 function SetViewer({ value }: { value: string[] }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {value.map((item, i) => (
+      {value.map((item, index) => (
         <div
-          key={i}
+          key={index}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-base-200 hover:bg-base-200/80 transition-colors duration-150 group cursor-default"
         >
           <span className="text-xs font-mono text-base-content/80 user-select-text">
@@ -299,31 +313,39 @@ function SetViewer({ value }: { value: string[] }) {
 }
 
 function ZSetViewer({ value }: { value: ZSetMember[] }) {
+  const { messages } = useI18n();
+
   return (
     <div className="overflow-auto rounded-xl border border-base-200/50">
       <table className="table table-xs w-full">
         <thead>
           <tr className="bg-base-200/80">
-            <th className="font-mono text-base-content/50 w-8 text-center">Rank</th>
-            <th className="font-mono text-base-content/50">Member</th>
-            <th className="font-mono text-base-content/50 text-right">Score</th>
+            <th className="font-mono text-base-content/50 w-8 text-center">
+              {messages.valueEditor.rank}
+            </th>
+            <th className="font-mono text-base-content/50">
+              {messages.valueEditor.member}
+            </th>
+            <th className="font-mono text-base-content/50 text-right">
+              {messages.valueEditor.score}
+            </th>
             <th className="w-8" />
           </tr>
         </thead>
         <tbody>
-          {value.map((item, i) => (
+          {value.map((item, index) => (
             <tr key={item.member} className="hover:bg-base-200/30 group">
               <td className="font-mono text-center">
                 <span
                   className={`badge badge-xs font-mono ${
-                    i === 0
+                    index === 0
                       ? "badge-warning"
-                      : i === 1
+                      : index === 1
                       ? "badge-ghost"
                       : "badge-ghost opacity-50"
                   }`}
                 >
-                  #{i + 1}
+                  #{index + 1}
                 </span>
               </td>
               <td className="font-mono text-xs text-base-content/80 user-select-text">
@@ -346,30 +368,27 @@ function ZSetViewer({ value }: { value: ZSetMember[] }) {
 }
 
 function JsonHighlight({ code }: { code: string }) {
-  const highlighted = code
-    .replace(
-      /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
-      (match) => {
-        if (/^"/.test(match)) {
-          if (/:$/.test(match)) {
-            return `<span style="color:#86efac">${match}</span>`;
-          } else {
-            return `<span style="color:#93c5fd">${match}</span>`;
-          }
-        } else if (/true|false/.test(match)) {
-          return `<span style="color:#fcd34d">${match}</span>`;
-        } else if (/null/.test(match)) {
-          return `<span style="color:#f87171">${match}</span>`;
+  const highlighted = code.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+    (match) => {
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          return `<span style="color:#86efac">${match}</span>`;
         }
-        return `<span style="color:#c4b5fd">${match}</span>`;
+        return `<span style="color:#93c5fd">${match}</span>`;
       }
-    );
-  return (
-    <span dangerouslySetInnerHTML={{ __html: highlighted }} />
+      if (/true|false/.test(match)) {
+        return `<span style="color:#fcd34d">${match}</span>`;
+      }
+      if (/null/.test(match)) {
+        return `<span style="color:#f87171">${match}</span>`;
+      }
+      return `<span style="color:#c4b5fd">${match}</span>`;
+    }
   );
-}
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+}
 
 const TYPE_BADGE: Record<string, string> = {
   string: "badge-info",
@@ -381,16 +400,16 @@ const TYPE_BADGE: Record<string, string> = {
   json: "badge-success",
 };
 
-function formatTTL(ttl: number): string {
-  if (ttl < 60) return `${ttl}s`;
-  if (ttl < 3600) return `${Math.floor(ttl / 60)}m`;
-  if (ttl < 86400) return `${Math.floor(ttl / 3600)}h`;
-  return `${Math.floor(ttl / 86400)}d`;
+function formatTTL(ttl: number, units: TtlUnits): string {
+  if (ttl < 60) return `${ttl}${units.second}`;
+  if (ttl < 3600) return `${Math.floor(ttl / 60)}${units.minute}`;
+  if (ttl < 86400) return `${Math.floor(ttl / 3600)}${units.hour}`;
+  return `${Math.floor(ttl / 86400)}${units.day}`;
 }
 
-function formatTTLFull(ttl: number): string {
-  if (ttl < 60) return `${ttl} seconds`;
-  if (ttl < 3600) return `${Math.floor(ttl / 60)} minutes`;
-  if (ttl < 86400) return `${Math.floor(ttl / 3600)} hours`;
-  return `${Math.floor(ttl / 86400)} days`;
+function formatTTLFull(ttl: number, units: TtlUnits): string {
+  if (ttl < 60) return `${ttl} ${units.second}`;
+  if (ttl < 3600) return `${Math.floor(ttl / 60)} ${units.minute}`;
+  if (ttl < 86400) return `${Math.floor(ttl / 3600)} ${units.hour}`;
+  return `${Math.floor(ttl / 86400)} ${units.day}`;
 }
