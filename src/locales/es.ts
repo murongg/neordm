@@ -8,6 +8,7 @@ export const es: Messages = {
     reset: "Restablecer",
     settings: "Configuración",
     edit: "Editar",
+    disconnect: "Desconectar",
     delete: "Eliminar",
   },
   app: {

@@ -389,6 +389,29 @@ export function useAppStore() {
     [activeConnectionId, closeConnectionModal, editingConnectionId, loadKeys]
   );
 
+  const disconnectConnection = useCallback(
+    (connectionId: string) => {
+      updateConnection(connectionId, (connection) => ({
+        ...connection,
+        status: "disconnected",
+      }));
+
+      if (activeConnectionId !== connectionId) return;
+
+      keysRequestRef.current += 1;
+      keyValueRequestRef.current += 1;
+
+      setIsLoadingKeys(false);
+      setActiveConnectionId("");
+      setSelectedDb(0);
+      setSearchQuery("");
+      setKeys([]);
+      setSelectedKey(null);
+      setKeyValue(null);
+    },
+    [activeConnectionId, updateConnection]
+  );
+
   const selectDb = useCallback(
     async (db: number) => {
       if (!activeConnection) return;
@@ -654,6 +677,7 @@ export function useAppStore() {
     isSidebarCollapsed,
     setIsSidebarCollapsed,
     saveConnection,
+    disconnectConnection,
     deleteConnection,
   };
 }

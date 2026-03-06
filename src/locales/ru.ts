@@ -11,6 +11,7 @@ export const ru: Messages = {
     reset: "Сбросить",
     settings: "Настройки",
     edit: "Изменить",
+    disconnect: "Отключить",
     delete: "Удалить",
   },
   app: {

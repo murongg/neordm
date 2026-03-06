@@ -28,6 +28,7 @@ interface SidebarProps {
   onSelectConnection: (id: string) => void;
   onNewConnection: () => void;
   onEditConnection: (id: string) => void;
+  onDisconnectConnection: (id: string) => void;
   onDeleteConnection: (id: string) => void;
   panelTab: PanelTab;
   onSetPanelTab: (tab: PanelTab) => void;
@@ -76,8 +77,14 @@ function toAnimatedConnections(
 
 function ConnectionStatusBadge({
   status,
+  onDisconnect,
+  onContextMenu,
+  disconnectLabel,
 }: {
   status: RedisConnection["status"];
+  onDisconnect?: () => void;
+  onContextMenu?: (event: MouseEvent<HTMLElement>) => void;
+  disconnectLabel?: string;
 }) {
   const [displayStatus, setDisplayStatus] = useState(status);
   const [isVisible, setIsVisible] = useState(true);
@@ -120,11 +127,28 @@ function ConnectionStatusBadge({
     };
   }, []);
 
+  const badgeClassName = `absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ring-base-300/90 backdrop-blur-sm transition-[opacity,transform,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
+    STATUS_BADGE_CLASSES[displayStatus]
+  } ${isVisible ? "scale-100 opacity-100" : "scale-75 opacity-0"}`;
+
+  if (displayStatus === "connected" && onDisconnect) {
+    return (
+      <button
+        type="button"
+        onClick={onDisconnect}
+        onContextMenu={onContextMenu}
+        className={`${badgeClassName} cursor-pointer hover:scale-105 hover:bg-success/18 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-success`}
+        aria-label={disconnectLabel}
+        title={disconnectLabel}
+      >
+        {STATUS_ICONS[displayStatus]}
+      </button>
+    );
+  }
+
   return (
     <span
-      className={`absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ring-base-300/90 backdrop-blur-sm transition-[opacity,transform,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
-        STATUS_BADGE_CLASSES[displayStatus]
-      } ${isVisible ? "scale-100 opacity-100" : "scale-75 opacity-0"}`}
+      className={badgeClassName}
     >
       {STATUS_ICONS[displayStatus]}
     </span>
@@ -137,6 +161,7 @@ export function Sidebar({
   onSelectConnection,
   onNewConnection,
   onEditConnection,
+  onDisconnectConnection,
   onDeleteConnection,
   panelTab,
   onSetPanelTab,
@@ -176,6 +201,8 @@ export function Sidebar({
       (connection) => connection.id === renderedContextMenu?.connectionId
     ) ?? null;
   const isConfirmingDelete = confirmingDeleteId === contextConnection?.id;
+  const showDisconnectContextConnection =
+    contextConnection?.status === "connected";
   const hasActiveConnection = renderedConnections.some(
     (item) =>
       item.connection.id === activeConnectionId && item.phase !== "exiting"
@@ -430,14 +457,14 @@ export function Sidebar({
   }, [closeContextMenu, contextConnection, renderedContextMenu]);
 
   const openContextMenu = (
-    event: MouseEvent<HTMLButtonElement>,
+    event: MouseEvent<HTMLElement>,
     connectionId: string
   ) => {
     event.preventDefault();
     setHoveredId(null);
 
     const menuWidth = 168;
-    const menuHeight = 132;
+    const menuHeight = 176;
     const padding = 8;
     const nextContextMenu = {
       connectionId,
@@ -546,8 +573,14 @@ export function Sidebar({
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: conn.color }}
                   />
-                  <ConnectionStatusBadge status={conn.status} />
                 </button>
+
+                <ConnectionStatusBadge
+                  status={conn.status}
+                  onDisconnect={() => onDisconnectConnection(conn.id)}
+                  onContextMenu={(event) => openContextMenu(event, conn.id)}
+                  disconnectLabel={messages.common.disconnect}
+                />
 
                 {hoveredId === conn.id &&
                   renderedContextMenu?.connectionId !== conn.id && (
@@ -632,6 +665,20 @@ export function Sidebar({
               </div>
             </div>
           )}
+
+          {showDisconnectContextConnection ? (
+            <button
+              role="menuitem"
+              onClick={() => {
+                onDisconnectConnection(contextConnection.id);
+                closeContextMenu();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
+            >
+              <WifiOff size={12} />
+              {messages.common.disconnect}
+            </button>
+          ) : null}
         </div>
       )}
 

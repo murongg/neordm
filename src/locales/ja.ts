@@ -8,6 +8,7 @@ export const ja: Messages = {
     reset: "リセット",
     settings: "設定",
     edit: "編集",
+    disconnect: "切断",
     delete: "削除",
   },
   app: {

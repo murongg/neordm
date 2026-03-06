@@ -60,6 +60,7 @@ export interface Messages {
     reset: string;
     settings: string;
     edit: string;
+    disconnect: string;
     delete: string;
   };
   app: {

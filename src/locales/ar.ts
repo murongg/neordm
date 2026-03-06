@@ -11,6 +11,7 @@ export const ar: Messages = {
     reset: "إعادة تعيين",
     settings: "الإعدادات",
     edit: "تعديل",
+    disconnect: "قطع الاتصال",
     delete: "حذف",
   },
   app: {

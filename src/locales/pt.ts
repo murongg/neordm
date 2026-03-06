@@ -11,6 +11,7 @@ export const pt: Messages = {
     reset: "Redefinir",
     settings: "Configurações",
     edit: "Editar",
+    disconnect: "Desconectar",
     delete: "Excluir",
   },
   app: {

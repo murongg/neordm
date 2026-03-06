@@ -11,6 +11,7 @@ export const fr: Messages = {
     reset: "Réinitialiser",
     settings: "Paramètres",
     edit: "Modifier",
+    disconnect: "Déconnecter",
     delete: "Supprimer",
   },
   app: {

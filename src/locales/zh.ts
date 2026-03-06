@@ -8,6 +8,7 @@ export const zh: Messages = {
     reset: "重置",
     settings: "设置",
     edit: "编辑",
+    disconnect: "断开连接",
     delete: "删除",
   },
   app: {

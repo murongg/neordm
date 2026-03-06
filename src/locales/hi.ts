@@ -11,6 +11,7 @@ export const hi: Messages = {
     reset: "रीसेट",
     settings: "सेटिंग्स",
     edit: "संपादित करें",
+    disconnect: "डिस्कनेक्ट करें",
     delete: "हटाएँ",
   },
   app: {

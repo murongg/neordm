@@ -35,6 +35,7 @@ function App() {
           onSelectConnection={store.selectConnection}
           onNewConnection={store.openNewConnectionModal}
           onEditConnection={store.openEditConnectionModal}
+          onDisconnectConnection={store.disconnectConnection}
           onDeleteConnection={store.deleteConnection}
           panelTab={store.panelTab}
           onSetPanelTab={store.setPanelTab}

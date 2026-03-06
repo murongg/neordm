@@ -11,6 +11,7 @@ export const ko: Messages = {
     reset: "재설정",
     settings: "설정",
     edit: "편집",
+    disconnect: "연결 끊기",
     delete: "삭제",
   },
   app: {
