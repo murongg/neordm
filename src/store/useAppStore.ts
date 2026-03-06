@@ -1,5 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n";
+import {
+  loadStoredConnections,
+  persistConnections,
+} from "../lib/connectionStore";
 import {
   getRedisErrorMessage,
   getRedisKeyValue,
@@ -81,9 +85,39 @@ export function useAppStore() {
   );
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  const [hasHydratedConnections, setHasHydratedConnections] = useState(false);
 
   const keysRequestRef = useRef(0);
   const keyValueRequestRef = useRef(0);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void loadStoredConnections()
+      .then((storedConnections) => {
+        if (!isMounted) return;
+        setConnections(storedConnections);
+      })
+      .catch((error) => {
+        console.error("Failed to load persisted connections", error);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setHasHydratedConnections(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hasHydratedConnections) return;
+
+    void persistConnections(connections).catch((error) => {
+      console.error("Failed to persist connections", error);
+    });
+  }, [connections, hasHydratedConnections]);
 
   const activeConnection =
     connections.find((connection) => connection.id === activeConnectionId) ??

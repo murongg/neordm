@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type MouseEvent,
@@ -224,7 +225,11 @@ export function Sidebar({
         const previousItem = previousMap.get(connection.id);
 
         if (!previousItem) {
-          return { connection, phase: "entering" as const };
+          return {
+            connection,
+            phase:
+              connection.id === activeConnectionId ? ("idle" as const) : ("entering" as const),
+          };
         }
 
         return {
@@ -256,7 +261,7 @@ export function Sidebar({
 
       return mergedItems;
     });
-  }, [connections]);
+  }, [activeConnectionId, connections]);
 
   useEffect(() => {
     const hasEnteringItems = renderedConnections.some(
@@ -324,7 +329,7 @@ export function Sidebar({
     }
   }, [hoveredId, renderedConnections]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     updateActiveIndicatorPosition();
   }, [activeConnectionId, renderedConnections, updateActiveIndicatorPosition]);
 
@@ -336,12 +341,28 @@ export function Sidebar({
 
     const handleScroll = () => updateActiveIndicatorPosition();
     const handleResize = () => updateActiveIndicatorPosition();
+    const handleTransitionComplete = (event: TransitionEvent) => {
+      if (!(event.target instanceof HTMLElement)) return;
+      if (!event.target.dataset.connectionItem) return;
+      if (
+        event.propertyName !== "max-height" &&
+        event.propertyName !== "margin-bottom"
+      ) {
+        return;
+      }
+
+      window.requestAnimationFrame(() => {
+        updateActiveIndicatorPosition();
+      });
+    };
     const resizeObserver = new ResizeObserver(() => {
       updateActiveIndicatorPosition();
     });
 
     listContainer.addEventListener("scroll", handleScroll, { passive: true });
     window.addEventListener("resize", handleResize);
+    listContainer.addEventListener("transitionend", handleTransitionComplete);
+    listContainer.addEventListener("transitioncancel", handleTransitionComplete);
     resizeObserver.observe(listContainer);
 
     if (activeButton) {
@@ -351,6 +372,11 @@ export function Sidebar({
     return () => {
       listContainer.removeEventListener("scroll", handleScroll);
       window.removeEventListener("resize", handleResize);
+      listContainer.removeEventListener("transitionend", handleTransitionComplete);
+      listContainer.removeEventListener(
+        "transitioncancel",
+        handleTransitionComplete
+      );
       resizeObserver.disconnect();
     };
   }, [activeConnectionId, updateActiveIndicatorPosition]);
@@ -463,7 +489,7 @@ export function Sidebar({
         {activeIndicatorRect && (
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute left-0 top-0 z-0 rounded-xl bg-base-100 ring-1 ring-base-content/6 shadow-[0_10px_24px_-16px_rgb(0_0_0_/_0.45)] will-change-transform transition-transform duration-300 [transition-timing-function:cubic-bezier(0.34,1.18,0.64,1)] motion-reduce:transition-none"
+            className="pointer-events-none absolute left-0 top-0 z-0 rounded-xl bg-base-100 ring-1 ring-base-content/6 shadow-[0_10px_24px_-16px_rgb(0_0_0_/_0.45)] will-change-transform transition-transform duration-300 ease-linear motion-reduce:transition-none"
             style={{
               width: activeIndicatorRect.width,
               height: activeIndicatorRect.height,
@@ -474,17 +500,21 @@ export function Sidebar({
 
         {renderedConnections.map((item) => {
           const conn = item.connection;
-          const isCollapsed = item.phase !== "idle";
+          const isActive = activeConnectionId === conn.id;
+          const shouldCollapseLayout =
+            item.phase === "exiting" || (item.phase === "entering" && !isActive);
+          const isTransitioning = item.phase !== "idle";
 
           return (
             <div
               key={conn.id}
+              data-connection-item="true"
               className="w-full flex justify-center overflow-hidden transition-[max-height,margin-bottom,opacity,transform] duration-200 ease-out motion-reduce:transition-none"
               style={{
-                maxHeight: isCollapsed ? 0 : CONNECTION_ITEM_HEIGHT,
-                marginBottom: isCollapsed ? 0 : CONNECTION_ITEM_SPACING,
-                opacity: isCollapsed ? 0 : 1,
-                transform: isCollapsed
+                maxHeight: shouldCollapseLayout ? 0 : CONNECTION_ITEM_HEIGHT,
+                marginBottom: shouldCollapseLayout ? 0 : CONNECTION_ITEM_SPACING,
+                opacity: isTransitioning ? 0 : 1,
+                transform: isTransitioning
                   ? "translateY(-4px) scale(0.96)"
                   : "translateY(0) scale(1)",
               }}
@@ -505,7 +535,7 @@ export function Sidebar({
                     w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer
                     transition-all duration-200 relative
                     ${
-                      activeConnectionId === conn.id
+                      isActive
                         ? "scale-[1.03]"
                         : "hover:bg-base-100/50 hover:scale-105"
                     }
