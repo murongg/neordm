@@ -28,6 +28,28 @@ struct RedisCommandInput {
     command: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisKeyRenameInput {
+    connection: RedisConnectionTestInput,
+    old_key: String,
+    new_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisKeyRenamePairInput {
+    old_key: String,
+    new_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RedisKeysRenameInput {
+    connection: RedisConnectionTestInput,
+    renames: Vec<RedisKeyRenamePairInput>,
+}
+
 #[derive(Debug, Serialize)]
 struct RedisKeySummary {
     key: String,
@@ -61,7 +83,11 @@ fn build_connection_url(input: &RedisConnectionTestInput) -> Result<Url, String>
         .map_err(|_| "Invalid port".to_string())?;
     url.set_path(&format!("/{}", input.db));
 
-    if let Some(password) = input.password.as_deref().filter(|password| !password.is_empty()) {
+    if let Some(password) = input
+        .password
+        .as_deref()
+        .filter(|password| !password.is_empty())
+    {
         url.set_password(Some(password))
             .map_err(|_| "Invalid password".to_string())?;
     }
@@ -321,13 +347,11 @@ async fn get_redis_key_value(input: RedisKeyLookupInput) -> Result<RedisKeyValue
                 .await
             {
                 Ok(value) => value,
-                Err(_) => {
-                    redis::cmd("GET")
-                        .arg(&input.key)
-                        .query_async::<String>(&mut connection)
-                        .await
-                        .map_err(|error| format!("Failed to get JSON value: {error}"))?
-                }
+                Err(_) => redis::cmd("GET")
+                    .arg(&input.key)
+                    .query_async::<String>(&mut connection)
+                    .await
+                    .map_err(|error| format!("Failed to get JSON value: {error}"))?,
             };
 
             JsonValue::String(json_text)
@@ -380,6 +404,150 @@ async fn run_redis_command(input: RedisCommandInput) -> Result<String, String> {
     Ok(format_cli_output(result))
 }
 
+#[tauri::command]
+async fn rename_redis_key(input: RedisKeyRenameInput) -> Result<(), String> {
+    if input.old_key.is_empty() {
+        return Err("Source key cannot be empty".to_string());
+    }
+
+    if input.new_key.is_empty() {
+        return Err("Key name cannot be empty".to_string());
+    }
+
+    if input.old_key == input.new_key {
+        return Ok(());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let renamed: i64 = redis::cmd("RENAMENX")
+        .arg(&input.old_key)
+        .arg(&input.new_key)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to rename key: {error}"))?;
+
+    if renamed == 0 {
+        return Err("Target key already exists".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn rename_redis_keys(input: RedisKeysRenameInput) -> Result<(), String> {
+    let renames: Vec<&RedisKeyRenamePairInput> = input
+        .renames
+        .iter()
+        .filter(|item| item.old_key != item.new_key)
+        .collect();
+
+    if renames.is_empty() {
+        return Ok(());
+    }
+
+    let namespace = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local namespace = ARGV[1]
+local count = tonumber(ARGV[2])
+
+if not count or count < 1 then
+  return "OK"
+end
+
+local old_lookup = {}
+local new_lookup = {}
+local old_keys = {}
+local new_keys = {}
+local temp_keys = {}
+
+for i = 1, count do
+  local base = 2 + ((i - 1) * 2)
+  local old_key = ARGV[base + 1]
+  local new_key = ARGV[base + 2]
+
+  if not old_key or old_key == "" then
+    return redis.error_reply("Source key cannot be empty")
+  end
+
+  if not new_key or new_key == "" then
+    return redis.error_reply("Target key cannot be empty")
+  end
+
+  if old_lookup[old_key] then
+    return redis.error_reply("Duplicate source key: " .. old_key)
+  end
+
+  if new_lookup[new_key] then
+    return redis.error_reply("Duplicate target key: " .. new_key)
+  end
+
+  old_lookup[old_key] = true
+  new_lookup[new_key] = true
+  old_keys[i] = old_key
+  new_keys[i] = new_key
+end
+
+for i = 1, count do
+  if redis.call("EXISTS", old_keys[i]) == 0 then
+    return redis.error_reply("Source key does not exist: " .. old_keys[i])
+  end
+end
+
+for i = 1, count do
+  if redis.call("EXISTS", new_keys[i]) == 1 and not old_lookup[new_keys[i]] then
+    return redis.error_reply("Target key already exists: " .. new_keys[i])
+  end
+end
+
+for i = 1, count do
+  local temp_key = "__neordm_tmp__:" .. namespace .. ":" .. i
+
+  if redis.call("EXISTS", temp_key) == 1 then
+    return redis.error_reply("Temporary key collision")
+  end
+
+  temp_keys[i] = temp_key
+end
+
+for i = 1, count do
+  redis.call("RENAME", old_keys[i], temp_keys[i])
+end
+
+for i = 1, count do
+  redis.call("RENAME", temp_keys[i], new_keys[i])
+end
+
+return "OK"
+        "#,
+    );
+
+    let mut invocation = script.prepare_invoke();
+    invocation.arg(namespace);
+    invocation.arg(renames.len());
+
+    for item in renames {
+        invocation.arg(&item.old_key);
+        invocation.arg(&item.new_key);
+    }
+
+    let _: String = invocation
+        .invoke_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to rename keys: {error}"))?;
+
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -390,7 +558,9 @@ pub fn run() {
             test_redis_connection,
             list_redis_keys,
             get_redis_key_value,
-            run_redis_command
+            run_redis_command,
+            rename_redis_key,
+            rename_redis_keys
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

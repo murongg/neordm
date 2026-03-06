@@ -1,6 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { KeyValue, RedisConnection, RedisKey } from "../types";
 
+export interface RedisKeyRenamePair {
+  oldKey: string;
+  newKey: string;
+}
+
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
   "host" | "port" | "db" | "tls"
@@ -69,6 +74,32 @@ export async function runRedisCommand(
     input: {
       connection: toConnectionInput(connection),
       command,
+    },
+  });
+}
+
+export async function renameRedisKey(
+  connection: RedisConnectionInvokeInput,
+  oldKey: string,
+  newKey: string
+) {
+  await invoke("rename_redis_key", {
+    input: {
+      connection: toConnectionInput(connection),
+      oldKey,
+      newKey,
+    },
+  });
+}
+
+export async function renameRedisKeys(
+  connection: RedisConnectionInvokeInput,
+  renames: RedisKeyRenamePair[]
+) {
+  await invoke("rename_redis_keys", {
+    input: {
+      connection: toConnectionInput(connection),
+      renames,
     },
   });
 }

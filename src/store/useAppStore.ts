@@ -8,6 +8,8 @@ import {
   getRedisErrorMessage,
   getRedisKeyValue,
   listRedisKeys,
+  renameRedisKey,
+  renameRedisKeys,
   runRedisCommand,
   testRedisConnection,
 } from "../lib/redis";
@@ -416,9 +418,131 @@ export function useAppStore() {
   const selectKey = useCallback(
     async (key: RedisKey) => {
       if (!activeConnection) return;
+
+      if (selectedKey?.key === key.key && keyValue?.key === key.key) {
+        setPanelTab("editor");
+        return;
+      }
+
       await loadKeyValue(activeConnection, key, selectedDb);
     },
-    [activeConnection, loadKeyValue, selectedDb]
+    [activeConnection, keyValue?.key, loadKeyValue, selectedDb, selectedKey?.key]
+  );
+
+  const renameKey = useCallback(
+    async (key: RedisKey, nextKeyName: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!nextKeyName.length) {
+        throw new Error("Key name cannot be empty");
+      }
+
+      if (nextKeyName === key.key) {
+        return key;
+      }
+
+      await renameRedisKey(
+        { ...activeConnection, db: selectedDb },
+        key.key,
+        nextKeyName
+      );
+
+      const renamedKey: RedisKey = {
+        ...key,
+        key: nextKeyName,
+      };
+
+      setKeys((previous) =>
+        previous.map((item) => (item.key === key.key ? renamedKey : item))
+      );
+
+      setSelectedKey((previous) =>
+        previous?.key === key.key ? renamedKey : previous
+      );
+
+      keyValueRequestRef.current += 1;
+      setKeyValue((previous) =>
+        previous?.key === key.key
+          ? {
+              ...previous,
+              key: nextKeyName,
+            }
+          : previous
+      );
+
+      return renamedKey;
+    },
+    [activeConnection, messages.app.status.notConnected, selectedDb]
+  );
+
+  const renameGroup = useCallback(
+    async (groupId: string, nextGroupId: string, separator: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!groupId.length || !nextGroupId.length) {
+        throw new Error("Group name cannot be empty");
+      }
+
+      if (groupId === nextGroupId) {
+        return [];
+      }
+
+      const groupPrefix = `${groupId}${separator}`;
+      const renamedPairs = keys
+        .filter((item) => item.key.startsWith(groupPrefix))
+        .map((item) => ({
+          oldKey: item.key,
+          newKey: `${nextGroupId}${item.key.slice(groupId.length)}`,
+        }));
+
+      if (!renamedPairs.length) {
+        return [];
+      }
+
+      await renameRedisKeys(
+        { ...activeConnection, db: selectedDb },
+        renamedPairs
+      );
+
+      const renamedMap = new Map(
+        renamedPairs.map((item) => [item.oldKey, item.newKey])
+      );
+
+      setKeys((previous) =>
+        previous.map((item) => {
+          const nextKey = renamedMap.get(item.key);
+
+          return nextKey ? { ...item, key: nextKey } : item;
+        })
+      );
+
+      setSelectedKey((previous) => {
+        if (!previous) return previous;
+
+        const nextKey = renamedMap.get(previous.key);
+        return nextKey ? { ...previous, key: nextKey } : previous;
+      });
+
+      keyValueRequestRef.current += 1;
+      setKeyValue((previous) => {
+        if (!previous) return previous;
+
+        const nextKey = renamedMap.get(previous.key);
+        return nextKey ? { ...previous, key: nextKey } : previous;
+      });
+
+      return renamedPairs;
+    },
+    [
+      activeConnection,
+      keys,
+      messages.app.status.notConnected,
+      selectedDb,
+    ]
   );
 
   const sendChatMessage = useCallback((content: string) => {
@@ -507,6 +631,8 @@ export function useAppStore() {
     refreshKeys,
     selectedKey,
     selectKey,
+    renameKey,
+    renameGroup,
     keyValue,
     searchQuery,
     setSearchQuery,

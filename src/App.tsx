@@ -51,6 +51,8 @@ function App() {
           keys={store.keys}
           selectedKey={store.selectedKey}
           onSelectKey={store.selectKey}
+          onRenameKey={store.renameKey}
+          onRenameGroup={store.renameGroup}
           searchQuery={store.searchQuery}
           onSearchChange={store.setSearchQuery}
         />
@@ -163,21 +165,24 @@ function StatusBar({ store }: { store: ReturnType<typeof useAppStore> }) {
 
   return (
     <div className="flex items-center justify-between px-4 h-7 border-t border-base-100/50 shrink-0">
-      <div className="flex items-center gap-4">
-        <span className="text-[10px] font-mono text-base-content/30">
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <span className="shrink-0 text-[10px] font-mono text-base-content/30">
           {format(messages.app.status.keysCount, { count: store.keys.length })}
         </span>
         {store.selectedKey && (
           <>
-            <span className="text-base-content/10">·</span>
-            <span className="text-[10px] font-mono text-base-content/40 flex items-center gap-1">
-              <Info size={9} />
-              {store.selectedKey.key}
+            <span className="shrink-0 text-base-content/10">·</span>
+            <span
+              className="flex min-w-0 items-center gap-1 text-[10px] font-mono text-base-content/40"
+              title={store.selectedKey.key}
+            >
+              <Info size={9} className="shrink-0" />
+              <span className="truncate">{store.selectedKey.key}</span>
             </span>
           </>
         )}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="ml-3 flex shrink-0 items-center gap-3">
         <span className="text-[10px] font-mono text-base-content/30">Redis 7.2.3</span>
         <span className="text-[10px] font-mono text-base-content/20">NeoRDM v0.1.0</span>
       </div>
