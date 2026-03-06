@@ -32,8 +32,10 @@ function App() {
         <Sidebar
           connections={store.connections}
           activeConnectionId={store.activeConnectionId}
-          onSelectConnection={store.setActiveConnectionId}
-          onNewConnection={() => store.setShowConnectionModal(true)}
+          onSelectConnection={store.selectConnection}
+          onNewConnection={store.openNewConnectionModal}
+          onEditConnection={store.openEditConnectionModal}
+          onDeleteConnection={store.deleteConnection}
           panelTab={store.panelTab}
           onSetPanelTab={store.setPanelTab}
           onOpenSettings={() => setShowSettings(true)}
@@ -42,7 +44,10 @@ function App() {
         <KeyBrowser
           connection={store.activeConnection}
           selectedDb={store.selectedDb}
-          onSelectDb={store.setSelectedDb}
+          onSelectDb={store.selectDb}
+          isRefreshing={store.isLoadingKeys}
+          onRefresh={store.refreshKeys}
+          keySeparator={store.keySeparator}
           keys={store.keys}
           selectedKey={store.selectedKey}
           onSelectKey={store.selectKey}
@@ -135,8 +140,9 @@ function App() {
 
       {store.showConnectionModal && (
         <ConnectionModal
-          onClose={() => store.setShowConnectionModal(false)}
-          onAdd={store.addConnection}
+          onClose={store.closeConnectionModal}
+          onSave={store.saveConnection}
+          connection={store.editingConnection ?? undefined}
         />
       )}
       {showSettings && (
@@ -144,6 +150,8 @@ function App() {
           onClose={() => setShowSettings(false)}
           themeMode={themeMode}
           onThemeChange={setThemeMode}
+          keySeparator={store.keySeparator}
+          onKeySeparatorChange={store.setKeySeparator}
         />
       )}
     </div>

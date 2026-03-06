@@ -4,8 +4,13 @@ export const MODAL_TRANSITION_MS = 200;
 
 export function useModalTransition(onClose: () => void) {
   const [isVisible, setIsVisible] = useState(false);
+  const onCloseRef = useRef(onClose);
   const enterFrameRef = useRef<number | null>(null);
   const closeTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   const requestClose = useCallback(() => {
     if (closeTimerRef.current !== null) return;
@@ -13,9 +18,9 @@ export function useModalTransition(onClose: () => void) {
     setIsVisible(false);
     closeTimerRef.current = window.setTimeout(() => {
       closeTimerRef.current = null;
-      onClose();
+      onCloseRef.current();
     }, MODAL_TRANSITION_MS);
-  }, [onClose]);
+  }, []);
 
   useEffect(() => {
     enterFrameRef.current = window.requestAnimationFrame(() => {
@@ -36,10 +41,12 @@ export function useModalTransition(onClose: () => void) {
 
       if (enterFrameRef.current !== null) {
         window.cancelAnimationFrame(enterFrameRef.current);
+        enterFrameRef.current = null;
       }
 
       if (closeTimerRef.current !== null) {
         window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
       }
     };
   }, [requestClose]);

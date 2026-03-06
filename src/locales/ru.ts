@@ -10,6 +10,8 @@ export const ru: Messages = {
     clear: "Очистить",
     reset: "Сбросить",
     settings: "Настройки",
+    edit: "Изменить",
+    delete: "Удалить",
   },
   app: {
     ...en.app,

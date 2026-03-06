@@ -10,6 +10,8 @@ export const it: Messages = {
     clear: "Cancella",
     reset: "Reimposta",
     settings: "Impostazioni",
+    edit: "Modifica",
+    delete: "Elimina",
   },
   app: {
     ...en.app,

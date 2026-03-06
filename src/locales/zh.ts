@@ -7,6 +7,8 @@ export const zh: Messages = {
     clear: "清除",
     reset: "重置",
     settings: "设置",
+    edit: "编辑",
+    delete: "删除",
   },
   app: {
     tabs: {

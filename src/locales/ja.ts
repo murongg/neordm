@@ -7,6 +7,8 @@ export const ja: Messages = {
     clear: "クリア",
     reset: "リセット",
     settings: "設定",
+    edit: "編集",
+    delete: "削除",
   },
   app: {
     tabs: {

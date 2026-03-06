@@ -10,6 +10,8 @@ export const ko: Messages = {
     clear: "지우기",
     reset: "재설정",
     settings: "설정",
+    edit: "편집",
+    delete: "삭제",
   },
   app: {
     ...en.app,

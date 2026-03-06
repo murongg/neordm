@@ -21,6 +21,8 @@ interface SettingsPanelProps {
   onClose: () => void;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
+  keySeparator: string;
+  onKeySeparatorChange: (separator: string) => void;
 }
 
 type SettingsCategory =
@@ -45,7 +47,13 @@ const CATEGORIES: {
   { id: "privacy", icon: <Shield size={14} /> },
 ];
 
-export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPanelProps) {
+export function SettingsPanel({
+  onClose,
+  themeMode,
+  onThemeChange,
+  keySeparator,
+  onKeySeparatorChange,
+}: SettingsPanelProps) {
   const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
     useModalTransition(onClose);
@@ -127,7 +135,12 @@ export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPan
 
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto px-6 py-5">
-            {category === "general" && <GeneralSettings />}
+            {category === "general" && (
+              <GeneralSettings
+                keySeparator={keySeparator}
+                onKeySeparatorChange={onKeySeparatorChange}
+              />
+            )}
             {category === "appearance" && <AppearanceSettings themeMode={themeMode} onThemeChange={onThemeChange} />}
             {category === "editor" && <EditorSettings />}
             {category === "ai" && <AISettings />}
@@ -225,12 +238,17 @@ function SelectInput({
 
 // ─── Category panels ─────────────────────────────────────────────────────────
 
-function GeneralSettings() {
+function GeneralSettings({
+  keySeparator,
+  onKeySeparatorChange,
+}: {
+  keySeparator: string;
+  onKeySeparatorChange: (separator: string) => void;
+}) {
   const { locale, localeOptions, setLocale, messages } = useI18n();
   const general = messages.settings.general;
   const [autoConnect, setAutoConnect] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState(true);
-  const [keySeparator, setKeySeparator] = useState(":");
   const [maxKeys, setMaxKeys] = useState("10000");
   const [scanCount, setScanCount] = useState("200");
 
@@ -260,7 +278,7 @@ function GeneralSettings() {
           <input
             type="text"
             value={keySeparator}
-            onChange={(e) => setKeySeparator(e.target.value)}
+            onChange={(e) => onKeySeparatorChange(e.target.value)}
             className="input input-xs w-16 bg-base-300 border-base-content/10 font-mono text-center user-select-text"
           />
         </Row>

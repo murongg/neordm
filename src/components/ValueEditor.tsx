@@ -150,6 +150,12 @@ export function ValueEditor({ keyValue }: ValueEditorProps) {
         {keyValue.type === "string" && (
           <StringViewer value={keyValue.value as string} />
         )}
+        {keyValue.type === "json" && (
+          <StringViewer value={keyValue.value as string} />
+        )}
+        {keyValue.type === "stream" && (
+          <StringViewer value={keyValue.value as string} />
+        )}
         {keyValue.type === "hash" && (
           <HashViewer value={keyValue.value as Record<string, string>} />
         )}

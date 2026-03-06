@@ -10,6 +10,8 @@ export const ar: Messages = {
     clear: "مسح",
     reset: "إعادة تعيين",
     settings: "الإعدادات",
+    edit: "تعديل",
+    delete: "حذف",
   },
   app: {
     ...en.app,

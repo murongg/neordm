@@ -7,6 +7,8 @@ export const en: Messages = {
     clear: "Clear",
     reset: "Reset",
     settings: "Settings",
+    edit: "Edit",
+    delete: "Delete",
   },
   app: {
     tabs: {

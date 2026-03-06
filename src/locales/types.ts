@@ -59,6 +59,8 @@ export interface Messages {
     clear: string;
     reset: string;
     settings: string;
+    edit: string;
+    delete: string;
   };
   app: {
     tabs: {

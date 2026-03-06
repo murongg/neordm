@@ -10,6 +10,8 @@ export const hi: Messages = {
     clear: "साफ़ करें",
     reset: "रीसेट",
     settings: "सेटिंग्स",
+    edit: "संपादित करें",
+    delete: "हटाएँ",
   },
   app: {
     ...en.app,
