@@ -2,6 +2,7 @@ import { useState } from "react";
 import { X, Wifi, Lock, Database } from "lucide-react";
 import type { RedisConnection } from "../types";
 import { useI18n } from "../i18n";
+import { useModalTransition } from "../hooks/useModalTransition";
 
 interface ConnectionModalProps {
   onClose: () => void;
@@ -15,6 +16,8 @@ const COLORS = [
 
 export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
   const { messages } = useI18n();
+  const { isVisible, requestClose, handleBackdropClick } =
+    useModalTransition(onClose);
   const [form, setForm] = useState({
     name: "",
     host: "127.0.0.1",
@@ -38,19 +41,30 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
       tls: form.tls,
       color: form.color,
     });
-    onClose();
+    requestClose();
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-base-200 rounded-2xl w-full max-w-md mx-4 shadow-2xl border border-base-content/10 overflow-hidden">
+    <div
+      onClick={handleBackdropClick}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200 ease-out motion-reduce:transition-none ${
+        isVisible ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div
+        className={`bg-base-200 rounded-2xl w-full max-w-md mx-4 shadow-2xl border border-base-content/10 overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none ${
+          isVisible
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-3 scale-[0.98] opacity-0"
+        }`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-base-content/10">
           <h2 className="text-sm font-semibold font-mono">
             {messages.connectionModal.title}
           </h2>
           <button
-            onClick={onClose}
+            onClick={requestClose}
             className="btn btn-ghost btn-xs btn-circle cursor-pointer"
           >
             <X size={14} />
@@ -165,7 +179,7 @@ export function ConnectionModal({ onClose, onAdd }: ConnectionModalProps) {
 
         {/* Footer */}
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-base-content/10">
-          <button onClick={onClose} className="btn btn-ghost btn-sm cursor-pointer font-mono">
+          <button onClick={requestClose} className="btn btn-ghost btn-sm cursor-pointer font-mono">
             {messages.common.cancel}
           </button>
           <button

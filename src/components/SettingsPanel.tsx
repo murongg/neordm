@@ -15,6 +15,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useI18n, type Locale } from "../i18n";
+import { useModalTransition } from "../hooks/useModalTransition";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -46,6 +47,8 @@ const CATEGORIES: {
 
 export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPanelProps) {
   const { messages } = useI18n();
+  const { isVisible, requestClose, handleBackdropClick } =
+    useModalTransition(onClose);
   const [category, setCategory] = useState<SettingsCategory>("general");
   const categoryLabels = messages.settings.categories;
   const categories = CATEGORIES.map((item) => ({
@@ -54,8 +57,19 @@ export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPan
   }));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-base-200 rounded-2xl w-full max-w-3xl mx-4 h-[600px] shadow-2xl border border-base-content/10 flex overflow-hidden">
+    <div
+      onClick={handleBackdropClick}
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm transition-opacity duration-200 ease-out motion-reduce:transition-none ${
+        isVisible ? "opacity-100" : "opacity-0"
+      }`}
+    >
+      <div
+        className={`bg-base-200 rounded-2xl w-full max-w-3xl mx-4 h-[600px] shadow-2xl border border-base-content/10 flex overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none ${
+          isVisible
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-3 scale-[0.985] opacity-0"
+        }`}
+      >
         {/* Left nav */}
         <nav className="w-48 bg-base-300 flex flex-col shrink-0">
           <div className="px-4 pt-5 pb-3 border-b border-base-content/10">
@@ -104,7 +118,7 @@ export function SettingsPanel({ onClose, themeMode, onThemeChange }: SettingsPan
               {categories.find((c) => c.id === category)?.label}
             </h3>
             <button
-              onClick={onClose}
+              onClick={requestClose}
               className="btn btn-ghost btn-xs btn-circle cursor-pointer"
             >
               <X size={14} />
