@@ -34,6 +34,8 @@ export const hi: Messages = {
   keyBrowser: {
     title: "कीज़",
     refresh: "रिफ्रेश",
+    expandAll: "सभी फैलाएँ",
+    collapseAll: "सभी समेटें",
     filterPlaceholder: "की फ़िल्टर करें...",
     activeDb: "(सक्रिय)",
   },

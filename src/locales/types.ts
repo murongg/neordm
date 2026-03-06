@@ -90,6 +90,8 @@ export interface Messages {
   keyBrowser: {
     title: string;
     refresh: string;
+    expandAll: string;
+    collapseAll: string;
     filterPlaceholder: string;
     activeDb: string;
   };

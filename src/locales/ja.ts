@@ -38,6 +38,8 @@ export const ja: Messages = {
   keyBrowser: {
     title: "キー",
     refresh: "更新",
+    expandAll: "すべて展開",
+    collapseAll: "すべて折りたたむ",
     filterPlaceholder: "キーを絞り込み...",
     activeDb: "（使用中）",
   },

@@ -34,6 +34,8 @@ export const de: Messages = {
   keyBrowser: {
     title: "Schlüssel",
     refresh: "Aktualisieren",
+    expandAll: "Alle ausklappen",
+    collapseAll: "Alle einklappen",
     filterPlaceholder: "Schlüssel filtern...",
     activeDb: "(aktiv)",
   },

@@ -34,6 +34,8 @@ export const it: Messages = {
   keyBrowser: {
     title: "Chiavi",
     refresh: "Aggiorna",
+    expandAll: "Espandi tutto",
+    collapseAll: "Comprimi tutto",
     filterPlaceholder: "Filtra chiavi...",
     activeDb: "(attivo)",
   },

@@ -34,6 +34,8 @@ export const ar: Messages = {
   keyBrowser: {
     title: "المفاتيح",
     refresh: "تحديث",
+    expandAll: "توسيع الكل",
+    collapseAll: "طيّ الكل",
     filterPlaceholder: "تصفية المفاتيح...",
     activeDb: "(نشطة)",
   },

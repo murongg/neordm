@@ -34,6 +34,8 @@ export const ko: Messages = {
   keyBrowser: {
     title: "키",
     refresh: "새로고침",
+    expandAll: "모두 펼치기",
+    collapseAll: "모두 접기",
     filterPlaceholder: "키 필터링...",
     activeDb: "(활성)",
   },

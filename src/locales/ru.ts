@@ -34,6 +34,8 @@ export const ru: Messages = {
   keyBrowser: {
     title: "Ключи",
     refresh: "Обновить",
+    expandAll: "Развернуть все",
+    collapseAll: "Свернуть все",
     filterPlaceholder: "Фильтр ключей...",
     activeDb: "(активна)",
   },

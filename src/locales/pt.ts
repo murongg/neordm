@@ -34,6 +34,8 @@ export const pt: Messages = {
   keyBrowser: {
     title: "Chaves",
     refresh: "Atualizar",
+    expandAll: "Expandir tudo",
+    collapseAll: "Recolher tudo",
     filterPlaceholder: "Filtrar chaves...",
     activeDb: "(ativa)",
   },

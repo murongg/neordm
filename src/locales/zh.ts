@@ -38,6 +38,8 @@ export const zh: Messages = {
   keyBrowser: {
     title: "键",
     refresh: "刷新",
+    expandAll: "全部展开",
+    collapseAll: "全部折叠",
     filterPlaceholder: "筛选键...",
     activeDb: "（当前）",
   },

@@ -13,6 +13,8 @@ import {
   LoaderCircle,
   Hash,
   List,
+  ListChevronsDownUp,
+  ListChevronsUpDown,
   Layers,
   AlignLeft,
   BarChart2,
@@ -379,6 +381,18 @@ export function KeyBrowser({
     () => buildTree(filtered, keySeparator),
     [filtered, keySeparator]
   );
+  const visibleGroupIds = useMemo(() => collectTreeGroupIds(tree), [tree]);
+  const hasVisibleGroups = visibleGroupIds.length > 0;
+  const hasExpandedVisibleGroups = useMemo(
+    () => visibleGroupIds.some((groupId) => expandedGroups.has(groupId)),
+    [expandedGroups, visibleGroupIds]
+  );
+  const areAllVisibleGroupsExpanded = useMemo(
+    () =>
+      hasVisibleGroups &&
+      visibleGroupIds.every((groupId) => expandedGroups.has(groupId)),
+    [expandedGroups, hasVisibleGroups, visibleGroupIds]
+  );
 
   const toggleGroup = (group: string) => {
     setExpandedGroups((prev) => {
@@ -447,6 +461,44 @@ export function KeyBrowser({
     setRenameError("");
     setIsRenaming(false);
   }, [clearPendingKeySelection]);
+
+  const expandAllGroups = useCallback(() => {
+    if (!visibleGroupIds.length) return;
+
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      visibleGroupIds.forEach((groupId) => {
+        next.add(groupId);
+      });
+      return next;
+    });
+  }, [visibleGroupIds]);
+
+  const collapseAllGroups = useCallback(() => {
+    if (!hasExpandedVisibleGroups) return;
+
+    cancelRename();
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      visibleGroupIds.forEach((groupId) => {
+        next.delete(groupId);
+      });
+      return next;
+    });
+  }, [cancelRename, hasExpandedVisibleGroups, visibleGroupIds]);
+
+  const toggleAllGroups = useCallback(() => {
+    if (areAllVisibleGroupsExpanded) {
+      collapseAllGroups();
+      return;
+    }
+
+    expandAllGroups();
+  }, [
+    areAllVisibleGroupsExpanded,
+    collapseAllGroups,
+    expandAllGroups,
+  ]);
 
   const startRename = useCallback((redisKey: RedisKey) => {
     const renameTarget = getRenameTarget(redisKey.key, keySeparator);
@@ -878,18 +930,47 @@ export function KeyBrowser({
               {filtered.length}
             </span>
           </div>
-          <button
-            onClick={onRefresh}
-            disabled={!hasConnection || isRefreshing}
-            className={`btn btn-ghost btn-xs w-6 h-6 p-0 ${
-              hasConnection && !isRefreshing
-                ? "cursor-pointer"
-                : "cursor-not-allowed opacity-40"
-            }`}
-            aria-label={messages.keyBrowser.refresh}
-          >
-            <RefreshCw size={11} className={isRefreshing ? "animate-spin" : ""} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={toggleAllGroups}
+              disabled={!hasConnection || !hasVisibleGroups}
+              className={`btn btn-ghost btn-xs h-6 w-6 p-0 text-base-content/60 hover:bg-base-100/60 hover:text-base-content/90 ${
+                hasConnection && hasVisibleGroups
+                  ? "cursor-pointer"
+                  : "cursor-not-allowed opacity-40"
+              }`}
+              aria-label={
+                areAllVisibleGroupsExpanded
+                  ? messages.keyBrowser.collapseAll
+                  : messages.keyBrowser.expandAll
+              }
+              title={
+                areAllVisibleGroupsExpanded
+                  ? messages.keyBrowser.collapseAll
+                  : messages.keyBrowser.expandAll
+              }
+            >
+              {areAllVisibleGroupsExpanded ? (
+                <ListChevronsUpDown size={12} strokeWidth={2.25} />
+              ) : (
+                <ListChevronsDownUp size={12} strokeWidth={2.25} />
+              )}
+            </button>
+            <button
+              onClick={onRefresh}
+              disabled={!hasConnection || isRefreshing}
+              className={`btn btn-ghost btn-xs h-6 w-6 p-0 ${
+                hasConnection && !isRefreshing
+                  ? "cursor-pointer"
+                  : "cursor-not-allowed opacity-40"
+              }`}
+              aria-label={messages.keyBrowser.refresh}
+              title={messages.keyBrowser.refresh}
+            >
+              <RefreshCw size={11} className={isRefreshing ? "animate-spin" : ""} />
+            </button>
+          </div>
         </div>
 
         <select

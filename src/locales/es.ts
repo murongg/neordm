@@ -38,6 +38,8 @@ export const es: Messages = {
   keyBrowser: {
     title: "Claves",
     refresh: "Actualizar",
+    expandAll: "Expandir todo",
+    collapseAll: "Contraer todo",
     filterPlaceholder: "Filtrar claves...",
     activeDb: "(activa)",
   },
