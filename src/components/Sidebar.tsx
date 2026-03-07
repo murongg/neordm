@@ -18,6 +18,8 @@ import {
   Terminal,
   Pencil,
   Trash2,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 import type { RedisConnection, PanelTab } from "../types";
 import { useI18n } from "../i18n";
@@ -25,6 +27,7 @@ import { useI18n } from "../i18n";
 interface SidebarProps {
   connections: RedisConnection[];
   activeConnectionId: string;
+  isCollapsed: boolean;
   onSelectConnection: (id: string) => void;
   onNewConnection: () => void;
   onEditConnection: (id: string) => void;
@@ -32,6 +35,7 @@ interface SidebarProps {
   onDeleteConnection: (id: string) => void;
   panelTab: PanelTab;
   onSetPanelTab: (tab: PanelTab) => void;
+  onToggleCollapsed: () => void;
   onOpenSettings: () => void;
 }
 
@@ -82,6 +86,7 @@ function ConnectionStatusBadge({
   disconnectLabel,
   onShowTooltip,
   onHideTooltip,
+  placement = "overlay",
 }: {
   status: RedisConnection["status"];
   onDisconnect?: () => void;
@@ -89,6 +94,7 @@ function ConnectionStatusBadge({
   disconnectLabel?: string;
   onShowTooltip?: (target: HTMLElement, content: string) => void;
   onHideTooltip?: () => void;
+  placement?: "overlay" | "inline";
 }) {
   const [displayStatus, setDisplayStatus] = useState(status);
   const [isVisible, setIsVisible] = useState(true);
@@ -131,7 +137,11 @@ function ConnectionStatusBadge({
     };
   }, []);
 
-  const badgeClassName = `absolute -bottom-0.5 -right-0.5 grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ring-base-300/90 backdrop-blur-sm transition-[opacity,transform,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
+  const placementClassName =
+    placement === "inline"
+      ? "relative shrink-0"
+      : "absolute -bottom-0.5 -right-0.5";
+  const badgeClassName = `${placementClassName} grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ring-base-300/90 backdrop-blur-sm transition-[opacity,transform,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
     STATUS_BADGE_CLASSES[displayStatus]
   } ${isVisible ? "scale-100 opacity-100" : "scale-75 opacity-0"}`;
 
@@ -173,6 +183,7 @@ function ConnectionStatusBadge({
 export function Sidebar({
   connections,
   activeConnectionId,
+  isCollapsed,
   onSelectConnection,
   onNewConnection,
   onEditConnection,
@@ -180,6 +191,7 @@ export function Sidebar({
   onDeleteConnection,
   panelTab,
   onSetPanelTab,
+  onToggleCollapsed,
   onOpenSettings,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -263,6 +275,10 @@ export function Sidebar({
       height: buttonRect.height,
     });
   }, [activeConnectionId, hasActiveConnection]);
+
+  useEffect(() => {
+    setSidebarTooltip(null);
+  }, [isCollapsed]);
 
   const closeContextMenu = useCallback(() => {
     setConfirmingDeleteId(null);
@@ -388,7 +404,12 @@ export function Sidebar({
 
   useLayoutEffect(() => {
     updateActiveIndicatorPosition();
-  }, [activeConnectionId, renderedConnections, updateActiveIndicatorPosition]);
+  }, [
+    activeConnectionId,
+    isCollapsed,
+    renderedConnections,
+    updateActiveIndicatorPosition,
+  ]);
 
   useEffect(() => {
     const listContainer = listContainerRef.current;
@@ -436,7 +457,7 @@ export function Sidebar({
       );
       resizeObserver.disconnect();
     };
-  }, [activeConnectionId, updateActiveIndicatorPosition]);
+  }, [activeConnectionId, isCollapsed, updateActiveIndicatorPosition]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -529,7 +550,11 @@ export function Sidebar({
   };
 
   return (
-    <aside className="relative z-20 flex h-full w-14 flex-col border-r border-base-100/50 bg-base-300">
+    <aside
+      className={`relative z-20 flex h-full flex-col border-r border-base-100/50 bg-base-300 transition-[width] duration-200 ease-linear motion-reduce:transition-none ${
+        isCollapsed ? "w-14" : "w-56"
+      }`}
+    >
       {sidebarTooltip ? (
         <div
           className="pointer-events-none fixed z-[140] -translate-y-1/2"
@@ -544,18 +569,34 @@ export function Sidebar({
         </div>
       ) : null}
 
-      <div
-        data-tauri-drag-region
-        className="flex items-center justify-center h-12 border-b border-base-100/50 shrink-0 select-none"
-      >
-        <div className="w-7 h-7 rounded-lg bg-success/20 flex items-center justify-center">
-          <Database size={15} className="text-success" />
+      <div className="relative h-12 shrink-0 border-b border-base-100/50">
+        <div
+          data-tauri-drag-region
+          className="absolute inset-0 select-none"
+        />
+        <div
+          className={`relative z-10 flex h-full items-center ${
+            isCollapsed ? "justify-center" : "px-3"
+          }`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-success/20">
+              <Database size={15} className="text-success" />
+            </div>
+            {!isCollapsed ? (
+              <span className="truncate text-[11px] font-mono uppercase tracking-[0.18em] text-base-content/55">
+                NeoRDM
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
 
       <div
         ref={listContainerRef}
-        className="relative flex flex-col items-center py-3 flex-1 overflow-y-auto"
+        className={`relative flex flex-1 flex-col overflow-y-auto py-3 ${
+          isCollapsed ? "items-center" : "px-2"
+        }`}
       >
         {activeIndicatorRect && (
           <div
@@ -590,7 +631,11 @@ export function Sidebar({
                   : "translateY(0) scale(1)",
               }}
             >
-              <div className="relative z-10 group flex items-center justify-center py-1.5">
+              <div
+                className={`relative z-10 group flex items-center py-1.5 ${
+                  isCollapsed ? "justify-center" : "w-full gap-2"
+                }`}
+              >
                 <button
                   ref={(element) => {
                     connectionButtonRefs.current[conn.id] = element;
@@ -608,8 +653,9 @@ export function Sidebar({
                   aria-haspopup="menu"
                   aria-expanded={contextMenu?.connectionId === conn.id}
                   className={`
-                    relative flex h-9 w-9 items-center justify-center rounded-xl cursor-pointer
+                    relative flex items-center rounded-xl cursor-pointer
                     transition-all duration-200
+                    ${isCollapsed ? "h-9 w-9 justify-center" : "h-10 w-full min-w-0 gap-3 px-3 justify-start"}
                     ${
                       isActive
                         ? "scale-[1.03]"
@@ -619,19 +665,38 @@ export function Sidebar({
                   aria-label={conn.name}
                 >
                   <div
-                    className="h-2.5 w-2.5 rounded-full"
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
                     style={{ backgroundColor: conn.color }}
                   />
+                  {!isCollapsed ? (
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-mono text-base-content/85">
+                        {conn.name}
+                      </div>
+                    </div>
+                  ) : null}
                 </button>
 
-                <ConnectionStatusBadge
-                  status={conn.status}
-                  onDisconnect={() => onDisconnectConnection(conn.id)}
-                  onContextMenu={(event) => openContextMenu(event, conn.id)}
-                  disconnectLabel={messages.common.disconnect}
-                  onShowTooltip={showSidebarTooltip}
-                  onHideTooltip={hideSidebarTooltip}
-                />
+                {isCollapsed ? (
+                  <ConnectionStatusBadge
+                    status={conn.status}
+                    onDisconnect={() => onDisconnectConnection(conn.id)}
+                    onContextMenu={(event) => openContextMenu(event, conn.id)}
+                    disconnectLabel={messages.common.disconnect}
+                    onShowTooltip={showSidebarTooltip}
+                    onHideTooltip={hideSidebarTooltip}
+                  />
+                ) : (
+                  <ConnectionStatusBadge
+                    status={conn.status}
+                    placement="inline"
+                    onDisconnect={() => onDisconnectConnection(conn.id)}
+                    onContextMenu={(event) => openContextMenu(event, conn.id)}
+                    disconnectLabel={messages.common.disconnect}
+                    onShowTooltip={showSidebarTooltip}
+                    onHideTooltip={hideSidebarTooltip}
+                  />
+                )}
               </div>
             </div>
           );
@@ -639,10 +704,31 @@ export function Sidebar({
 
         <button
           onClick={onNewConnection}
-          className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer hover:bg-base-100/50 transition-all duration-200 text-base-content/30 hover:text-success border border-dashed border-base-content/20 hover:border-success/50"
+          onMouseEnter={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.newConnection);
+            }
+          }}
+          onMouseLeave={hideSidebarTooltip}
+          onFocus={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.newConnection);
+            }
+          }}
+          onBlur={hideSidebarTooltip}
+          className={`rounded-xl border border-dashed border-base-content/20 text-base-content/30 transition-all duration-200 hover:border-success/50 hover:bg-base-100/50 hover:text-success cursor-pointer ${
+            isCollapsed
+              ? "flex h-9 w-9 items-center justify-center"
+              : "flex h-10 w-full items-center gap-3 px-3"
+          }`}
           aria-label={messages.sidebar.newConnection}
         >
           <Plus size={14} />
+          {!isCollapsed ? (
+            <span className="truncate text-xs font-mono">
+              {messages.sidebar.newConnection}
+            </span>
+          ) : null}
         </button>
       </div>
 
@@ -722,10 +808,32 @@ export function Sidebar({
         </div>
       )}
 
-      <div className="flex flex-col items-center gap-1.5 py-3 border-t border-base-100/50">
+      <div
+        className={`border-t border-base-100/50 py-3 ${
+          isCollapsed
+            ? "flex flex-col items-center gap-1.5"
+            : "flex flex-col gap-1.5 px-2"
+        }`}
+      >
         <button
           onClick={() => onSetPanelTab("cli")}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 ${
+          onMouseEnter={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.cli);
+            }
+          }}
+          onMouseLeave={hideSidebarTooltip}
+          onFocus={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.cli);
+            }
+          }}
+          onBlur={hideSidebarTooltip}
+          className={`rounded-xl cursor-pointer transition-all duration-200 ${
+            isCollapsed
+              ? "flex h-9 w-9 items-center justify-center"
+              : "flex h-10 w-full items-center gap-3 px-3"
+          } ${
             panelTab === "cli"
               ? "bg-success/20 text-success"
               : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
@@ -733,10 +841,29 @@ export function Sidebar({
           aria-label={messages.sidebar.cli}
         >
           <Terminal size={15} />
+          {!isCollapsed ? (
+            <span className="truncate text-xs font-mono">{messages.sidebar.cli}</span>
+          ) : null}
         </button>
         <button
           onClick={() => onSetPanelTab("ai")}
-          className={`w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 ${
+          onMouseEnter={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.aiAgent);
+            }
+          }}
+          onMouseLeave={hideSidebarTooltip}
+          onFocus={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.aiAgent);
+            }
+          }}
+          onBlur={hideSidebarTooltip}
+          className={`rounded-xl cursor-pointer transition-all duration-200 ${
+            isCollapsed
+              ? "flex h-9 w-9 items-center justify-center"
+              : "flex h-10 w-full items-center gap-3 px-3"
+          } ${
             panelTab === "ai"
               ? "bg-success/20 text-success"
               : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
@@ -744,13 +871,80 @@ export function Sidebar({
           aria-label={messages.sidebar.aiAgent}
         >
           <Bot size={15} />
+          {!isCollapsed ? (
+            <span className="truncate text-xs font-mono">
+              {messages.sidebar.aiAgent}
+            </span>
+          ) : null}
         </button>
         <button
           onClick={onOpenSettings}
-          className="w-9 h-9 rounded-xl flex items-center justify-center cursor-pointer transition-all duration-200 text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
+          onMouseEnter={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.settings);
+            }
+          }}
+          onMouseLeave={hideSidebarTooltip}
+          onFocus={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.settings);
+            }
+          }}
+          onBlur={hideSidebarTooltip}
+          className={`cursor-pointer rounded-xl text-base-content/40 transition-all duration-200 hover:bg-base-100/50 hover:text-base-content ${
+            isCollapsed
+              ? "flex h-9 w-9 items-center justify-center"
+              : "flex h-10 w-full items-center gap-3 px-3"
+          }`}
           aria-label={messages.sidebar.settings}
         >
           <Settings size={15} />
+          {!isCollapsed ? (
+            <span className="truncate text-xs font-mono">
+              {messages.sidebar.settings}
+            </span>
+          ) : null}
+        </button>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          onMouseEnter={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.expand);
+              return;
+            }
+
+            showSidebarTooltip(event.currentTarget, messages.sidebar.collapse);
+          }}
+          onMouseLeave={hideSidebarTooltip}
+          onFocus={(event) => {
+            if (isCollapsed) {
+              showSidebarTooltip(event.currentTarget, messages.sidebar.expand);
+              return;
+            }
+
+            showSidebarTooltip(event.currentTarget, messages.sidebar.collapse);
+          }}
+          onBlur={hideSidebarTooltip}
+          className={`cursor-pointer rounded-xl text-base-content/40 transition-all duration-200 hover:bg-base-100/50 hover:text-base-content ${
+            isCollapsed
+              ? "flex h-9 w-9 items-center justify-center"
+              : "mt-1 flex h-10 w-full items-center gap-3 px-3"
+          }`}
+          aria-label={
+            isCollapsed ? messages.sidebar.expand : messages.sidebar.collapse
+          }
+        >
+          {isCollapsed ? (
+            <ChevronsRight size={15} />
+          ) : (
+            <ChevronsLeft size={15} />
+          )}
+          {!isCollapsed ? (
+            <span className="truncate text-xs font-mono">
+              {isCollapsed ? messages.sidebar.expand : messages.sidebar.collapse}
+            </span>
+          ) : null}
         </button>
       </div>
     </aside>

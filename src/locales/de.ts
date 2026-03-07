@@ -34,6 +34,8 @@ export const de: Messages = {
     cli: "CLI",
     aiAgent: "KI-Agent",
     settings: "Einstellungen",
+    expand: "Seitenleiste erweitern",
+    collapse: "Seitenleiste einklappen",
   },
   keyBrowser: {
     title: "Schlüssel",

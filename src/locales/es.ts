@@ -38,6 +38,8 @@ export const es: Messages = {
     cli: "CLI",
     aiAgent: "Agente IA",
     settings: "Configuración",
+    expand: "Expandir barra lateral",
+    collapse: "Contraer barra lateral",
   },
   keyBrowser: {
     title: "Claves",

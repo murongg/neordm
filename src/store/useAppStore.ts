@@ -54,6 +54,7 @@ const READ_ONLY_COMMANDS = new Set([
 ]);
 
 const KEY_SEPARATOR_STORAGE_KEY = "neordm-key-separator";
+const SIDEBAR_COLLAPSED_STORAGE_KEY = "neordm-sidebar-collapsed";
 
 function createCliEntry(
   type: CliEntry["type"],
@@ -91,12 +92,36 @@ export function useAppStore() {
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
     null
   );
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsedState] = useState(() => {
+    const savedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    return savedValue === null ? true : savedValue === "1";
+  });
   const [isLoadingKeys, setIsLoadingKeys] = useState(false);
   const [hasHydratedConnections, setHasHydratedConnections] = useState(false);
 
   const keysRequestRef = useRef(0);
   const keyValueRequestRef = useRef(0);
+
+  const setIsSidebarCollapsed = useCallback(
+    (nextValue: boolean | ((previous: boolean) => boolean)) => {
+      setIsSidebarCollapsedState((previous) => {
+        const resolvedValue =
+          typeof nextValue === "function" ? nextValue(previous) : nextValue;
+
+        localStorage.setItem(
+          SIDEBAR_COLLAPSED_STORAGE_KEY,
+          resolvedValue ? "1" : "0"
+        );
+
+        return resolvedValue;
+      });
+    },
+    []
+  );
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setIsSidebarCollapsed((previous) => !previous);
+  }, [setIsSidebarCollapsed]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1081,6 +1106,7 @@ export function useAppStore() {
     closeConnectionModal,
     isSidebarCollapsed,
     setIsSidebarCollapsed,
+    toggleSidebarCollapsed,
     saveConnection,
     disconnectConnection,
     deleteConnection,

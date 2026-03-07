@@ -34,6 +34,8 @@ export const ko: Messages = {
     cli: "CLI",
     aiAgent: "AI 에이전트",
     settings: "설정",
+    expand: "사이드바 펼치기",
+    collapse: "사이드바 접기",
   },
   keyBrowser: {
     title: "키",

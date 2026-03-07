@@ -90,6 +90,8 @@ export interface Messages {
     cli: string;
     aiAgent: string;
     settings: string;
+    expand: string;
+    collapse: string;
   };
   keyBrowser: {
     title: string;

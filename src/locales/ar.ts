@@ -34,6 +34,8 @@ export const ar: Messages = {
     cli: "CLI",
     aiAgent: "وكيل الذكاء الاصطناعي",
     settings: "الإعدادات",
+    expand: "توسيع الشريط الجانبي",
+    collapse: "طي الشريط الجانبي",
   },
   keyBrowser: {
     title: "المفاتيح",

@@ -38,6 +38,8 @@ export const zh: Messages = {
     cli: "CLI",
     aiAgent: "AI 助手",
     settings: "设置",
+    expand: "展开侧栏",
+    collapse: "收起侧栏",
   },
   keyBrowser: {
     title: "键",

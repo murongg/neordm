@@ -38,6 +38,7 @@ function App() {
           <Sidebar
             connections={store.connections}
             activeConnectionId={store.activeConnectionId}
+            isCollapsed={store.isSidebarCollapsed}
             onSelectConnection={store.selectConnection}
             onNewConnection={store.openNewConnectionModal}
             onEditConnection={store.openEditConnectionModal}
@@ -45,6 +46,7 @@ function App() {
             onDeleteConnection={store.deleteConnection}
             panelTab={store.panelTab}
             onSetPanelTab={store.setPanelTab}
+            onToggleCollapsed={store.toggleSidebarCollapsed}
             onOpenSettings={() => setShowSettings(true)}
           />
 

@@ -34,6 +34,8 @@ export const it: Messages = {
     cli: "CLI",
     aiAgent: "Agente IA",
     settings: "Impostazioni",
+    expand: "Espandi barra laterale",
+    collapse: "Comprimi barra laterale",
   },
   keyBrowser: {
     title: "Chiavi",

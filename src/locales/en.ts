@@ -38,6 +38,8 @@ export const en: Messages = {
     cli: "CLI",
     aiAgent: "AI Agent",
     settings: "Settings",
+    expand: "Expand sidebar",
+    collapse: "Collapse sidebar",
   },
   keyBrowser: {
     title: "Keys",

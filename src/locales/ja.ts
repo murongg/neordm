@@ -38,6 +38,8 @@ export const ja: Messages = {
     cli: "CLI",
     aiAgent: "AI エージェント",
     settings: "設定",
+    expand: "サイドバーを展開",
+    collapse: "サイドバーを折りたたむ",
   },
   keyBrowser: {
     title: "キー",

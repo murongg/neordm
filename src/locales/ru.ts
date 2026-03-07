@@ -34,6 +34,8 @@ export const ru: Messages = {
     cli: "CLI",
     aiAgent: "AI-агент",
     settings: "Настройки",
+    expand: "Развернуть боковую панель",
+    collapse: "Свернуть боковую панель",
   },
   keyBrowser: {
     title: "Ключи",

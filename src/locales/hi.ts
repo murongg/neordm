@@ -34,6 +34,8 @@ export const hi: Messages = {
     cli: "CLI",
     aiAgent: "AI एजेंट",
     settings: "सेटिंग्स",
+    expand: "साइडबार फैलाएँ",
+    collapse: "साइडबार समेटें",
   },
   keyBrowser: {
     title: "कीज़",
