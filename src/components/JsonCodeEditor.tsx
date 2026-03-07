@@ -11,6 +11,7 @@ export interface JsonCodeEditorProps {
   className?: string;
   surfaceClassName?: string;
   autoFocus?: boolean;
+  mode?: "json" | "text";
 }
 
 const jsonEditorTheme = EditorView.theme({
@@ -85,8 +86,15 @@ export default function JsonCodeEditor({
   className = "h-[18rem]",
   surfaceClassName = "bg-base-200",
   autoFocus = false,
+  mode = "json",
 }: JsonCodeEditorProps) {
-  const extensions = useMemo(() => [json(), jsonEditorTheme, jsonSyntaxTheme], []);
+  const extensions = useMemo(
+    () =>
+      mode === "json"
+        ? [json(), jsonEditorTheme, jsonSyntaxTheme]
+        : [jsonEditorTheme],
+    [mode]
+  );
 
   return (
     <div

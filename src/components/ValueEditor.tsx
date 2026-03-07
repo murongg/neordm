@@ -306,23 +306,34 @@ function StringViewer({ value }: { value: string }) {
   const [isEditing, setIsEditing] = useState(false);
   const [editVal, setEditVal] = useState(value);
 
+  useEffect(() => {
+    setEditVal(value);
+    setIsEditing(false);
+  }, [value]);
+
   let formatted = value;
   let isJson = false;
   try {
     formatted = JSON.stringify(JSON.parse(value), null, 2);
     isJson = true;
   } catch {}
+  const editorModeLabel = isJson ? "JSON" : "TEXT";
 
   if (isEditing) {
     return (
-      <div className="flex flex-col gap-2 h-full">
-        <textarea
+      <div className="flex h-full flex-col gap-2">
+        <JsonCodeEditor
           value={editVal}
-          onChange={(e) => setEditVal(e.target.value)}
-          className="textarea textarea-bordered flex-1 font-mono text-xs bg-base-200 resize-none user-select-text"
+          onChange={setEditVal}
+          className="min-h-0 flex-1"
           autoFocus
+          mode={isJson ? "json" : "text"}
         />
-        <div className="flex gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="badge badge-xs badge-ghost font-mono uppercase tracking-wider text-base-content/50">
+            {editorModeLabel}
+          </span>
+          <div className="flex gap-2">
           <button
             onClick={() => setIsEditing(false)}
             className="btn btn-success btn-sm gap-1.5 cursor-pointer"
@@ -335,6 +346,7 @@ function StringViewer({ value }: { value: string }) {
           >
             {messages.common.cancel}
           </button>
+          </div>
         </div>
       </div>
     );
@@ -343,7 +355,10 @@ function StringViewer({ value }: { value: string }) {
   return (
     <div className="relative group">
       <button
-        onClick={() => setIsEditing(true)}
+        onClick={() => {
+          setEditVal(formatJsonDraft(value));
+          setIsEditing(true);
+        }}
         className="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer"
       >
         <Edit3 size={11} />
@@ -992,12 +1007,14 @@ function JsonCodeEditor({
   className = "h-[18rem]",
   surfaceClassName = "bg-base-200",
   autoFocus = false,
+  mode = "json",
 }: {
   value: string;
   onChange: (nextValue: string) => void;
   className?: string;
   surfaceClassName?: string;
   autoFocus?: boolean;
+  mode?: "json" | "text";
 }) {
   return (
     <Suspense
@@ -1008,6 +1025,7 @@ function JsonCodeEditor({
           className={className}
           surfaceClassName={surfaceClassName}
           autoFocus={autoFocus}
+          mode={mode}
         />
       }
     >
@@ -1017,6 +1035,7 @@ function JsonCodeEditor({
         className={className}
         surfaceClassName={surfaceClassName}
         autoFocus={autoFocus}
+        mode={mode}
       />
     </Suspense>
   );
