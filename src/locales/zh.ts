@@ -71,6 +71,9 @@ export const zh: Messages = {
     placeholder: "输入 Redis 命令...",
     hint: "↑↓ 历史记录 · Tab 自动补全 · Ctrl+L 清屏",
     connectedTo: "已连接到 {hostPort}",
+    confirmDangerousCommand: "要执行危险的 Redis 命令吗？",
+    confirmDangerousDescription: "这些命令可能会修改 Redis 数据或服务状态，是否继续？",
+    confirmDangerousApprove: "仍然执行",
   },
   connectionModal: {
     title: "新建连接",

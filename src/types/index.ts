@@ -50,6 +50,31 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   command?: string; // suggested redis command
+  tools?: string[];
+  events?: AiAssistantEvent[];
+  toolEvents?: AiToolEvent[];
+}
+
+export interface AiToolEvent {
+  id: string;
+  toolName: string;
+  status: "running" | "success" | "error";
+  detail?: string;
+  timestamp: Date;
+}
+
+export interface AiAssistantEvent {
+  id: string;
+  type: string;
+  detail?: string;
+  timestamp: Date;
+}
+
+export interface PendingAiCommandConfirmation {
+  toolCallId: string;
+  toolName: string;
+  command: string;
+  reason?: string | null;
 }
 
 export interface CliEntry {

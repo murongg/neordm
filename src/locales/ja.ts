@@ -71,6 +71,10 @@ export const ja: Messages = {
     placeholder: "Redis コマンドを入力...",
     hint: "↑↓ 履歴 · Tab 補完 · Ctrl+L クリア",
     connectedTo: "{hostPort} に接続しました",
+    confirmDangerousCommand: "危険な Redis コマンドを実行しますか？",
+    confirmDangerousDescription:
+      "これらのコマンドは Redis データまたはサーバー状態を変更する可能性があります。続行しますか？",
+    confirmDangerousApprove: "実行する",
   },
   connectionModal: {
     title: "新しい接続",

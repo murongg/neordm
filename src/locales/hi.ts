@@ -67,6 +67,10 @@ export const hi: Messages = {
     placeholder: "Redis कमांड टाइप करें...",
     hint: "↑↓ हिस्ट्री · Tab ऑटो-कम्प्लीट · Ctrl+L साफ़ करें",
     connectedTo: "{hostPort} से कनेक्टेड",
+    confirmDangerousCommand: "खतरनाक Redis कमांड चलाएँ?",
+    confirmDangerousDescription:
+      "ये कमांड Redis डेटा या सर्वर स्टेट बदल सकती हैं। क्या जारी रखें?",
+    confirmDangerousApprove: "फिर भी चलाएँ",
   },
   connectionModal: {
     title: "नया कनेक्शन",

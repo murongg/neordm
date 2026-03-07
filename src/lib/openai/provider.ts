@@ -1,12 +1,14 @@
 import type { Model } from "@mariozechner/pi-ai";
 import {
   DEFAULT_AI_SETTINGS,
+  type OpenAiApiStyle,
   type AiProviderConfig,
   getActiveAiProviderConfig,
 } from "../aiSettings";
 
 const OPENAI_RESPONSES_CONTEXT_WINDOW = 128_000;
 const OPENAI_RESPONSES_MAX_TOKENS = 16_384;
+type OpenAiModelApi = "openai-responses" | "openai-completions";
 const OPENAI_RESPONSES_BASE_URL_SUFFIX_PATTERN =
   /\/(?:chat\/completions|responses)\/?$/i;
 
@@ -43,13 +45,14 @@ export function getValidatedOpenAIConfig(config: AiProviderConfig) {
 
 export function createConfiguredOpenAIModel(
   config: AiProviderConfig
-): Model<"openai-responses"> {
+): Model<OpenAiModelApi> {
   const validatedConfig = getValidatedOpenAIConfig(config);
+  const apiStyle: OpenAiApiStyle = config.apiStyle;
 
   return {
     id: validatedConfig.model,
     name: validatedConfig.model,
-    api: "openai-responses",
+    api: apiStyle === "chat-completions" ? "openai-completions" : "openai-responses",
     provider: "openai",
     baseUrl: validatedConfig.baseUrl,
     reasoning: false,
@@ -62,6 +65,15 @@ export function createConfiguredOpenAIModel(
     },
     contextWindow: OPENAI_RESPONSES_CONTEXT_WINDOW,
     maxTokens: OPENAI_RESPONSES_MAX_TOKENS,
+    ...(apiStyle === "chat-completions"
+      ? {
+          compat: {
+            supportsStore: false,
+            supportsStrictMode: false,
+            maxTokensField: "max_tokens" as const,
+          },
+        }
+      : {}),
   };
 }
 

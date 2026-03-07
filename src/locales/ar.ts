@@ -67,6 +67,10 @@ export const ar: Messages = {
     placeholder: "اكتب أمر Redis...",
     hint: "↑↓ السجل · Tab للإكمال التلقائي · Ctrl+L للمسح",
     connectedTo: "متصل بـ {hostPort}",
+    confirmDangerousCommand: "هل تريد تنفيذ أمر Redis خطير؟",
+    confirmDangerousDescription:
+      "قد تعدّل هذه الأوامر بيانات Redis أو حالة الخادم. هل تريد المتابعة؟",
+    confirmDangerousApprove: "نفّذ على أي حال",
   },
   connectionModal: {
     title: "اتصال جديد",

@@ -7,7 +7,8 @@ const BUILTIN_COMMANDS: CliBuiltinCommand[] = ["CLEAR", "HELP"];
 
 const MODULE_COMMANDS = ["JSON.GET", "JSON.SET", "JSON.DEL", "JSON.TYPE"];
 
-const EXTRA_READ_ONLY_COMMANDS = new Set(["JSON.GET"]);
+const EXTRA_READ_ONLY_COMMANDS = new Set(["JSON.GET", "JSON.TYPE"]);
+const EXTRA_DANGEROUS_COMMANDS = new Set(["JSON.SET", "JSON.DEL"]);
 
 const POPULAR_COMMANDS = [
   "PING",
@@ -79,6 +80,34 @@ export function isReadOnlyRedisCommand(commandName: string) {
   }
 
   return EXTRA_READ_ONLY_COMMANDS.has(commandName.toUpperCase());
+}
+
+export function isDangerousRedisCommand(commandName: string) {
+  const normalizedCommandName = commandName.trim().toUpperCase();
+
+  if (!normalizedCommandName || BUILTIN_COMMANDS_SET.has(normalizedCommandName)) {
+    return false;
+  }
+
+  if (EXTRA_READ_ONLY_COMMANDS.has(normalizedCommandName)) {
+    return false;
+  }
+
+  if (EXTRA_DANGEROUS_COMMANDS.has(normalizedCommandName)) {
+    return true;
+  }
+
+  const normalized = normalizedCommandName.toLowerCase();
+
+  if (!redisCommands.exists(normalized)) {
+    return false;
+  }
+
+  return (
+    redisCommands.hasFlag(normalized, "write") ||
+    redisCommands.hasFlag(normalized, "admin") ||
+    redisCommands.hasFlag(normalized, "dangerous")
+  );
 }
 
 export function getCliAutocompleteSuggestions(

@@ -1,34 +1,13 @@
-import { useEffect, useState } from "react";
+import type { AppSettings } from "../lib/appSettings";
 import {
-  DEFAULT_APP_SETTINGS,
-  loadAppSettings,
-  subscribeAppSettings,
-  type AppSettings,
-} from "../lib/appSettings";
+  useAppPreferencesStore,
+  useInitializeAppPreferencesStore,
+} from "../store/useAppPreferencesState";
 
 export function useAppSettings() {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
+  useInitializeAppPreferencesStore();
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const unsubscribe = subscribeAppSettings((nextSettings) => {
-      if (!cancelled) {
-        setSettings(nextSettings);
-      }
-    });
-
-    void loadAppSettings().then((nextSettings) => {
-      if (!cancelled) {
-        setSettings(nextSettings);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
-  return settings;
+  return useAppPreferencesStore(
+    (state): AppSettings => state.appSettings
+  );
 }

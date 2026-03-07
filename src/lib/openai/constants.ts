@@ -17,6 +17,23 @@ export const DISALLOWED_AI_READ_ONLY_COMMANDS = new Set([
   "PSYNC",
 ]);
 
+export const DISALLOWED_AI_EXECUTION_COMMANDS = new Set([
+  ...DISALLOWED_AI_READ_ONLY_COMMANDS,
+  "ASKING",
+  "AUTH",
+  "DISCARD",
+  "EXEC",
+  "HELLO",
+  "MULTI",
+  "QUIT",
+  "READONLY",
+  "READWRITE",
+  "RESET",
+  "SELECT",
+  "UNWATCH",
+  "WATCH",
+]);
+
 export const AI_TOOL_NAMES = {
   getClientContext: "getClientContext",
   searchLoadedKeys: "searchLoadedKeys",
@@ -24,6 +41,7 @@ export const AI_TOOL_NAMES = {
   inspectKey: "inspectKey",
   summarizeKey: "summarizeKey",
   getServerInfo: "getServerInfo",
+  runRedisCommand: "runRedisCommand",
   runReadOnlyCommand: "runReadOnlyCommand",
   suggestRedisCommand: "suggestRedisCommand",
 } as const;

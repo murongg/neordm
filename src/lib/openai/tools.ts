@@ -8,19 +8,28 @@ import {
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
 import { getRedisKeyValue, listRedisKeys, runRedisCommand } from "../redis";
-import { getCliCommandName, isReadOnlyRedisCommand } from "../redisCli";
+import {
+  getCliCommandName,
+  isDangerousRedisCommand,
+  isReadOnlyRedisCommand,
+} from "../redisCli";
 import {
   AI_TOOL_NAMES,
   DEFAULT_SCAN_COUNT,
   DEFAULT_SCAN_MAX_KEYS,
+  DISALLOWED_AI_EXECUTION_COMMANDS,
   DISALLOWED_AI_READ_ONLY_COMMANDS,
 } from "./constants";
 import {
+  formatToolName,
   requireActiveConnection,
   stringifyContextValue,
   stringifyToolResult,
 } from "./helpers";
-import type { OpenAIAssistantRequest } from "./types";
+import type {
+  AssistantToolResultDetails,
+  OpenAIAssistantRequest,
+} from "./types";
 
 const KEY_TYPES = [
   "any",
@@ -116,6 +125,23 @@ const READ_ONLY_COMMAND_PARAMETERS = Type.Object(
   { additionalProperties: false }
 );
 
+const RUN_REDIS_COMMAND_PARAMETERS = Type.Object(
+  {
+    command: Type.String({
+      description:
+        "Exactly one Redis command to execute, for example `SET feature:flag on` or `DEL cache:user:1`.",
+      minLength: 1,
+    }),
+    reason: Type.Optional(
+      Type.String({
+        description:
+          "Optional short explanation for why this command should be executed.",
+      })
+    ),
+  },
+  { additionalProperties: false }
+);
+
 const SUGGEST_COMMAND_PARAMETERS = Type.Object(
   {
     command: Type.String({
@@ -148,8 +174,78 @@ type SearchLoadedKeysArgs = Static<typeof SEARCH_LOADED_KEYS_PARAMETERS>;
 type ScanKeysArgs = Static<typeof SCAN_KEYS_PARAMETERS>;
 type KeyArgs = Static<typeof KEY_PARAMETERS>;
 type ReadOnlyCommandArgs = Static<typeof READ_ONLY_COMMAND_PARAMETERS>;
+type RunRedisCommandArgs = Static<typeof RUN_REDIS_COMMAND_PARAMETERS>;
 type SuggestCommandArgs = Static<typeof SUGGEST_COMMAND_PARAMETERS>;
 type ServerInfoArgs = Static<typeof SERVER_INFO_PARAMETERS>;
+
+const TOOL_VALIDATION_WARMUP_SAMPLES: ToolCall[] = [
+  {
+    type: "toolCall",
+    id: "warm-get-client-context",
+    name: AI_TOOL_NAMES.getClientContext,
+    arguments: {},
+  },
+  {
+    type: "toolCall",
+    id: "warm-search-loaded-keys",
+    name: AI_TOOL_NAMES.searchLoadedKeys,
+    arguments: {},
+  },
+  {
+    type: "toolCall",
+    id: "warm-scan-keys",
+    name: AI_TOOL_NAMES.scanKeys,
+    arguments: {},
+  },
+  {
+    type: "toolCall",
+    id: "warm-inspect-key",
+    name: AI_TOOL_NAMES.inspectKey,
+    arguments: {
+      key: "warmup:key",
+    },
+  },
+  {
+    type: "toolCall",
+    id: "warm-summarize-key",
+    name: AI_TOOL_NAMES.summarizeKey,
+    arguments: {
+      key: "warmup:key",
+    },
+  },
+  {
+    type: "toolCall",
+    id: "warm-server-info",
+    name: AI_TOOL_NAMES.getServerInfo,
+    arguments: {},
+  },
+  {
+    type: "toolCall",
+    id: "warm-run-redis-command",
+    name: AI_TOOL_NAMES.runRedisCommand,
+    arguments: {
+      command: "PING",
+    },
+  },
+  {
+    type: "toolCall",
+    id: "warm-run-read-only-command",
+    name: AI_TOOL_NAMES.runReadOnlyCommand,
+    arguments: {
+      command: "PING",
+    },
+  },
+  {
+    type: "toolCall",
+    id: "warm-suggest-command",
+    name: AI_TOOL_NAMES.suggestRedisCommand,
+    arguments: {
+      command: "PING",
+    },
+  },
+];
+
+let assistantToolValidationWarmupPromise: Promise<void> | null = null;
 
 function isSingleRedisCommand(command: string) {
   return !/[;\r\n]/.test(command);
@@ -163,7 +259,8 @@ function clampLimit(limit: number | undefined, fallback: number, max: number) {
 function createToolResultMessage(
   toolCall: ToolCall,
   value: unknown,
-  isError = false
+  isError = false,
+  details?: AssistantToolResultDetails
 ): ToolResultMessage {
   const text = isError
     ? String(value ?? "Unknown tool error")
@@ -174,6 +271,7 @@ function createToolResultMessage(
     toolCallId: toolCall.id,
     toolName: toolCall.name,
     content: [{ type: "text", text }],
+    details,
     isError,
     timestamp: Date.now(),
   };
@@ -548,6 +646,72 @@ async function executeRunReadOnlyCommandTool(
   };
 }
 
+async function executeRunRedisCommandTool(
+  request: OpenAIAssistantRequest,
+  toolCall: ToolCall,
+  args: RunRedisCommandArgs
+) {
+  const trimmedCommand = args.command.trim();
+  const normalizedReason = args.reason?.trim() || null;
+  const commandName = getCliCommandName(trimmedCommand);
+  const connection = requireActiveConnection(request.activeConnection);
+  const isReadOnlyCommand = isReadOnlyRedisCommand(commandName);
+  const isDangerousCommand = isDangerousRedisCommand(commandName);
+
+  if (!trimmedCommand) {
+    throw new Error("Command cannot be empty.");
+  }
+
+  if (!isSingleRedisCommand(trimmedCommand)) {
+    throw new Error("Only one Redis command is allowed.");
+  }
+
+  if (DISALLOWED_AI_EXECUTION_COMMANDS.has(commandName)) {
+    throw new Error(`\`${commandName}\` is disabled for AI tool execution.`);
+  }
+
+  if (!isReadOnlyCommand && !isDangerousCommand) {
+    throw new Error(
+      `\`${commandName}\` is not supported for direct AI execution. Use a read-only or dangerous Redis command instead.`
+    );
+  }
+
+  if (isDangerousCommand) {
+    if (!request.confirmDangerousCommand) {
+      throw new Error("Dangerous Redis commands require user confirmation.");
+    }
+
+    const approved = await request.confirmDangerousCommand({
+      toolCallId: toolCall.id,
+      toolName: formatToolName(toolCall.name),
+      command: trimmedCommand,
+      reason: normalizedReason,
+    });
+
+    if (!approved) {
+      throw new Error("The user cancelled the dangerous Redis command.");
+    }
+  }
+
+  const output = await runRedisCommand(
+    { ...connection, db: request.selectedDb },
+    trimmedCommand
+  );
+
+  return {
+    result: {
+      command: trimmedCommand,
+      output,
+      reason: normalizedReason,
+      confirmed: isDangerousCommand || undefined,
+    },
+    details: {
+      didMutateRedis: !isReadOnlyCommand,
+      executedCommand: trimmedCommand,
+    } satisfies AssistantToolResultDetails,
+  };
+}
+
 async function executeSuggestRedisCommandTool(
   _request: OpenAIAssistantRequest,
   args: SuggestCommandArgs,
@@ -610,6 +774,12 @@ export function createAssistantTools(autoSuggest: boolean): Tool[] {
       parameters: SERVER_INFO_PARAMETERS,
     },
     {
+      name: AI_TOOL_NAMES.runRedisCommand,
+      description:
+        "Execute exactly one Redis command on the active database. Read-only commands run immediately; dangerous commands may require user confirmation first.",
+      parameters: RUN_REDIS_COMMAND_PARAMETERS,
+    },
+    {
       name: AI_TOOL_NAMES.runReadOnlyCommand,
       description:
         "Run one read-only Redis command on the active database and return the textual result.",
@@ -629,6 +799,22 @@ export function createAssistantTools(autoSuggest: boolean): Tool[] {
   return tools;
 }
 
+export function warmAssistantToolValidation() {
+  if (assistantToolValidationWarmupPromise) {
+    return assistantToolValidationWarmupPromise;
+  }
+
+  assistantToolValidationWarmupPromise = Promise.resolve().then(() => {
+    const tools = createAssistantTools(true);
+
+    for (const sampleToolCall of TOOL_VALIDATION_WARMUP_SAMPLES) {
+      validateToolCall(tools, sampleToolCall);
+    }
+  });
+
+  return assistantToolValidationWarmupPromise;
+}
+
 export async function executeAssistantToolCall({
   request,
   tools,
@@ -643,6 +829,7 @@ export async function executeAssistantToolCall({
   try {
     const validatedArgs = validateToolCall(tools, toolCall);
     let result: unknown;
+    let details: AssistantToolResultDetails | undefined;
 
     switch (toolCall.name) {
       case AI_TOOL_NAMES.getClientContext:
@@ -672,6 +859,16 @@ export async function executeAssistantToolCall({
           validatedArgs as ServerInfoArgs
         );
         break;
+      case AI_TOOL_NAMES.runRedisCommand: {
+        const execution = await executeRunRedisCommandTool(
+          request,
+          toolCall,
+          validatedArgs as RunRedisCommandArgs
+        );
+        result = execution.result;
+        details = execution.details;
+        break;
+      }
       case AI_TOOL_NAMES.runReadOnlyCommand:
         result = await executeRunReadOnlyCommandTool(
           request,
@@ -689,7 +886,7 @@ export async function executeAssistantToolCall({
         throw new Error(`Unknown AI tool: ${toolCall.name}`);
     }
 
-    return createToolResultMessage(toolCall, result);
+    return createToolResultMessage(toolCall, result, false, details);
   } catch (error) {
     return createToolResultMessage(
       toolCall,

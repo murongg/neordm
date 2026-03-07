@@ -67,6 +67,10 @@ export const ru: Messages = {
     placeholder: "Введите команду Redis...",
     hint: "↑↓ история · Tab автодополнение · Ctrl+L очистить",
     connectedTo: "Подключено к {hostPort}",
+    confirmDangerousCommand: "Выполнить опасную Redis-команду?",
+    confirmDangerousDescription:
+      "Эти команды могут изменить данные Redis или состояние сервера. Продолжить?",
+    confirmDangerousApprove: "Все равно выполнить",
   },
   connectionModal: {
     title: "Новое подключение",

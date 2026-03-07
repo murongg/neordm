@@ -3,6 +3,8 @@ import type {
   Message as AiContextMessage,
 } from "@mariozechner/pi-ai";
 import type {
+  AiAssistantEvent,
+  AiToolEvent,
   KeyValue,
   RedisConnection,
   RedisKey,
@@ -77,9 +79,12 @@ export function buildAssistantInstructions(autoSuggest: boolean) {
     "You are NeoRDM, an expert Redis assistant inside a desktop Redis client.",
     "Help the user understand data structures, debug issues, inspect live Redis state, and propose safe next steps.",
     "Be concise, practical, and answer in the same language as the user when possible.",
-    "Never claim that you changed Redis data or executed a write command.",
+    "Never claim that a Redis write or dangerous command succeeded unless the tool confirms success.",
     "Prefer tools over guessing whenever the user asks about current Redis state.",
-    "Use only read-only tools. Never execute write operations.",
+    "Use Redis tools instead of guessing whenever a live command would help.",
+    "Use `runReadOnlyCommand` for safe read-only inspection commands.",
+    "Use `runRedisCommand` when the task requires executing a Redis command; dangerous commands require explicit user confirmation before they run.",
+    "Avoid session-oriented or multi-step commands such as SELECT, MULTI/EXEC, WATCH, AUTH, HELLO, or subscription flows.",
     commandGuidance,
     "Do not wrap a `COMMAND:` line in code fences.",
   ].join("\n");
@@ -166,7 +171,11 @@ export function trimContextMessages(messages: AiContextMessage[]) {
 export function parseAssistantResponse(
   rawContent: string,
   contextMessages: AiContextMessage[],
-  commandFromTool?: string
+  commandFromTool?: string,
+  tools?: string[],
+  events?: AiAssistantEvent[],
+  toolEvents?: AiToolEvent[],
+  didMutateRedis = false
 ): OpenAIAssistantResponse {
   const command =
     commandFromTool ?? rawContent.match(COMMAND_PREFIX_PATTERN)?.[1]?.trim();
@@ -175,6 +184,10 @@ export function parseAssistantResponse(
   return {
     content: content || "Suggested a Redis command.",
     command: command || undefined,
+    tools: tools?.length ? tools : undefined,
+    events: events?.length ? events : undefined,
+    toolEvents: toolEvents?.length ? toolEvents : undefined,
+    didMutateRedis: didMutateRedis || undefined,
     contextMessages: trimContextMessages(contextMessages),
   };
 }

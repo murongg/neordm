@@ -3,11 +3,20 @@ import { settingsStore } from "./settingsStore";
 export const AI_PROVIDER_IDS = ["openai"] as const;
 
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
+export type OpenAiApiStyle = "responses" | "chat-completions";
+
+export interface AiProviderCapabilities {
+  responses: boolean | null;
+  chatCompletions: boolean | null;
+  testedAt: number | null;
+}
 
 export interface AiProviderConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  apiStyle: OpenAiApiStyle;
+  capabilities: AiProviderCapabilities;
 }
 
 export interface AiSettings {
@@ -31,6 +40,12 @@ function createProviderConfig(
     apiKey: "",
     baseUrl: "",
     model: "",
+    apiStyle: "responses",
+    capabilities: {
+      responses: null,
+      chatCompletions: null,
+      testedAt: null,
+    },
     ...overrides,
   };
 }
@@ -56,8 +71,17 @@ function normalizeProviderConfig(
   value: unknown,
   defaults: AiProviderConfig
 ): AiProviderConfig {
+  const defaultCapabilities: AiProviderCapabilities = {
+    responses: defaults.capabilities.responses,
+    chatCompletions: defaults.capabilities.chatCompletions,
+    testedAt: defaults.capabilities.testedAt,
+  };
+
   if (!isRecord(value)) {
-    return defaults;
+    return {
+      ...defaults,
+      capabilities: defaultCapabilities,
+    };
   }
 
   return {
@@ -69,7 +93,28 @@ function normalizeProviderConfig(
     model:
       typeof value.model === "string" && value.model.trim().length > 0
         ? value.model.trim()
-        : defaults.model,
+      : defaults.model,
+    apiStyle:
+      value.apiStyle === "responses" || value.apiStyle === "chat-completions"
+        ? value.apiStyle
+        : defaults.apiStyle,
+    capabilities: isRecord(value.capabilities)
+      ? {
+          responses:
+            typeof value.capabilities.responses === "boolean"
+              ? value.capabilities.responses
+              : defaultCapabilities.responses,
+          chatCompletions:
+            typeof value.capabilities.chatCompletions === "boolean"
+              ? value.capabilities.chatCompletions
+              : defaultCapabilities.chatCompletions,
+          testedAt:
+            typeof value.capabilities.testedAt === "number" &&
+            Number.isFinite(value.capabilities.testedAt)
+              ? value.capabilities.testedAt
+              : defaultCapabilities.testedAt,
+        }
+      : defaultCapabilities,
   };
 }
 
@@ -118,6 +163,8 @@ function normalizeLegacyShape(value: Record<string, unknown>): AiSettings {
           typeof value.model === "string" && value.model.trim().length > 0
             ? value.model.trim()
             : DEFAULT_AI_SETTINGS.providers.openai.model,
+        apiStyle: DEFAULT_AI_SETTINGS.providers.openai.apiStyle,
+        capabilities: DEFAULT_AI_SETTINGS.providers.openai.capabilities,
       },
     },
     maxTokens:

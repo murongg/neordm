@@ -10,8 +10,10 @@ import {
   Shield,
   ChevronRight,
   Check,
+  AlertCircle,
   Eye,
   EyeOff,
+  Info,
   LoaderCircle,
   RotateCcw,
 } from "lucide-react";
@@ -21,6 +23,7 @@ import {
   DEFAULT_AI_SETTINGS,
   loadAiSettings,
   persistAiSettings,
+  type OpenAiApiStyle,
 } from "../lib/aiSettings";
 import {
   DEFAULT_APP_SETTINGS,
@@ -29,8 +32,14 @@ import {
   updateAppSettings,
   type AppSettings,
 } from "../lib/appSettings";
-import { testAiProviderConnection } from "../lib/openai";
+import {
+  testAiProviderConnection,
+  type AiProviderConnectionTestCheck,
+  type AiProviderConnectionTestCheckStatus,
+  type AiProviderConnectionTestResult,
+} from "../lib/openai";
 import { clearPrivacyRuntimeData } from "../lib/privacyRuntime";
+import { useCliStore } from "../store/useCliState";
 import { useToast } from "./ToastProvider";
 
 interface SettingsPanelProps {
@@ -39,7 +48,6 @@ interface SettingsPanelProps {
   onThemeChange: (mode: ThemeMode) => void;
   keySeparator: string;
   onKeySeparatorChange: (separator: string) => void;
-  onClearCliHistory: () => void;
 }
 
 type SettingsCategory =
@@ -70,7 +78,6 @@ export function SettingsPanel({
   onThemeChange,
   keySeparator,
   onKeySeparatorChange,
-  onClearCliHistory,
 }: SettingsPanelProps) {
   const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
@@ -162,7 +169,7 @@ export function SettingsPanel({
             {category === "appearance" && <AppearanceSettings themeMode={themeMode} onThemeChange={onThemeChange} />}
             {category === "editor" && <EditorSettings />}
             {category === "ai" && <AISettings />}
-            {category === "cli" && <CLISettings onClearHistory={onClearCliHistory} />}
+            {category === "cli" && <CLISettings />}
             {category === "shortcuts" && <ShortcutsSettings />}
             {category === "privacy" && <PrivacySettings />}
           </div>
@@ -751,6 +758,11 @@ function AISettings() {
   const [settings, setSettings] = useState(DEFAULT_AI_SETTINGS);
   const [showKey, setShowKey] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] =
+    useState<AiProviderConnectionTestResult | null>(null);
+  const [connectionTestChecks, setConnectionTestChecks] = useState<
+    AiProviderConnectionTestCheck[]
+  >([]);
 
   useEffect(() => {
     let isMounted = true;
@@ -773,6 +785,9 @@ function AISettings() {
   const updateSelectedProviderConfig = (
     patch: Partial<typeof selectedProviderConfig>
   ) => {
+    setConnectionTestResult(null);
+    setConnectionTestChecks([]);
+
     setSettings((previous) => ({
       ...previous,
       providers: {
@@ -797,24 +812,89 @@ function AISettings() {
 
   const handleTestConnection = async () => {
     setIsTestingConnection(true);
+    setConnectionTestResult(null);
+    setConnectionTestChecks([]);
 
     try {
-      await testAiProviderConnection(selectedProviderConfig);
+      const result = await testAiProviderConnection(selectedProviderConfig, {
+        onUpdate: setConnectionTestChecks,
+      });
+
+      if (result.preferredApiStyle) {
+        const nextSettings = {
+          ...settings,
+          providers: {
+            ...settings.providers,
+            openai: {
+              ...settings.providers.openai,
+              apiStyle: result.preferredApiStyle,
+              capabilities: result.capabilities,
+            },
+          },
+        };
+
+        setSettings(nextSettings);
+        await persistAiSettings(nextSettings);
+      }
+
+      setConnectionTestResult(result);
+
       showToast({
-        message: `OpenAI ${ai.enabled}`,
-        tone: "success",
-        duration: 1800,
+        message: result.summary,
+        tone: result.ok ? "success" : "error",
+        duration: result.ok ? 1900 : 2800,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setConnectionTestResult({
+        ok: false,
+        summary: "OpenAI connection test failed.",
+        normalizedBaseUrl: selectedProviderConfig.baseUrl.trim(),
+        model: selectedProviderConfig.model.trim(),
+        preferredApiStyle: null,
+        capabilities: {
+          responses: null,
+          chatCompletions: null,
+          testedAt: null,
+        },
+        checks: [
+          {
+            id: "config",
+            label: "Config",
+            status: "error",
+            detail: message,
+          },
+        ],
+      });
+      setConnectionTestChecks([]);
       showToast({
-        message: error instanceof Error ? error.message : String(error),
+        message,
         tone: "error",
-        duration: 2500,
+        duration: 2800,
       });
     } finally {
       setIsTestingConnection(false);
     }
   };
+
+  const activeConnectionTestChecks =
+    connectionTestResult?.checks ??
+    (connectionTestChecks.length > 0 ? connectionTestChecks : DEFAULT_AI_TEST_CHECKS);
+  const activeConnectionTestTone = connectionTestResult
+    ? connectionTestResult.ok
+      ? "success"
+      : "error"
+    : "info";
+  const activeRunningCheck = connectionTestChecks.find(
+    (check) => check.status === "running"
+  );
+  const activeConnectionTestSummary = connectionTestResult
+    ? connectionTestResult.summary
+    : activeRunningCheck
+    ? `Testing ${activeRunningCheck.label}...`
+    : `Runtime currently uses ${formatApiStyleLabel(
+        selectedProviderConfig.apiStyle
+      )}. Test checks \`GET /models\`, \`POST /responses\`, and \`POST /chat/completions\`.`;
 
   return (
     <>
@@ -904,6 +984,14 @@ function AISettings() {
             <Check size={12} /> {ai.saveApiKey}
           </button>
         </div>
+
+        <ConnectionTestStatus
+          tone={activeConnectionTestTone}
+          summary={activeConnectionTestSummary}
+          checks={activeConnectionTestChecks}
+          isTesting={isTestingConnection}
+          apiStyle={selectedProviderConfig.apiStyle}
+        />
       </Section>
 
       <Section title={ai.behavior}>
@@ -937,6 +1025,145 @@ function AISettings() {
   );
 }
 
+const CONNECTION_TEST_TONE_STYLES = {
+  success: "text-success",
+  error: "text-error",
+  info: "text-base-content/65",
+} as const;
+
+const CONNECTION_TEST_CHECK_STYLES: Record<
+  AiProviderConnectionTestCheckStatus,
+  string
+> = {
+  pending: "text-base-content/35",
+  running: "text-info",
+  success: "text-success",
+  info: "text-base-content/55",
+  error: "text-error",
+};
+
+const DEFAULT_AI_TEST_CHECKS: AiProviderConnectionTestCheck[] = [
+  {
+    id: "config",
+    label: "Config",
+    status: "info",
+    detail: "Validates the API key, base URL, and selected model first.",
+  },
+  {
+    id: "models",
+    label: "GET /models",
+    status: "info",
+    detail: "Checks whether the gateway is reachable through the Tauri backend proxy.",
+  },
+  {
+    id: "responses",
+    label: "POST /responses",
+    status: "info",
+    detail: "Verifies the same runtime endpoint the AI agent will use.",
+  },
+  {
+    id: "chat",
+    label: "POST /chat/completions",
+    status: "info",
+    detail: "Checks legacy OpenAI chat compatibility on the same gateway.",
+  },
+];
+
+function ConnectionTestStatus({
+  tone,
+  summary,
+  checks,
+  isTesting,
+  apiStyle,
+}: {
+  tone: keyof typeof CONNECTION_TEST_TONE_STYLES;
+  summary: string;
+  checks: AiProviderConnectionTestCheck[];
+  isTesting: boolean;
+  apiStyle: OpenAiApiStyle;
+}) {
+  const SummaryIcon =
+    tone === "success" ? Check : tone === "error" ? AlertCircle : Info;
+
+  return (
+    <div
+      aria-live="polite"
+      className="mt-3 border-t border-base-content/10 px-3 pt-3"
+    >
+      <div className="flex items-start gap-2">
+        {isTesting ? (
+          <LoaderCircle
+            size={13}
+            className="mt-0.5 shrink-0 animate-spin text-info"
+          />
+        ) : (
+          <SummaryIcon
+            size={13}
+            className={`mt-0.5 shrink-0 ${CONNECTION_TEST_TONE_STYLES[tone]}`}
+          />
+        )}
+
+        <div className="min-w-0 flex-1">
+          <p
+            className={`text-[11px] leading-5 font-mono ${
+              isTesting ? "text-info" : CONNECTION_TEST_TONE_STYLES[tone]
+            }`}
+          >
+            {summary}
+          </p>
+          <p className="mt-1 text-[10px] font-mono text-base-content/40">
+            Runtime API: {formatApiStyleLabel(apiStyle)}
+          </p>
+
+          <div className="mt-2 space-y-1.5 pb-0.5">
+            {checks.map((check) => (
+              <ConnectionTestCheckRow key={check.id} check={check} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatApiStyleLabel(apiStyle: OpenAiApiStyle) {
+  return apiStyle === "chat-completions"
+    ? "POST /chat/completions"
+    : "POST /responses";
+}
+
+function ConnectionTestCheckRow({
+  check,
+}: {
+  check: AiProviderConnectionTestCheck;
+}) {
+  const CheckIcon =
+    check.status === "success"
+      ? Check
+      : check.status === "error"
+      ? AlertCircle
+      : check.status === "running"
+      ? LoaderCircle
+      : Info;
+
+  return (
+    <div className="flex items-start gap-2 text-[10px] font-mono leading-4">
+      <CheckIcon
+        size={11}
+        className={`mt-[2px] shrink-0 ${
+          check.status === "running" ? "animate-spin" : ""
+        } ${CONNECTION_TEST_CHECK_STYLES[check.status]}`}
+      />
+      <div className="min-w-0">
+        <p className={CONNECTION_TEST_CHECK_STYLES[check.status]}>
+          {check.label}
+        </p>
+        <p className="mt-0.5 break-words text-base-content/45">{check.detail}</p>
+      </div>
+    </div>
+  );
+}
+
 function SettingsField({
   label,
   children,
@@ -954,15 +1181,12 @@ function SettingsField({
   );
 }
 
-function CLISettings({
-  onClearHistory,
-}: {
-  onClearHistory: () => void;
-}) {
+function CLISettings() {
   const { messages } = useI18n();
   const { showToast } = useToast();
   const cli = messages.settings.cli;
   const [cliSettings, setCliSettings] = useAppSettingsSection("cli");
+  const clearCliHistory = useCliStore((state) => state.clearCliHistory);
 
   return (
     <>
@@ -1035,7 +1259,7 @@ function CLISettings({
         <Row label={cli.clearHistory} description={cli.clearHistoryDescription}>
           <button
             onClick={() => {
-              onClearHistory();
+              clearCliHistory();
               showToast({
                 message: cli.clearHistory,
                 tone: "info",

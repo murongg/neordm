@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
+import { create } from "zustand";
 import {
   DEFAULT_APP_SETTINGS,
   loadAppSettings,
@@ -7,22 +8,43 @@ import {
   type AppSettings,
 } from "../lib/appSettings";
 
-export function useAppPreferencesState() {
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
-  const [keySeparator, setKeySeparatorState] = useState<string>(
-    DEFAULT_APP_SETTINGS.general.keySeparator
-  );
-  const [isSidebarCollapsed, setIsSidebarCollapsedState] = useState(
-    DEFAULT_APP_SETTINGS.ui.sidebarCollapsed
-  );
-  const [hasHydratedSettings, setHasHydratedSettings] = useState(false);
-  const [hasHydratedPreferences, setHasHydratedPreferences] = useState(false);
+interface AppPreferencesStoreState {
+  appSettings: AppSettings;
+  keySeparator: string;
+  isSidebarCollapsed: boolean;
+  hasHydratedSettings: boolean;
+  hasHydratedPreferences: boolean;
+  hydrate: (settings: AppSettings) => void;
+  setIsSidebarCollapsed: (nextValue: boolean | ((previous: boolean) => boolean)) => void;
+  toggleSidebarCollapsed: () => void;
+  setKeySeparator: (value: string) => void;
+  persistLastConnectionId: (nextConnectionId: string) => void;
+}
 
-  const setIsSidebarCollapsed = useCallback(
-    (nextValue: boolean | ((previous: boolean) => boolean)) => {
-      setIsSidebarCollapsedState((previous) => {
+export const useAppPreferencesStore = create<AppPreferencesStoreState>(
+  (set, get) => ({
+    appSettings: DEFAULT_APP_SETTINGS,
+    keySeparator: DEFAULT_APP_SETTINGS.general.keySeparator,
+    isSidebarCollapsed: DEFAULT_APP_SETTINGS.ui.sidebarCollapsed,
+    hasHydratedSettings: false,
+    hasHydratedPreferences: false,
+    hydrate: (settings) => {
+      set({
+        appSettings: settings,
+        keySeparator: settings.general.keySeparator,
+        isSidebarCollapsed: settings.ui.sidebarCollapsed,
+        hasHydratedPreferences: true,
+        hasHydratedSettings: true,
+      });
+    },
+    setIsSidebarCollapsed: (nextValue) => {
+      const { hasHydratedPreferences } = get();
+
+      set((state) => {
         const resolvedValue =
-          typeof nextValue === "function" ? nextValue(previous) : nextValue;
+          typeof nextValue === "function"
+            ? nextValue(state.isSidebarCollapsed)
+            : nextValue;
 
         if (hasHydratedPreferences) {
           void updateAppSettings((current) => ({
@@ -34,52 +56,20 @@ export function useAppPreferencesState() {
           }));
         }
 
-        return resolvedValue;
+        return {
+          isSidebarCollapsed: resolvedValue,
+        };
       });
     },
-    [hasHydratedPreferences]
-  );
+    toggleSidebarCollapsed: () => {
+      get().setIsSidebarCollapsed((previous) => !previous);
+    },
+    setKeySeparator: (value) => {
+      const { hasHydratedPreferences } = get();
 
-  const toggleSidebarCollapsed = useCallback(() => {
-    setIsSidebarCollapsed((previous) => !previous);
-  }, [setIsSidebarCollapsed]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const applySettings = (settings: AppSettings) => {
-      if (cancelled) {
-        return;
-      }
-
-      setAppSettings(settings);
-      setKeySeparatorState(settings.general.keySeparator);
-      setIsSidebarCollapsedState(settings.ui.sidebarCollapsed);
-      setHasHydratedPreferences(true);
-      setHasHydratedSettings(true);
-    };
-
-    const unsubscribe = subscribeAppSettings((settings) => {
-      applySettings(settings);
-    });
-
-    void loadAppSettings()
-      .then((settings) => {
-        applySettings(settings);
-      })
-      .catch((error) => {
-        console.error("Failed to load app settings", error);
+      set({
+        keySeparator: value,
       });
-
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, []);
-
-  const setKeySeparator = useCallback(
-    (value: string) => {
-      setKeySeparatorState(value);
 
       if (hasHydratedPreferences) {
         void updateAppSettings((current) => ({
@@ -91,11 +81,9 @@ export function useAppPreferencesState() {
         }));
       }
     },
-    [hasHydratedPreferences]
-  );
+    persistLastConnectionId: (nextConnectionId) => {
+      const { appSettings, hasHydratedPreferences } = get();
 
-  const persistLastConnectionId = useCallback(
-    (nextConnectionId: string) => {
       if (
         !hasHydratedPreferences ||
         appSettings.ui.lastConnectionId === nextConnectionId
@@ -111,17 +99,38 @@ export function useAppPreferencesState() {
         },
       }));
     },
-    [appSettings.ui.lastConnectionId, hasHydratedPreferences]
-  );
+  })
+);
 
-  return {
-    appSettings,
-    hasHydratedSettings,
-    isSidebarCollapsed,
-    keySeparator,
-    persistLastConnectionId,
-    setIsSidebarCollapsed,
-    setKeySeparator,
-    toggleSidebarCollapsed,
-  };
+let hasInitializedAppPreferencesStore = false;
+
+function initializeAppPreferencesStore() {
+  if (hasInitializedAppPreferencesStore) {
+    return;
+  }
+
+  hasInitializedAppPreferencesStore = true;
+
+  subscribeAppSettings((settings) => {
+    useAppPreferencesStore.getState().hydrate(settings);
+  });
+
+  void loadAppSettings()
+    .then((settings) => {
+      useAppPreferencesStore.getState().hydrate(settings);
+    })
+    .catch((error) => {
+      console.error("Failed to load app settings", error);
+    });
+}
+
+export function useInitializeAppPreferencesStore() {
+  useEffect(() => {
+    initializeAppPreferencesStore();
+  }, []);
+}
+
+export function useAppPreferencesState() {
+  useInitializeAppPreferencesStore();
+  return useAppPreferencesStore();
 }

@@ -67,6 +67,10 @@ export const ko: Messages = {
     placeholder: "Redis 명령 입력...",
     hint: "↑↓ 기록 · Tab 자동완성 · Ctrl+L 지우기",
     connectedTo: "{hostPort}에 연결됨",
+    confirmDangerousCommand: "위험한 Redis 명령을 실행할까요?",
+    confirmDangerousDescription:
+      "이 명령은 Redis 데이터나 서버 상태를 변경할 수 있습니다. 계속할까요?",
+    confirmDangerousApprove: "계속 실행",
   },
   connectionModal: {
     title: "새 연결",

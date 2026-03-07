@@ -67,6 +67,10 @@ export const it: Messages = {
     placeholder: "Digita un comando Redis...",
     hint: "↑↓ cronologia · Tab autocompletamento · Ctrl+L cancella",
     connectedTo: "Connesso a {hostPort}",
+    confirmDangerousCommand: "Eseguire un comando Redis pericoloso?",
+    confirmDangerousDescription:
+      "Questi comandi possono modificare i dati Redis o lo stato del server. Continuare?",
+    confirmDangerousApprove: "Esegui comunque",
   },
   connectionModal: {
     title: "Nuova connessione",

@@ -1,9 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Terminal, Trash2, Copy } from "lucide-react";
+import { AlertTriangle, Copy, Terminal, Trash2 } from "lucide-react";
 import type { CliEntry } from "../types";
 import { useI18n } from "../i18n";
 import { useAppSettings } from "../hooks/useAppSettings";
-import { getCliAutocompleteSuggestions } from "../lib/redisCli";
+import {
+  getCliAutocompleteSuggestions,
+  getCliCommandName,
+  isDangerousRedisCommand,
+} from "../lib/redisCli";
 
 interface RedisCLIProps {
   history: CliEntry[];
@@ -56,6 +60,10 @@ export function RedisCLI({
   const [input, setInput] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [pendingDangerousCommand, setPendingDangerousCommand] = useState<{
+    rawCommand: string;
+    dangerousCommands: string[];
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftInputRef = useRef("");
@@ -81,14 +89,44 @@ export function RedisCLI({
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history]);
 
-  const handleRun = () => {
-    const cmd = input.trim();
-    if (!cmd) return;
+  const executeCommand = (cmd: string) => {
     onRun(cmd);
     setCmdHistory((prev) => [cmd, ...prev.slice(0, commandHistoryLimit - 1)]);
     setHistoryIndex(-1);
     draftInputRef.current = "";
     setInput("");
+    setPendingDangerousCommand(null);
+    inputRef.current?.focus();
+  };
+
+  const handleRun = () => {
+    const cmd = input.trim();
+    if (!cmd) return;
+
+    if (pendingDangerousCommand?.rawCommand === cmd) {
+      return;
+    }
+
+    const commands =
+      cliSettings.pipelineMode && cmd.includes(";")
+        ? cmd
+            .split(";")
+            .map((part) => part.trim())
+            .filter(Boolean)
+        : [cmd];
+    const dangerousCommands = commands.filter((command) =>
+      isDangerousRedisCommand(getCliCommandName(command))
+    );
+
+    if (dangerousCommands.length > 0) {
+      setPendingDangerousCommand({
+        rawCommand: cmd,
+        dangerousCommands,
+      });
+      return;
+    }
+
+    executeCommand(cmd);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -224,26 +262,79 @@ export function RedisCLI({
             </div>
           )}
         </div>
-        <div className="mb-1.5 flex items-center justify-between gap-3">
-          <span className="min-w-0 truncate font-mono text-[11px] text-success">
-            {promptLabel}
-          </span>
-          <kbd className="shrink-0 kbd kbd-xs text-base-content/30">Enter</kbd>
-        </div>
-        <div className="flex items-center gap-2 bg-base-200 rounded-xl px-3 py-2">
-          <span className="shrink-0 text-success">›</span>
-          <input
-            ref={inputRef}
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={messages.cli.placeholder}
-            className="flex-1 bg-transparent outline-none font-mono text-xs text-base-content user-select-text caret-success"
-            spellCheck={false}
-            autoComplete="off"
-            autoCorrect="off"
-          />
+        <div className="relative">
+          {pendingDangerousCommand && (
+            <div className="pointer-events-auto absolute inset-x-0 bottom-full z-20 mb-2 rounded-xl border border-warning/20 bg-warning/8 px-3 py-3 shadow-lg shadow-base-300/30 backdrop-blur-sm">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={14} className="mt-0.5 shrink-0 text-warning" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div>
+                    <div className="text-[10px] font-mono uppercase tracking-wide text-warning/85">
+                      {messages.cli.confirmDangerousCommand}
+                    </div>
+                    <div className="mt-1 text-[11px] leading-5 text-base-content/58">
+                      {messages.cli.confirmDangerousDescription}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {pendingDangerousCommand.dangerousCommands.map((command) => (
+                      <code
+                        key={command}
+                        className="block overflow-x-auto rounded-lg bg-base-300/75 px-2.5 py-2 text-[11px] text-base-content/72 user-select-text"
+                      >
+                        {command}
+                      </code>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingDangerousCommand(null);
+                        inputRef.current?.focus();
+                      }}
+                      className="btn btn-xs btn-ghost cursor-pointer"
+                    >
+                      {messages.common.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => executeCommand(pendingDangerousCommand.rawCommand)}
+                      className="btn btn-xs btn-warning cursor-pointer"
+                    >
+                      {messages.cli.confirmDangerousApprove}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="mb-1.5 flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate font-mono text-[11px] text-success">
+              {promptLabel}
+            </span>
+            <kbd className="shrink-0 kbd kbd-xs text-base-content/30">Enter</kbd>
+          </div>
+          <div className="flex items-center gap-2 bg-base-200 rounded-xl px-3 py-2">
+            <span className="shrink-0 text-success">›</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => {
+                setInput(e.target.value);
+                if (pendingDangerousCommand) {
+                  setPendingDangerousCommand(null);
+                }
+              }}
+              onKeyDown={handleKeyDown}
+              placeholder={messages.cli.placeholder}
+              className="flex-1 bg-transparent outline-none font-mono text-xs text-base-content user-select-text caret-success"
+              spellCheck={false}
+              autoComplete="off"
+              autoCorrect="off"
+            />
+          </div>
         </div>
         <p className="text-[9px] text-base-content/20 mt-1.5 font-mono">
           {messages.cli.hint}

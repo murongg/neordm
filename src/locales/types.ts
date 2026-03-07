@@ -118,6 +118,9 @@ export interface Messages {
     placeholder: string;
     hint: string;
     connectedTo: string;
+    confirmDangerousCommand: string;
+    confirmDangerousDescription: string;
+    confirmDangerousApprove: string;
   };
   connectionModal: {
     title: string;
