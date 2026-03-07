@@ -15,6 +15,7 @@ import {
 import { Tooltip } from "./components/Tooltip";
 import { Bot, Terminal, Edit3, Wifi, Server, Info } from "lucide-react";
 import { useI18n } from "./i18n";
+import { getCliPromptLabel } from "./lib/redisCli";
 
 function App() {
   const store = useAppStore();
@@ -147,7 +148,12 @@ function App() {
               {store.panelTab === "cli" && (
                 <RedisCLI
                   history={store.cliHistory}
+                  onClear={store.clearCliHistory}
                   onRun={store.runCliCommand}
+                  promptLabel={getCliPromptLabel(
+                    store.activeConnection,
+                    store.selectedDb
+                  )}
                   connectionName={
                     store.activeConnection
                       ? `${store.activeConnection.host}:${store.activeConnection.port}`

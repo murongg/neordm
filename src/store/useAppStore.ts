@@ -19,6 +19,13 @@ import {
   updateRedisStringValue,
   updateRedisZSetEntry,
 } from "../lib/redis";
+import {
+  getBuiltinCliOutput,
+  getCliCommandName,
+  getCliPromptLabel,
+  isBuiltinCliCommand,
+  isReadOnlyRedisCommand,
+} from "../lib/redisCli";
 import type {
   RedisConnection,
   RedisKey,
@@ -28,48 +35,21 @@ import type {
   CliEntry,
 } from "../types";
 
-const READ_ONLY_COMMANDS = new Set([
-  "DBSIZE",
-  "EXISTS",
-  "GET",
-  "HGET",
-  "HGETALL",
-  "INFO",
-  "KEYS",
-  "LLEN",
-  "LRANGE",
-  "MGET",
-  "PING",
-  "PTTL",
-  "SCAN",
-  "SCARD",
-  "SMEMBERS",
-  "TTL",
-  "TYPE",
-  "XRANGE",
-  "ZCARD",
-  "ZRANGE",
-  "ZRANK",
-  "ZSCORE",
-]);
-
 const KEY_SEPARATOR_STORAGE_KEY = "neordm-key-separator";
 const SIDEBAR_COLLAPSED_STORAGE_KEY = "neordm-sidebar-collapsed";
 
 function createCliEntry(
   type: CliEntry["type"],
-  content: string
+  content: string,
+  promptLabel?: string
 ): CliEntry {
   return {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     type,
     content,
     timestamp: new Date(),
+    promptLabel,
   };
-}
-
-function getCommandName(command: string) {
-  return command.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
 }
 
 export function useAppStore() {
@@ -1002,16 +982,36 @@ export function useAppStore() {
     setChatMessages((previous) => [...previous, userMessage]);
   }, []);
 
+  const clearCliHistory = useCallback(() => {
+    setCliHistory([]);
+  }, []);
+
   const runCliCommand = useCallback(
     async (cmd: string) => {
       const trimmed = cmd.trim();
 
       if (!trimmed) return;
 
+      const commandName = getCliCommandName(trimmed);
+      const promptLabel = getCliPromptLabel(activeConnection, selectedDb);
+
+      if (commandName === "CLEAR") {
+        clearCliHistory();
+        return;
+      }
+
       setCliHistory((previous) => [
         ...previous,
-        createCliEntry("command", trimmed),
+        createCliEntry("command", trimmed, promptLabel),
       ]);
+
+      if (isBuiltinCliCommand(commandName)) {
+        setCliHistory((previous) => [
+          ...previous,
+          createCliEntry("output", getBuiltinCliOutput(commandName)),
+        ]);
+        return;
+      }
 
       if (!activeConnection) {
         setCliHistory((previous) => [
@@ -1032,8 +1032,6 @@ export function useAppStore() {
           createCliEntry("output", output),
         ]);
 
-        const commandName = getCommandName(trimmed);
-
         if (commandName === "SELECT") {
           const nextDb = Number(trimmed.trim().split(/\s+/)[1]);
 
@@ -1043,7 +1041,9 @@ export function useAppStore() {
           }
         }
 
-        if (!READ_ONLY_COMMANDS.has(commandName)) {
+        syncConnectionStatus(activeConnection.id, "connected", selectedDb);
+
+        if (!isReadOnlyRedisCommand(commandName)) {
           void refreshKeys();
         }
       } catch (error) {
@@ -1056,6 +1056,7 @@ export function useAppStore() {
     },
     [
       activeConnection,
+      clearCliHistory,
       messages.app.status.notConnected,
       refreshKeys,
       selectDb,
@@ -1099,6 +1100,7 @@ export function useAppStore() {
     chatMessages,
     sendChatMessage,
     cliHistory,
+    clearCliHistory,
     runCliCommand,
     showConnectionModal,
     openNewConnectionModal,

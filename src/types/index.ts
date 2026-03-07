@@ -57,4 +57,5 @@ export interface CliEntry {
   type: "command" | "output" | "error";
   content: string;
   timestamp: Date;
+  promptLabel?: string;
 }
