@@ -26,6 +26,14 @@ export interface RedisZSetEntryDelete {
   member: string;
 }
 
+export interface RedisStringValueUpdate {
+  value: string;
+}
+
+export interface RedisJsonValueUpdate {
+  value: string;
+}
+
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
   "host" | "port" | "db" | "tls"
@@ -180,6 +188,34 @@ export async function deleteRedisZSetEntry(
       connection: toConnectionInput(connection),
       key,
       member: entry.member,
+    },
+  });
+}
+
+export async function updateRedisStringValue(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  update: RedisStringValueUpdate
+) {
+  await invoke("update_redis_string_value", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      value: update.value,
+    },
+  });
+}
+
+export async function updateRedisJsonValue(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  update: RedisJsonValueUpdate
+) {
+  await invoke("update_redis_json_value", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      value: update.value,
     },
   });
 }

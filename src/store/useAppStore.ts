@@ -15,6 +15,8 @@ import {
   runRedisCommand,
   testRedisConnection,
   updateRedisHashEntry,
+  updateRedisJsonValue,
+  updateRedisStringValue,
   updateRedisZSetEntry,
 } from "../lib/redis";
 import type {
@@ -667,6 +669,96 @@ export function useAppStore() {
     ]
   );
 
+  const updateStringValue = useCallback(
+    async (key: string, nextValue: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (
+        keyValue?.key === key &&
+        keyValue.type === "string" &&
+        typeof keyValue.value === "string" &&
+        keyValue.value === nextValue
+      ) {
+        return;
+      }
+
+      await updateRedisStringValue(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { value: nextValue }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "string" ||
+          typeof previous.value !== "string"
+        ) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          value: nextValue,
+        };
+      });
+    },
+    [
+      activeConnection,
+      keyValue,
+      messages.app.status.notConnected,
+      selectedDb,
+    ]
+  );
+
+  const updateJsonValue = useCallback(
+    async (key: string, nextValue: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (
+        keyValue?.key === key &&
+        keyValue.type === "json" &&
+        typeof keyValue.value === "string" &&
+        keyValue.value === nextValue
+      ) {
+        return;
+      }
+
+      await updateRedisJsonValue(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { value: nextValue }
+      );
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "json" ||
+          typeof previous.value !== "string"
+        ) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          value: nextValue,
+        };
+      });
+    },
+    [
+      activeConnection,
+      keyValue,
+      messages.app.status.notConnected,
+      selectedDb,
+    ]
+  );
+
   const deleteHashEntry = useCallback(
     async (key: string, field: string) => {
       if (!activeConnection) {
@@ -963,6 +1055,8 @@ export function useAppStore() {
     selectKey,
     renameKey,
     renameGroup,
+    updateStringValue,
+    updateJsonValue,
     updateHashEntry,
     deleteHashEntry,
     updateZSetEntry,

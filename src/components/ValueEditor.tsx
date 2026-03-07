@@ -30,6 +30,8 @@ const LazyJsonCodeEditor = lazy(() => import("./JsonCodeEditor"));
 interface ValueEditorProps {
   keyValue: KeyValue | null;
   onRefreshKeyValue: () => Promise<void>;
+  onUpdateStringValue: (key: string, nextValue: string) => Promise<void>;
+  onUpdateJsonValue: (key: string, nextValue: string) => Promise<void>;
   onUpdateHashEntry: (
     key: string,
     oldField: string,
@@ -56,6 +58,8 @@ interface TtlUnits {
 export function ValueEditor({
   keyValue,
   onRefreshKeyValue,
+  onUpdateStringValue,
+  onUpdateJsonValue,
   onUpdateHashEntry,
   onDeleteHashEntry,
   onUpdateZSetEntry,
@@ -214,10 +218,16 @@ export function ValueEditor({
         } relative`}
       >
         {keyValue.type === "string" && (
-          <StringViewer value={keyValue.value as string} />
+          <StringViewer
+            value={keyValue.value as string}
+            onSave={(nextValue) => onUpdateStringValue(keyValue.key, nextValue)}
+          />
         )}
         {keyValue.type === "json" && (
-          <JsonEditorViewer value={keyValue.value as string} />
+          <JsonEditorViewer
+            value={keyValue.value as string}
+            onSave={(nextValue) => onUpdateJsonValue(keyValue.key, nextValue)}
+          />
         )}
         {keyValue.type === "stream" && (
           <StringViewer value={keyValue.value as string} />
@@ -301,14 +311,24 @@ export function ValueEditor({
   );
 }
 
-function StringViewer({ value }: { value: string }) {
+function StringViewer({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave?: (nextValue: string) => Promise<void>;
+}) {
   const { messages } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editVal, setEditVal] = useState(value);
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setEditVal(value);
     setIsEditing(false);
+    setError("");
+    setIsSaving(false);
   }, [value]);
 
   let formatted = value;
@@ -318,6 +338,25 @@ function StringViewer({ value }: { value: string }) {
     isJson = true;
   } catch {}
   const editorModeLabel = isJson ? "JSON" : "TEXT";
+
+  const handleSave = async () => {
+    if (!onSave) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsSaving(true);
+    setError("");
+
+    try {
+      await onSave(editVal);
+      setIsEditing(false);
+    } catch (saveError) {
+      setError(getRedisErrorMessage(saveError));
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   if (isEditing) {
     return (
@@ -329,20 +368,36 @@ function StringViewer({ value }: { value: string }) {
           autoFocus
           mode={isJson ? "json" : "text"}
         />
+        {error ? (
+          <p className="rounded-lg border border-error/15 bg-error/8 px-3 py-2 text-xs text-error">
+            {error}
+          </p>
+        ) : null}
         <div className="flex items-center justify-between gap-2">
           <span className="badge badge-xs badge-ghost font-mono uppercase tracking-wider text-base-content/50">
             {editorModeLabel}
           </span>
           <div className="flex gap-2">
           <button
-            onClick={() => setIsEditing(false)}
-            className="btn btn-success btn-sm gap-1.5 cursor-pointer"
+            onClick={() => void handleSave()}
+            disabled={isSaving}
+            className="btn btn-success btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
           >
-            <Save size={13} /> {messages.common.save}
+            {isSaving ? (
+              <LoaderCircle size={13} className="animate-spin" />
+            ) : (
+              <Save size={13} />
+            )}{" "}
+            {messages.common.save}
           </button>
           <button
-            onClick={() => setIsEditing(false)}
-            className="btn btn-ghost btn-sm cursor-pointer"
+            onClick={() => {
+              setEditVal(value);
+              setError("");
+              setIsEditing(false);
+            }}
+            disabled={isSaving}
+            className="btn btn-ghost btn-sm cursor-pointer disabled:cursor-not-allowed"
           >
             {messages.common.cancel}
           </button>
@@ -355,11 +410,13 @@ function StringViewer({ value }: { value: string }) {
   return (
     <div className="relative group">
       <button
+        disabled={!onSave}
         onClick={() => {
           setEditVal(formatJsonDraft(value));
+          setError("");
           setIsEditing(true);
         }}
-        className="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer"
+        className="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer disabled:pointer-events-none disabled:opacity-0"
       >
         <Edit3 size={11} />
       </button>
@@ -374,19 +431,47 @@ function StringViewer({ value }: { value: string }) {
   );
 }
 
-function JsonEditorViewer({ value }: { value: string }) {
+function JsonEditorViewer({
+  value,
+  onSave,
+}: {
+  value: string;
+  onSave?: (nextValue: string) => Promise<void>;
+}) {
   const { messages } = useI18n();
   const [draft, setDraft] = useState(() => formatJsonDraft(value));
   const [error, setError] = useState(() => getJsonDraftError(value));
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setDraft(formatJsonDraft(value));
     setError(getJsonDraftError(value));
+    setSaveError("");
+    setIsSaving(false);
   }, [value]);
 
   const handleReset = () => {
     setDraft(formatJsonDraft(value));
     setError(getJsonDraftError(value));
+    setSaveError("");
+  };
+
+  const handleSave = async () => {
+    if (!onSave || error) {
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError("");
+
+    try {
+      await onSave(compactJsonDraft(draft));
+    } catch (saveError) {
+      setSaveError(getRedisErrorMessage(saveError));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -394,15 +479,29 @@ function JsonEditorViewer({ value }: { value: string }) {
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
+          onClick={() => void handleSave()}
+          disabled={!onSave || !!error || isSaving}
+          className="btn btn-success btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+        >
+          {isSaving ? (
+            <LoaderCircle size={13} className="animate-spin" />
+          ) : (
+            <Save size={13} />
+          )}{" "}
+          {messages.common.save}
+        </button>
+        <button
+          type="button"
           onClick={handleReset}
-          className="btn btn-ghost btn-xs cursor-pointer font-mono"
+          disabled={isSaving}
+          className="btn btn-ghost btn-xs cursor-pointer font-mono disabled:cursor-not-allowed"
         >
           {messages.common.reset}
         </button>
       </div>
-      {error ? (
+      {error || saveError ? (
         <p className="rounded-lg border border-error/15 bg-error/8 px-3 py-2 text-xs text-error">
-          {error}
+          {error || saveError}
         </p>
       ) : null}
       <JsonCodeEditor
@@ -410,6 +509,7 @@ function JsonEditorViewer({ value }: { value: string }) {
         onChange={(nextDraft) => {
           setDraft(nextDraft);
           setError(getJsonDraftError(nextDraft));
+          setSaveError("");
         }}
         className="h-full min-h-0 flex-1"
       />
@@ -1078,19 +1178,24 @@ function JsonHighlight({ code }: { code: string }) {
         if (/:$/.test(match)) {
           return `<span style="color:var(--color-primary)">${match}</span>`;
         }
-        return `<span style="color:#93c5fd">${match}</span>`;
+        return `<span style="color:oklch(var(--bc) / 0.84)">${match}</span>`;
       }
       if (/true|false/.test(match)) {
-        return `<span style="color:#fcd34d">${match}</span>`;
+        return `<span style="color:var(--color-success)">${match}</span>`;
       }
       if (/null/.test(match)) {
-        return `<span style="color:#f87171">${match}</span>`;
+        return `<span style="color:var(--color-error)">${match}</span>`;
       }
-      return `<span style="color:#c4b5fd">${match}</span>`;
+      return `<span style="color:var(--color-success)">${match}</span>`;
     }
   );
 
-  return <span dangerouslySetInnerHTML={{ __html: highlighted }} />;
+  return (
+    <span
+      style={{ color: "oklch(var(--bc) / 0.34)" }}
+      dangerouslySetInnerHTML={{ __html: highlighted }}
+    />
+  );
 }
 
 const TYPE_BADGE: Record<string, string> = {

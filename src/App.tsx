@@ -131,6 +131,8 @@ function App() {
                 <ValueEditor
                   keyValue={store.keyValue}
                   onRefreshKeyValue={store.refreshKeyValue}
+                  onUpdateStringValue={store.updateStringValue}
+                  onUpdateJsonValue={store.updateJsonValue}
                   onUpdateHashEntry={store.updateHashEntry}
                   onDeleteHashEntry={store.deleteHashEntry}
                   onUpdateZSetEntry={store.updateZSetEntry}
