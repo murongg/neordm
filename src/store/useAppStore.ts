@@ -5,6 +5,13 @@ import {
   persistConnections,
 } from "../lib/connectionStore";
 import {
+  DEFAULT_APP_SETTINGS,
+  loadAppSettings,
+  subscribeAppSettings,
+  updateAppSettings,
+  type AppSettings,
+} from "../lib/appSettings";
+import {
   deleteRedisHashEntry,
   deleteRedisZSetEntry,
   getRedisErrorMessage,
@@ -19,6 +26,7 @@ import {
   updateRedisStringValue,
   updateRedisZSetEntry,
 } from "../lib/redis";
+import { loadAiSettings } from "../lib/aiSettings";
 import {
   getBuiltinCliOutput,
   getCliCommandName,
@@ -26,6 +34,12 @@ import {
   isBuiltinCliCommand,
   isReadOnlyRedisCommand,
 } from "../lib/redisCli";
+import { requestOpenAIAssistantResponse } from "../lib/openai";
+import {
+  recordAuditEvent,
+  recordCrashReport,
+  recordTelemetryEvent,
+} from "../lib/privacyRuntime";
 import type {
   RedisConnection,
   RedisKey,
@@ -34,9 +48,6 @@ import type {
   ChatMessage,
   CliEntry,
 } from "../types";
-
-const KEY_SEPARATOR_STORAGE_KEY = "neordm-key-separator";
-const SIDEBAR_COLLAPSED_STORAGE_KEY = "neordm-sidebar-collapsed";
 
 function createCliEntry(
   type: CliEntry["type"],
@@ -52,6 +63,29 @@ function createCliEntry(
   };
 }
 
+function createChatMessage(
+  role: ChatMessage["role"],
+  content: string,
+  command?: string
+): ChatMessage {
+  return {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    role,
+    content,
+    command,
+    timestamp: new Date(),
+  };
+}
+
+function escapeRedisCommandArgument(value: string) {
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
+function parsePositiveInt(value: string, fallback: number) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 export function useAppStore() {
   const { messages } = useI18n();
   const [connections, setConnections] = useState<RedisConnection[]>([]);
@@ -61,26 +95,31 @@ export function useAppStore() {
   const [selectedKey, setSelectedKey] = useState<RedisKey | null>(null);
   const [keyValue, setKeyValue] = useState<KeyValue | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>("");
-  const [keySeparator, setKeySeparator] = useState<string>(() => {
-    const savedValue = localStorage.getItem(KEY_SEPARATOR_STORAGE_KEY);
-    return savedValue === null ? ":" : savedValue;
-  });
+  const [keySeparator, setKeySeparatorState] = useState<string>(
+    DEFAULT_APP_SETTINGS.general.keySeparator
+  );
   const [panelTab, setPanelTab] = useState<PanelTab>("editor");
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => [
+    createChatMessage("assistant", messages.store.greeting),
+  ]);
+  const [isAiResponding, setIsAiResponding] = useState(false);
   const [cliHistory, setCliHistory] = useState<CliEntry[]>([]);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(
     null
   );
-  const [isSidebarCollapsed, setIsSidebarCollapsedState] = useState(() => {
-    const savedValue = localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
-    return savedValue === null ? true : savedValue === "1";
-  });
+  const [isSidebarCollapsed, setIsSidebarCollapsedState] = useState(
+    DEFAULT_APP_SETTINGS.ui.sidebarCollapsed
+  );
+  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_APP_SETTINGS);
   const [isLoadingKeys, setIsLoadingKeys] = useState(false);
   const [hasHydratedConnections, setHasHydratedConnections] = useState(false);
+  const [hasHydratedSettings, setHasHydratedSettings] = useState(false);
 
   const keysRequestRef = useRef(0);
   const keyValueRequestRef = useRef(0);
+  const hasHydratedPreferencesRef = useRef(false);
+  const hasAttemptedAutoConnectRef = useRef(false);
 
   const setIsSidebarCollapsed = useCallback(
     (nextValue: boolean | ((previous: boolean) => boolean)) => {
@@ -88,10 +127,15 @@ export function useAppStore() {
         const resolvedValue =
           typeof nextValue === "function" ? nextValue(previous) : nextValue;
 
-        localStorage.setItem(
-          SIDEBAR_COLLAPSED_STORAGE_KEY,
-          resolvedValue ? "1" : "0"
-        );
+        if (hasHydratedPreferencesRef.current) {
+          void updateAppSettings((current) => ({
+            ...current,
+            ui: {
+              ...current.ui,
+              sidebarCollapsed: resolvedValue,
+            },
+          }));
+        }
 
         return resolvedValue;
       });
@@ -102,6 +146,42 @@ export function useAppStore() {
   const toggleSidebarCollapsed = useCallback(() => {
     setIsSidebarCollapsed((previous) => !previous);
   }, [setIsSidebarCollapsed]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const unsubscribe = subscribeAppSettings((settings) => {
+      if (cancelled) {
+        return;
+      }
+
+      setAppSettings(settings);
+      setKeySeparatorState(settings.general.keySeparator);
+      setIsSidebarCollapsedState(settings.ui.sidebarCollapsed);
+      hasHydratedPreferencesRef.current = true;
+      setHasHydratedSettings(true);
+    });
+
+    void loadAppSettings()
+      .then((settings) => {
+        if (cancelled) {
+          return;
+        }
+
+        setAppSettings(settings);
+        setKeySeparatorState(settings.general.keySeparator);
+        setIsSidebarCollapsedState(settings.ui.sidebarCollapsed);
+        hasHydratedPreferencesRef.current = true;
+        setHasHydratedSettings(true);
+      })
+      .catch((error) => {
+        console.error("Failed to load app settings", error);
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -127,10 +207,12 @@ export function useAppStore() {
   useEffect(() => {
     if (!hasHydratedConnections) return;
 
-    void persistConnections(connections).catch((error) => {
+    void persistConnections(connections, {
+      savePasswords: appSettings.privacy.savePasswords,
+    }).catch((error) => {
       console.error("Failed to persist connections", error);
     });
-  }, [connections, hasHydratedConnections]);
+  }, [appSettings.privacy.savePasswords, connections, hasHydratedConnections]);
 
   const activeConnection =
     connections.find((connection) => connection.id === activeConnectionId) ??
@@ -138,6 +220,26 @@ export function useAppStore() {
   const editingConnection =
     connections.find((connection) => connection.id === editingConnectionId) ??
     null;
+
+  const persistLastConnectionId = useCallback(
+    (nextConnectionId: string) => {
+      if (
+        !hasHydratedPreferencesRef.current ||
+        appSettings.ui.lastConnectionId === nextConnectionId
+      ) {
+        return;
+      }
+
+      void updateAppSettings((current) => ({
+        ...current,
+        ui: {
+          ...current.ui,
+          lastConnectionId: nextConnectionId,
+        },
+      }));
+    },
+    [appSettings.ui.lastConnectionId]
+  );
 
   const updateConnection = useCallback(
     (connectionId: string, updater: (connection: RedisConnection) => RedisConnection) => {
@@ -226,7 +328,13 @@ export function useAppStore() {
       }
 
       try {
-        const nextKeys = await listRedisKeys({ ...connection, db });
+        const nextKeys = await listRedisKeys(
+          { ...connection, db },
+          {
+            maxKeys: parsePositiveInt(appSettings.general.maxKeys, 10_000),
+            scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
+          }
+        );
 
         if (requestId !== keysRequestRef.current) return;
 
@@ -259,7 +367,13 @@ export function useAppStore() {
         }
       }
     },
-    [loadKeyValue, selectedKey, syncConnectionStatus]
+    [
+      appSettings.general.maxKeys,
+      appSettings.general.scanCount,
+      loadKeyValue,
+      selectedKey,
+      syncConnectionStatus,
+    ]
   );
 
   const selectConnection = useCallback(
@@ -279,13 +393,53 @@ export function useAppStore() {
       }
 
       setSelectedDb(connection.db);
+      persistLastConnectionId(connection.id);
 
       try {
         await loadKeys(connection, connection.db);
       } catch {}
     },
-    [connections, loadKeys]
+    [connections, loadKeys, persistLastConnectionId]
   );
+
+  useEffect(() => {
+    if (
+      !hasHydratedConnections ||
+      !hasHydratedSettings ||
+      hasAttemptedAutoConnectRef.current
+    ) {
+      return;
+    }
+
+    hasAttemptedAutoConnectRef.current = true;
+
+    if (!appSettings.general.autoConnect || activeConnectionId || !connections.length) {
+      return;
+    }
+
+    const preferredConnection =
+      connections.find(
+        (connection) => connection.id === appSettings.ui.lastConnectionId
+      ) ?? connections[0];
+
+    void selectConnection(preferredConnection.id).catch(() => {});
+  }, [
+    activeConnectionId,
+    appSettings.general.autoConnect,
+    appSettings.ui.lastConnectionId,
+    connections,
+    hasHydratedConnections,
+    hasHydratedSettings,
+    selectConnection,
+  ]);
+
+  useEffect(() => {
+    if (!hasHydratedSettings || !activeConnectionId) {
+      return;
+    }
+
+    persistLastConnectionId(activeConnectionId);
+  }, [activeConnectionId, hasHydratedSettings, persistLastConnectionId]);
 
   const openNewConnectionModal = useCallback(() => {
     setEditingConnectionId(null);
@@ -324,6 +478,11 @@ export function useAppStore() {
         db: normalizedConnection.db,
         tls: normalizedConnection.tls,
       });
+      void recordTelemetryEvent("connection.save");
+      void recordAuditEvent("connection.save", {
+        connection: normalizedConnection.name,
+        tls: normalizedConnection.tls,
+      });
 
       if (!editingConnectionId) {
         const newConnection: RedisConnection = {
@@ -338,6 +497,7 @@ export function useAppStore() {
         setSearchQuery("");
         setSelectedKey(null);
         setKeyValue(null);
+        persistLastConnectionId(newConnection.id);
 
         void loadKeys(newConnection, newConnection.db).catch(() => {});
         return;
@@ -370,7 +530,13 @@ export function useAppStore() {
         void loadKeys(updatedConnection, updatedConnection.db).catch(() => {});
       }
     },
-    [activeConnectionId, connections, editingConnectionId, loadKeys]
+    [
+      activeConnectionId,
+      connections,
+      editingConnectionId,
+      loadKeys,
+      persistLastConnectionId,
+    ]
   );
 
   const deleteConnection = useCallback(
@@ -386,9 +552,21 @@ export function useAppStore() {
 
       if (!deletedConnection) return;
 
+      if (
+        activeConnectionId !== connectionId &&
+        appSettings.ui.lastConnectionId === connectionId
+      ) {
+        persistLastConnectionId(activeConnectionId || nextConnections[0]?.id || "");
+      }
+
       if (editingConnectionId === connectionId) {
         closeConnectionModal();
       }
+
+      void recordTelemetryEvent("connection.delete");
+      void recordAuditEvent("connection.delete", {
+        connectionId,
+      });
 
       if (activeConnectionId !== connectionId) return;
 
@@ -405,14 +583,23 @@ export function useAppStore() {
         setIsLoadingKeys(false);
         setActiveConnectionId("");
         setSelectedDb(0);
+        persistLastConnectionId("");
         return;
       }
 
       setActiveConnectionId(nextConnection.id);
       setSelectedDb(nextConnection.db);
+      persistLastConnectionId(nextConnection.id);
       void loadKeys(nextConnection, nextConnection.db).catch(() => {});
     },
-    [activeConnectionId, closeConnectionModal, editingConnectionId, loadKeys]
+    [
+      activeConnectionId,
+      appSettings.ui.lastConnectionId,
+      closeConnectionModal,
+      editingConnectionId,
+      loadKeys,
+      persistLastConnectionId,
+    ]
   );
 
   const disconnectConnection = useCallback(
@@ -473,6 +660,48 @@ export function useAppStore() {
       preserveValue: true,
     });
   }, [activeConnection, loadKeyValue, selectedDb, selectedKey]);
+
+  const updateKeyTtl = useCallback(
+    async (key: string, nextTtl: number) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!Number.isInteger(nextTtl) || nextTtl < -1 || nextTtl === 0) {
+        throw new Error("TTL must be -1 or a positive integer");
+      }
+
+      const escapedKey = escapeRedisCommandArgument(key);
+      const command =
+        nextTtl === -1
+          ? `PERSIST ${escapedKey}`
+          : `EXPIRE ${escapedKey} ${nextTtl}`;
+
+      try {
+        await runRedisCommand(
+          { ...activeConnection, db: selectedDb },
+          command
+        );
+      } catch (error) {
+        void recordCrashReport("editor.ttl.update", error);
+        throw error;
+      }
+
+      void recordTelemetryEvent("editor.ttl.update");
+      void recordAuditEvent("editor.ttl.update", {
+        key,
+        ttl: nextTtl,
+      });
+
+      await refreshKeys();
+    },
+    [
+      activeConnection,
+      messages.app.status.notConnected,
+      refreshKeys,
+      selectedDb,
+    ]
+  );
 
   const selectKey = useCallback(
     async (key: RedisKey) => {
@@ -641,6 +870,10 @@ export function useAppStore() {
           value: nextValue,
         }
       );
+      void recordTelemetryEvent("editor.hash.update");
+      void recordAuditEvent("editor.hash.update", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -694,6 +927,10 @@ export function useAppStore() {
         key,
         { value: nextValue }
       );
+      void recordTelemetryEvent("editor.string.save");
+      void recordAuditEvent("editor.string.save", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -739,6 +976,10 @@ export function useAppStore() {
         key,
         { value: nextValue }
       );
+      void recordTelemetryEvent("editor.json.save");
+      void recordAuditEvent("editor.json.save", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -764,6 +1005,34 @@ export function useAppStore() {
     ]
   );
 
+  const deleteKey = useCallback(
+    async (key: string) => {
+      if (!activeConnection) {
+        throw new Error(messages.app.status.notConnected);
+      }
+
+      if (!key.length) {
+        throw new Error("Key name cannot be empty");
+      }
+
+      await runRedisCommand(
+        { ...activeConnection, db: selectedDb },
+        `DEL ${escapeRedisCommandArgument(key)}`
+      );
+      void recordTelemetryEvent("editor.key.delete");
+      void recordAuditEvent("editor.key.delete", {
+        key,
+      });
+      removeKeyFromState(key);
+    },
+    [
+      activeConnection,
+      messages.app.status.notConnected,
+      removeKeyFromState,
+      selectedDb,
+    ]
+  );
+
   const deleteHashEntry = useCallback(
     async (key: string, field: string) => {
       if (!activeConnection) {
@@ -779,6 +1048,10 @@ export function useAppStore() {
         key,
         { field }
       );
+      void recordTelemetryEvent("editor.hash.delete");
+      void recordAuditEvent("editor.hash.delete", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -870,6 +1143,10 @@ export function useAppStore() {
           score: nextScore,
         }
       );
+      void recordTelemetryEvent("editor.zset.update");
+      void recordAuditEvent("editor.zset.update", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -928,6 +1205,10 @@ export function useAppStore() {
         key,
         { member }
       );
+      void recordTelemetryEvent("editor.zset.delete");
+      void recordAuditEvent("editor.zset.delete", {
+        key,
+      });
 
       setKeyValue((previous) => {
         if (
@@ -971,16 +1252,59 @@ export function useAppStore() {
     ]
   );
 
-  const sendChatMessage = useCallback((content: string) => {
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: "user",
-      content,
-      timestamp: new Date(),
-    };
+  const sendChatMessage = useCallback(
+    async (content: string) => {
+      const trimmed = content.trim();
 
-    setChatMessages((previous) => [...previous, userMessage]);
-  }, []);
+      if (!trimmed || isAiResponding) {
+        return;
+      }
+
+      const userMessage = createChatMessage("user", trimmed);
+      const nextChatMessages = [...chatMessages, userMessage];
+
+      setChatMessages(nextChatMessages);
+      setIsAiResponding(true);
+
+      try {
+        const assistantResponse = await requestOpenAIAssistantResponse({
+          settings: await loadAiSettings(),
+          chatMessages: nextChatMessages,
+          activeConnection,
+          selectedDb,
+          selectedKey,
+          keyValue,
+          keysCount: keys.length,
+        });
+
+        setChatMessages((previous) => [
+          ...previous,
+          createChatMessage(
+            "assistant",
+            assistantResponse.content,
+            assistantResponse.command
+          ),
+        ]);
+      } catch (error) {
+        void recordCrashReport("ai.sendChatMessage", error);
+        setChatMessages((previous) => [
+          ...previous,
+          createChatMessage("assistant", getRedisErrorMessage(error)),
+        ]);
+      } finally {
+        setIsAiResponding(false);
+      }
+    },
+    [
+      activeConnection,
+      chatMessages,
+      isAiResponding,
+      keyValue,
+      keys.length,
+      selectedDb,
+      selectedKey,
+    ]
+  );
 
   const clearCliHistory = useCallback(() => {
     setCliHistory([]);
@@ -992,70 +1316,113 @@ export function useAppStore() {
 
       if (!trimmed) return;
 
-      const commandName = getCliCommandName(trimmed);
+      const historyLimit = parsePositiveInt(appSettings.cli.historySize, 500);
+      const timeoutMs = parsePositiveInt(appSettings.cli.timeout, 30) * 1000;
+      const pipelineEnabled = appSettings.cli.pipelineMode;
+      const commands =
+        pipelineEnabled && trimmed.includes(";")
+          ? trimmed
+              .split(";")
+              .map((part) => part.trim())
+              .filter(Boolean)
+          : [trimmed];
+
       const promptLabel = getCliPromptLabel(activeConnection, selectedDb);
+      const appendCliEntry = (entry: CliEntry) => {
+        setCliHistory((previous) => [...previous, entry].slice(-historyLimit));
+      };
 
-      if (commandName === "CLEAR") {
-        clearCliHistory();
-        return;
-      }
+      const runWithTimeout = async <T,>(promise: Promise<T>) => {
+        if (timeoutMs <= 0) {
+          return promise;
+        }
 
-      setCliHistory((previous) => [
-        ...previous,
-        createCliEntry("command", trimmed, promptLabel),
-      ]);
+        return new Promise<T>((resolve, reject) => {
+          const timer = window.setTimeout(() => {
+            reject(new Error(`CLI command timed out after ${timeoutMs / 1000}s`));
+          }, timeoutMs);
 
-      if (isBuiltinCliCommand(commandName)) {
-        setCliHistory((previous) => [
-          ...previous,
-          createCliEntry("output", getBuiltinCliOutput(commandName)),
-        ]);
-        return;
-      }
+          void promise.then(
+            (value) => {
+              window.clearTimeout(timer);
+              resolve(value);
+            },
+            (error) => {
+              window.clearTimeout(timer);
+              reject(error);
+            }
+          );
+        });
+      };
 
-      if (!activeConnection) {
-        setCliHistory((previous) => [
-          ...previous,
-          createCliEntry("error", messages.app.status.notConnected),
-        ]);
-        return;
-      }
+      for (const currentCommand of commands) {
+        const commandName = getCliCommandName(currentCommand);
+        void recordTelemetryEvent("cli.command");
+        void recordAuditEvent("cli.command", {
+          command: commandName,
+          connection: activeConnection?.name ?? null,
+          db: selectedDb,
+        });
 
-      try {
-        const output = await runRedisCommand(
-          { ...activeConnection, db: selectedDb },
-          trimmed
-        );
+        if (commandName === "CLEAR") {
+          clearCliHistory();
+          continue;
+        }
 
-        setCliHistory((previous) => [
-          ...previous,
-          createCliEntry("output", output),
-        ]);
+        appendCliEntry(createCliEntry("command", currentCommand, promptLabel));
 
-        if (commandName === "SELECT") {
-          const nextDb = Number(trimmed.trim().split(/\s+/)[1]);
+        if (isBuiltinCliCommand(commandName)) {
+          appendCliEntry(
+            createCliEntry("output", getBuiltinCliOutput(commandName))
+          );
+          continue;
+        }
 
-          if (Number.isInteger(nextDb) && nextDb >= 0) {
-            void selectDb(nextDb);
-            return;
+        if (!activeConnection) {
+          appendCliEntry(
+            createCliEntry("error", messages.app.status.notConnected)
+          );
+          return;
+        }
+
+        try {
+          const output = await runWithTimeout(
+            runRedisCommand(
+              { ...activeConnection, db: selectedDb },
+              currentCommand
+            )
+          );
+
+          appendCliEntry(createCliEntry("output", output));
+
+          if (commandName === "SELECT") {
+            const nextDb = Number(currentCommand.trim().split(/\s+/)[1]);
+
+            if (Number.isInteger(nextDb) && nextDb >= 0) {
+              void selectDb(nextDb);
+              continue;
+            }
           }
-        }
 
-        syncConnectionStatus(activeConnection.id, "connected", selectedDb);
+          syncConnectionStatus(activeConnection.id, "connected", selectedDb);
 
-        if (!isReadOnlyRedisCommand(commandName)) {
-          void refreshKeys();
+          if (!isReadOnlyRedisCommand(commandName)) {
+            void refreshKeys();
+          }
+        } catch (error) {
+          void recordCrashReport(`cli.${commandName.toLowerCase()}`, error);
+          appendCliEntry(
+            createCliEntry("error", getRedisErrorMessage(error))
+          );
+          syncConnectionStatus(activeConnection.id, "error", selectedDb);
         }
-      } catch (error) {
-        setCliHistory((previous) => [
-          ...previous,
-          createCliEntry("error", getRedisErrorMessage(error)),
-        ]);
-        syncConnectionStatus(activeConnection.id, "error", selectedDb);
       }
     },
     [
       activeConnection,
+      appSettings.cli.historySize,
+      appSettings.cli.pipelineMode,
+      appSettings.cli.timeout,
       clearCliHistory,
       messages.app.status.notConnected,
       refreshKeys,
@@ -1069,6 +1436,7 @@ export function useAppStore() {
     connections,
     activeConnectionId,
     activeConnection,
+    appSettings,
     editingConnection,
     selectConnection,
     selectedDb,
@@ -1082,6 +1450,8 @@ export function useAppStore() {
     renameKey,
     renameGroup,
     updateStringValue,
+    deleteKey,
+    updateKeyTtl,
     updateJsonValue,
     updateHashEntry,
     deleteHashEntry,
@@ -1092,12 +1462,22 @@ export function useAppStore() {
     setSearchQuery,
     keySeparator,
     setKeySeparator: (value: string) => {
-      setKeySeparator(value);
-      localStorage.setItem(KEY_SEPARATOR_STORAGE_KEY, value);
+      setKeySeparatorState(value);
+
+      if (hasHydratedPreferencesRef.current) {
+        void updateAppSettings((current) => ({
+          ...current,
+          general: {
+            ...current.general,
+            keySeparator: value,
+          },
+        }));
+      }
     },
     panelTab,
     setPanelTab,
     chatMessages,
+    isAiResponding,
     sendChatMessage,
     cliHistory,
     clearCliHistory,

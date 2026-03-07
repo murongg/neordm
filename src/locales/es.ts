@@ -51,7 +51,7 @@ export const es: Messages = {
   },
   ai: {
     title: "Agente IA de Redis",
-    subtitle: "Impulsado por Claude · Con contexto",
+    subtitle: "Impulsado por OpenAI · Con contexto",
     online: "En línea",
     quickActions: "Acciones rápidas",
     placeholder: "Pregunta sobre tus datos de Redis...",
@@ -167,8 +167,10 @@ export const es: Messages = {
     },
     ai: {
       apiConfiguration: "Configuración de API",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "Modelo",
       maxTokens: "Máx. tokens",
       behavior: "Comportamiento",
@@ -178,6 +180,10 @@ export const es: Messages = {
       includeKeyContext: "Incluir contexto de la clave",
       includeKeyContextDescription:
         "Envía la información de la clave seleccionada a la IA",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "Guardar API Key",
     },
     cli: {

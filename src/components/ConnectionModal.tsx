@@ -8,6 +8,10 @@ import {
   getRedisErrorMessage,
   testRedisConnection,
 } from "../lib/redis";
+import {
+  recordCrashReport,
+  recordTelemetryEvent,
+} from "../lib/privacyRuntime";
 
 interface ConnectionModalProps {
   onClose: () => void;
@@ -172,6 +176,7 @@ export function ConnectionModal({
     setIsTesting(true);
     setTestStatus(null);
     setTestMessage("");
+    void recordTelemetryEvent("connection.test");
 
     try {
       await testRedisConnection({
@@ -183,6 +188,7 @@ export function ConnectionModal({
       });
       setTestStatus("success");
     } catch (error) {
+      void recordCrashReport("connection.test", error);
       setTestStatus("error");
       setTestMessage(getRedisErrorMessage(error));
     } finally {
@@ -209,6 +215,7 @@ export function ConnectionModal({
       });
       requestClose();
     } catch (error) {
+      void recordCrashReport("connection.save", error);
       setTestStatus("error");
       setTestMessage(getRedisErrorMessage(error));
     } finally {

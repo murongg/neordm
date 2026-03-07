@@ -33,6 +33,8 @@ interface KeyBrowserProps {
   isRefreshing: boolean;
   onRefresh: () => void;
   keySeparator: string;
+  showKeyType: boolean;
+  showTtl: boolean;
   keys: RedisKey[];
   selectedKey: RedisKey | null;
   onSelectKey: (key: RedisKey) => void;
@@ -337,6 +339,8 @@ export function KeyBrowser({
   isRefreshing,
   onRefresh,
   keySeparator,
+  showKeyType,
+  showTtl,
   keys,
   selectedKey,
   onSelectKey,
@@ -1041,6 +1045,8 @@ export function KeyBrowser({
                 onCancelRename={cancelRename}
                 onSubmitRename={submitRename}
                 onSubmitGroupRename={submitGroupRename}
+                showKeyType={showKeyType}
+                showTtl={showTtl}
                 typeConfig={typeConfig}
               />
             ))}
@@ -1072,6 +1078,8 @@ function KeyTreeItem({
   onCancelRename,
   onSubmitRename,
   onSubmitGroupRename,
+  showKeyType,
+  showTtl,
   typeConfig,
 }: {
   node: KeyTreeNode;
@@ -1094,6 +1102,8 @@ function KeyTreeItem({
   onCancelRename: () => void;
   onSubmitRename: (key: RedisKey) => Promise<void>;
   onSubmitGroupRename: (group: KeyTreeGroupNode) => Promise<void>;
+  showKeyType: boolean;
+  showTtl: boolean;
   typeConfig: typeof TYPE_CONFIG;
 }) {
   if (node.kind === "group") {
@@ -1147,6 +1157,8 @@ function KeyTreeItem({
                 onCancelRename={onCancelRename}
                 onSubmitRename={onSubmitRename}
                 onSubmitGroupRename={onSubmitGroupRename}
+                showKeyType={showKeyType}
+                showTtl={showTtl}
                 typeConfig={typeConfig}
               />
             ))}
@@ -1174,6 +1186,8 @@ function KeyTreeItem({
       onCancelRename={onCancelRename}
       onSubmitRename={() => onSubmitRename(node.redisKey)}
       onClick={() => onSelectKey(node.redisKey)}
+      showKeyType={showKeyType}
+      showTtl={showTtl}
       typeConfig={typeConfig}
     />
   );
@@ -1344,6 +1358,8 @@ function KeyRow({
   onCancelRename,
   onSubmitRename,
   onClick,
+  showKeyType,
+  showTtl,
   typeConfig,
 }: {
   motionId: string;
@@ -1362,23 +1378,38 @@ function KeyRow({
   onCancelRename: () => void;
   onSubmitRename: () => Promise<void>;
   onClick: () => void;
+  showKeyType: boolean;
+  showTtl: boolean;
   typeConfig: typeof TYPE_CONFIG;
 }) {
   const cfg = typeConfig[redisKey.type];
   const ttl = formatTTL(redisKey.ttl);
   const isRowRenaming = isEditing && isRenaming;
-  const rightSlot = (
-    <span className="flex h-5 w-8 shrink-0 items-center justify-end text-right text-[9px] font-mono tabular-nums">
+  const rightSlot = isRowRenaming || showKeyType || (showTtl && ttl) ? (
+    <span className="flex min-w-0 shrink-0 items-center justify-end gap-1.5">
       {isRowRenaming ? (
         <LoaderCircle
           size={11}
-          className="ml-auto animate-spin text-base-content/40"
+          className="animate-spin text-base-content/40"
         />
-      ) : ttl ? (
-        <span className="text-warning/70">{ttl}</span>
-      ) : null}
+      ) : (
+        <>
+          {showKeyType ? (
+            <span
+              className={`badge badge-xs border-0 font-mono lowercase ${cfg.badge}`}
+            >
+              {cfg.label}
+            </span>
+          ) : null}
+          {showTtl && ttl ? (
+            <span className="text-right text-[9px] font-mono tabular-nums text-warning/70">
+              {ttl}
+            </span>
+          ) : null}
+        </>
+      )}
     </span>
-  );
+  ) : null;
 
   if (isEditing) {
     return (

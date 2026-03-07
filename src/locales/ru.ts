@@ -47,7 +47,7 @@ export const ru: Messages = {
   },
   ai: {
     title: "Redis AI-агент",
-    subtitle: "На базе Claude · С учётом контекста",
+    subtitle: "На базе OpenAI · С учётом контекста",
     online: "Онлайн",
     quickActions: "Быстрые действия",
     placeholder: "Спросите о ваших данных Redis...",
@@ -160,8 +160,10 @@ export const ru: Messages = {
     },
     ai: {
       apiConfiguration: "Конфигурация API",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "Модель",
       maxTokens: "Макс. токенов",
       behavior: "Поведение",
@@ -169,6 +171,10 @@ export const ru: Messages = {
       autoSuggestDescription: "Генерировать Redis-команды из естественного языка",
       includeKeyContext: "Включать контекст ключа",
       includeKeyContextDescription: "Отправлять информацию о выбранном ключе в AI",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "Сохранить API Key",
     },
     cli: {

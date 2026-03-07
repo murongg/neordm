@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { ThemeMode } from "../hooks/useTheme";
 import {
   X,
@@ -12,10 +12,28 @@ import {
   Check,
   Eye,
   EyeOff,
+  LoaderCircle,
   RotateCcw,
 } from "lucide-react";
 import { useI18n, type Locale } from "../i18n";
 import { useModalTransition } from "../hooks/useModalTransition";
+import {
+  DEFAULT_AI_SETTINGS,
+  getAiProviderConfig,
+  loadAiSettings,
+  persistAiSettings,
+  type AiProviderId,
+} from "../lib/aiSettings";
+import {
+  DEFAULT_APP_SETTINGS,
+  loadAppSettings,
+  subscribeAppSettings,
+  updateAppSettings,
+  type AppSettings,
+} from "../lib/appSettings";
+import { testAiProviderConnection } from "../lib/openai";
+import { clearPrivacyRuntimeData } from "../lib/privacyRuntime";
+import { useToast } from "./ToastProvider";
 
 interface SettingsPanelProps {
   onClose: () => void;
@@ -23,6 +41,7 @@ interface SettingsPanelProps {
   onThemeChange: (mode: ThemeMode) => void;
   keySeparator: string;
   onKeySeparatorChange: (separator: string) => void;
+  onClearCliHistory: () => void;
 }
 
 type SettingsCategory =
@@ -53,6 +72,7 @@ export function SettingsPanel({
   onThemeChange,
   keySeparator,
   onKeySeparatorChange,
+  onClearCliHistory,
 }: SettingsPanelProps) {
   const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
@@ -144,7 +164,7 @@ export function SettingsPanel({
             {category === "appearance" && <AppearanceSettings themeMode={themeMode} onThemeChange={onThemeChange} />}
             {category === "editor" && <EditorSettings />}
             {category === "ai" && <AISettings />}
-            {category === "cli" && <CLISettings />}
+            {category === "cli" && <CLISettings onClearHistory={onClearCliHistory} />}
             {category === "shortcuts" && <ShortcutsSettings />}
             {category === "privacy" && <PrivacySettings />}
           </div>
@@ -236,6 +256,68 @@ function SelectInput({
   );
 }
 
+function useAppSettingsSection<K extends keyof AppSettings>(sectionKey: K) {
+  const [section, setSection] = useState<AppSettings[K]>(
+    DEFAULT_APP_SETTINGS[sectionKey]
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = subscribeAppSettings((settings) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setSection(settings[sectionKey]);
+    });
+
+    void loadAppSettings().then((settings) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setSection(settings[sectionKey]);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [sectionKey]);
+
+  const setPersistedSection = useCallback(
+    (
+      nextValue:
+        | AppSettings[K]
+        | ((previous: AppSettings[K]) => AppSettings[K])
+    ) => {
+      setSection((previous) => {
+        const resolvedValue =
+          typeof nextValue === "function"
+            ? (nextValue as (previous: AppSettings[K]) => AppSettings[K])(
+                previous
+              )
+            : nextValue;
+
+        void updateAppSettings((current) => ({
+          ...current,
+          [sectionKey]:
+            typeof nextValue === "function"
+              ? (nextValue as (previous: AppSettings[K]) => AppSettings[K])(
+                  current[sectionKey]
+                )
+              : nextValue,
+        }));
+
+        return resolvedValue;
+      });
+    },
+    [sectionKey]
+  );
+
+  return [section, setPersistedSection] as const;
+}
+
 // ─── Category panels ─────────────────────────────────────────────────────────
 
 function GeneralSettings({
@@ -247,10 +329,7 @@ function GeneralSettings({
 }) {
   const { locale, localeOptions, setLocale, messages } = useI18n();
   const general = messages.settings.general;
-  const [autoConnect, setAutoConnect] = useState(true);
-  const [confirmDelete, setConfirmDelete] = useState(true);
-  const [maxKeys, setMaxKeys] = useState("10000");
-  const [scanCount, setScanCount] = useState("200");
+  const [generalSettings, setGeneralSettings] = useAppSettingsSection("general");
 
   return (
     <>
@@ -259,12 +338,27 @@ function GeneralSettings({
           label={general.autoConnect}
           description={general.autoConnectDescription}
         >
-          <Toggle checked={autoConnect} onChange={setAutoConnect} />
+          <Toggle
+            checked={generalSettings.autoConnect}
+            onChange={(nextValue) =>
+              setGeneralSettings((previous) => ({
+                ...previous,
+                autoConnect: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={general.language}>
           <SelectInput
             value={locale}
-            onChange={(value) => setLocale(value as Locale)}
+            onChange={(value) => {
+              const nextLocale = value as Locale;
+              void setLocale(nextLocale);
+              setGeneralSettings((previous) => ({
+                ...previous,
+                locale: nextLocale,
+              }));
+            }}
             options={localeOptions}
           />
         </Row>
@@ -278,15 +372,27 @@ function GeneralSettings({
           <input
             type="text"
             value={keySeparator}
-            onChange={(e) => onKeySeparatorChange(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              onKeySeparatorChange(nextValue);
+              setGeneralSettings((previous) => ({
+                ...previous,
+                keySeparator: nextValue,
+              }));
+            }}
             className="input input-xs w-16 bg-base-300 border-base-content/10 font-mono text-center user-select-text"
           />
         </Row>
         <Row label={general.maxKeys} description={general.maxKeysDescription}>
           <input
             type="number"
-            value={maxKeys}
-            onChange={(e) => setMaxKeys(e.target.value)}
+            value={generalSettings.maxKeys}
+            onChange={(e) =>
+              setGeneralSettings((previous) => ({
+                ...previous,
+                maxKeys: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
@@ -296,8 +402,13 @@ function GeneralSettings({
         >
           <input
             type="number"
-            value={scanCount}
-            onChange={(e) => setScanCount(e.target.value)}
+            value={generalSettings.scanCount}
+            onChange={(e) =>
+              setGeneralSettings((previous) => ({
+                ...previous,
+                scanCount: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
@@ -308,7 +419,15 @@ function GeneralSettings({
           label={general.confirmDelete}
           description={general.confirmDeleteDescription}
         >
-          <Toggle checked={confirmDelete} onChange={setConfirmDelete} />
+          <Toggle
+            checked={generalSettings.confirmDelete}
+            onChange={(nextValue) =>
+              setGeneralSettings((previous) => ({
+                ...previous,
+                confirmDelete: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
     </>
@@ -432,17 +551,23 @@ function AppearanceSettings({
 }) {
   const { messages } = useI18n();
   const appearance = messages.settings.appearance;
-  const [fontSize, setFontSize] = useState("13");
-  const [compactMode, setCompactMode] = useState(false);
-  const [showKeyType, setShowKeyType] = useState(true);
-  const [showTTL, setShowTTL] = useState(true);
-  const [animationsEnabled, setAnimationsEnabled] = useState(true);
+  const [appearanceSettings, setAppearanceSettings] =
+    useAppSettingsSection("appearance");
 
   return (
     <>
       <Section title={appearance.theme}>
         <div className="px-3 py-2">
-          <ThemePicker value={themeMode} onChange={onThemeChange} />
+          <ThemePicker
+            value={themeMode}
+            onChange={(nextMode) => {
+              onThemeChange(nextMode);
+              setAppearanceSettings((previous) => ({
+                ...previous,
+                themeMode: nextMode,
+              }));
+            }}
+          />
         </div>
       </Section>
 
@@ -453,12 +578,17 @@ function AppearanceSettings({
               type="range"
               min="11"
               max="16"
-              value={fontSize}
-              onChange={(e) => setFontSize(e.target.value)}
+              value={appearanceSettings.fontSize}
+              onChange={(e) =>
+                setAppearanceSettings((previous) => ({
+                  ...previous,
+                  fontSize: e.target.value,
+                }))
+              }
               className="range range-xs range-success w-24 cursor-pointer"
             />
             <span className="text-xs font-mono text-base-content/50 w-6">
-              {fontSize}
+              {appearanceSettings.fontSize}
             </span>
           </div>
         </Row>
@@ -469,16 +599,48 @@ function AppearanceSettings({
           label={appearance.compactMode}
           description={appearance.compactModeDescription}
         >
-          <Toggle checked={compactMode} onChange={setCompactMode} />
+          <Toggle
+            checked={appearanceSettings.compactMode}
+            onChange={(nextValue) =>
+              setAppearanceSettings((previous) => ({
+                ...previous,
+                compactMode: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={appearance.showKeyType}>
-          <Toggle checked={showKeyType} onChange={setShowKeyType} />
+          <Toggle
+            checked={appearanceSettings.showKeyType}
+            onChange={(nextValue) =>
+              setAppearanceSettings((previous) => ({
+                ...previous,
+                showKeyType: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={appearance.showTtl}>
-          <Toggle checked={showTTL} onChange={setShowTTL} />
+          <Toggle
+            checked={appearanceSettings.showTtl}
+            onChange={(nextValue) =>
+              setAppearanceSettings((previous) => ({
+                ...previous,
+                showTtl: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={appearance.enableAnimations}>
-          <Toggle checked={animationsEnabled} onChange={setAnimationsEnabled} />
+          <Toggle
+            checked={appearanceSettings.animationsEnabled}
+            onChange={(nextValue) =>
+              setAppearanceSettings((previous) => ({
+                ...previous,
+                animationsEnabled: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
     </>
@@ -488,12 +650,7 @@ function AppearanceSettings({
 function EditorSettings() {
   const { messages } = useI18n();
   const editor = messages.settings.editor;
-  const [autoFormat, setAutoFormat] = useState(true);
-  const [wordWrap, setWordWrap] = useState(true);
-  const [syntaxHighlight, setSyntaxHighlight] = useState(true);
-  const [maxValueSize, setMaxValueSize] = useState("1");
-  const [defaultTTL, setDefaultTTL] = useState("-1");
-  const [hashDisplayMode, setHashDisplayMode] = useState("table");
+  const [editorSettings, setEditorSettings] = useAppSettingsSection("editor");
 
   return (
     <>
@@ -502,13 +659,37 @@ function EditorSettings() {
           label={editor.autoFormatJson}
           description={editor.autoFormatJsonDescription}
         >
-          <Toggle checked={autoFormat} onChange={setAutoFormat} />
+          <Toggle
+            checked={editorSettings.autoFormatJson}
+            onChange={(nextValue) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                autoFormatJson: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={editor.syntaxHighlighting}>
-          <Toggle checked={syntaxHighlight} onChange={setSyntaxHighlight} />
+          <Toggle
+            checked={editorSettings.syntaxHighlighting}
+            onChange={(nextValue) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                syntaxHighlighting: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={editor.wordWrap}>
-          <Toggle checked={wordWrap} onChange={setWordWrap} />
+          <Toggle
+            checked={editorSettings.wordWrap}
+            onChange={(nextValue) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                wordWrap: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row
           label={editor.maxValueSize}
@@ -516,11 +697,16 @@ function EditorSettings() {
         >
           <input
             type="number"
-            value={maxValueSize}
+            value={editorSettings.maxValueSize}
             min="0.1"
             max="10"
             step="0.1"
-            onChange={(e) => setMaxValueSize(e.target.value)}
+            onChange={(e) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                maxValueSize: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
@@ -530,15 +716,25 @@ function EditorSettings() {
         <Row label={editor.defaultTtl} description={editor.defaultTtlDescription}>
           <input
             type="number"
-            value={defaultTTL}
-            onChange={(e) => setDefaultTTL(e.target.value)}
+            value={editorSettings.defaultTtl}
+            onChange={(e) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                defaultTtl: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
         <Row label={editor.hashDisplayMode}>
           <SelectInput
-            value={hashDisplayMode}
-            onChange={setHashDisplayMode}
+            value={editorSettings.hashDisplayMode}
+            onChange={(value) =>
+              setEditorSettings((previous) => ({
+                ...previous,
+                hashDisplayMode: value as AppSettings["editor"]["hashDisplayMode"],
+              }))
+            }
             options={[
               { value: "table", label: editor.hashDisplayModes.table },
               { value: "json", label: editor.hashDisplayModes.json },
@@ -552,84 +748,263 @@ function EditorSettings() {
 
 function AISettings() {
   const { messages } = useI18n();
+  const { showToast } = useToast();
   const ai = messages.settings.ai;
-  const [apiKey, setApiKey] = useState("");
+  const [settings, setSettings] = useState(DEFAULT_AI_SETTINGS);
+  const [selectedProviderId, setSelectedProviderId] = useState<AiProviderId>(
+    DEFAULT_AI_SETTINGS.activeProviderId
+  );
   const [showKey, setShowKey] = useState(false);
-  const [model, setModel] = useState("claude-sonnet-4-6");
-  const [autoSuggest, setAutoSuggest] = useState(true);
-  const [contextKeys, setContextKeys] = useState(true);
-  const [maxTokens, setMaxTokens] = useState("2048");
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void loadAiSettings().then((nextSettings) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setSettings(nextSettings);
+      setSelectedProviderId(nextSettings.activeProviderId);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const selectedProviderConfig = getAiProviderConfig(settings, selectedProviderId);
+  const selectedProviderMeta =
+    AI_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ??
+    AI_PROVIDER_OPTIONS[0];
+
+  const updateSelectedProviderConfig = (patch: Partial<typeof selectedProviderConfig>) => {
+    setSettings((previous) => ({
+      ...previous,
+      providers: {
+        ...previous.providers,
+        [selectedProviderId]: {
+          ...previous.providers[selectedProviderId],
+          ...patch,
+        },
+      },
+    }));
+  };
+
+  const handleSave = async () => {
+    await persistAiSettings(settings);
+
+    showToast({
+      message: ai.saveApiKey,
+      tone: "success",
+      duration: 1600,
+    });
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+
+    try {
+      await testAiProviderConnection(selectedProviderId, selectedProviderConfig);
+      showToast({
+        message: `${selectedProviderMeta.name} ${ai.enabled}`,
+        tone: "success",
+        duration: 1800,
+      });
+    } catch (error) {
+      showToast({
+        message: error instanceof Error ? error.message : String(error),
+        tone: "error",
+        duration: 2500,
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  };
 
   return (
     <>
       <Section title={ai.apiConfiguration}>
-        <Row label={ai.apiKey}>
-          <div className="flex items-center gap-1.5">
+        <Row label={ai.providerList} description={selectedProviderMeta.name}>
+          <SelectInput
+            value={selectedProviderId}
+            onChange={(value) => {
+              const providerId = value as AiProviderId;
+              setSelectedProviderId(providerId);
+              setSettings((previous) => ({
+                ...previous,
+                activeProviderId: providerId,
+              }));
+            }}
+            options={AI_PROVIDER_OPTIONS.map((provider) => ({
+              value: provider.id,
+              label: provider.name,
+            }))}
+          />
+        </Row>
+
+        <SettingsField label="API Key">
+          <div className="flex items-center gap-2">
             <input
               type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={selectedProviderConfig.apiKey}
+              onChange={(e) =>
+                updateSelectedProviderConfig({ apiKey: e.target.value })
+              }
               placeholder={ai.apiKeyPlaceholder}
-              className="input input-xs w-48 bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
+              className="input input-xs h-8 min-h-8 flex-1 bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
             />
             <button
-              onClick={() => setShowKey((v) => !v)}
-              className="btn btn-ghost btn-xs cursor-pointer"
+              type="button"
+              onClick={() => setShowKey((previous) => !previous)}
+              className="btn btn-ghost btn-xs btn-square h-8 min-h-8 w-8 cursor-pointer"
             >
-              {showKey ? <EyeOff size={11} /> : <Eye size={11} />}
+              {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
-        </Row>
-        <Row label={ai.model}>
-          <SelectInput
-            value={model}
-            onChange={setModel}
-            options={[
-              { value: "claude-opus-4-6", label: "Claude Opus 4.6" },
-              { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
-              { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
-            ]}
-          />
-        </Row>
-        <Row label={ai.maxTokens}>
+        </SettingsField>
+
+        <SettingsField label={ai.baseUrl}>
           <input
-            type="number"
-            value={maxTokens}
-            onChange={(e) => setMaxTokens(e.target.value)}
-            className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
+            type="url"
+            value={selectedProviderConfig.baseUrl}
+            onChange={(e) =>
+              updateSelectedProviderConfig({ baseUrl: e.target.value })
+            }
+            placeholder="https://api.openai.com/v1"
+            className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
           />
-        </Row>
+        </SettingsField>
+
+        <div className="grid gap-1 md:grid-cols-[minmax(0,1fr)_140px]">
+          <SettingsField label={ai.model}>
+            <input
+              value={selectedProviderConfig.model}
+              onChange={(e) =>
+                updateSelectedProviderConfig({ model: e.target.value })
+              }
+              placeholder="gpt-4.1-mini"
+              className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
+            />
+          </SettingsField>
+
+          <SettingsField label={ai.maxTokens}>
+            <input
+              type="number"
+              min="1"
+              value={settings.maxTokens}
+              onChange={(e) =>
+                setSettings((previous) => ({
+                  ...previous,
+                  maxTokens: Math.max(1, Number(e.target.value) || 1),
+                }))
+              }
+              className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
+            />
+          </SettingsField>
+        </div>
+
+        <div className="flex items-center justify-end gap-1.5 px-3 pt-2">
+          <button
+            type="button"
+            onClick={handleTestConnection}
+            disabled={isTestingConnection}
+            className="btn btn-outline btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
+          >
+            {isTestingConnection ? (
+              <>
+                <LoaderCircle size={12} className="animate-spin" />
+                {ai.testingConnection}
+              </>
+            ) : (
+              ai.testConnection
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            className="btn btn-success btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
+          >
+            <Check size={12} /> {ai.saveApiKey}
+          </button>
+        </div>
       </Section>
 
       <Section title={ai.behavior}>
         <Row label={ai.autoSuggest} description={ai.autoSuggestDescription}>
-          <Toggle checked={autoSuggest} onChange={setAutoSuggest} />
+          <Toggle
+            checked={settings.autoSuggest}
+            onChange={(nextValue) =>
+              setSettings((previous) => ({
+                ...previous,
+                autoSuggest: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row
           label={ai.includeKeyContext}
           description={ai.includeKeyContextDescription}
         >
-          <Toggle checked={contextKeys} onChange={setContextKeys} />
+          <Toggle
+            checked={settings.includeKeyContext}
+            onChange={(nextValue) =>
+              setSettings((previous) => ({
+                ...previous,
+                includeKeyContext: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
-
-      <div className="mt-2">
-        <button className="btn btn-success btn-sm w-full gap-2 cursor-pointer font-mono">
-          <Check size={13} /> {ai.saveApiKey}
-        </button>
-      </div>
     </>
   );
 }
 
-function CLISettings() {
+const AI_PROVIDER_OPTIONS: Array<{
+  id: AiProviderId;
+  name: string;
+  monogram: string;
+  badgeClass: string;
+}> = [
+  { id: "openai", name: "OpenAI", monogram: "◎", badgeClass: "bg-emerald-500/15 text-emerald-500" },
+  { id: "anthropic", name: "Anthropic", monogram: "AI", badgeClass: "bg-orange-500/15 text-orange-500" },
+  { id: "google", name: "Google", monogram: "✦", badgeClass: "bg-blue-500/15 text-blue-500" },
+  { id: "xai", name: "xAI Grok", monogram: "𝕏", badgeClass: "bg-slate-500/15 text-slate-500" },
+  { id: "azure-openai", name: "Azure OpenAI", monogram: "A", badgeClass: "bg-sky-500/15 text-sky-500" },
+  { id: "mistral", name: "Mistral", monogram: "M", badgeClass: "bg-amber-500/15 text-amber-500" },
+  { id: "groq", name: "Groq", monogram: "G", badgeClass: "bg-rose-500/15 text-rose-500" },
+  { id: "deepseek", name: "DeepSeek", monogram: "D", badgeClass: "bg-indigo-500/15 text-indigo-500" },
+  { id: "together", name: "Together.ai", monogram: "T", badgeClass: "bg-violet-500/15 text-violet-500" },
+];
+
+function SettingsField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-2 rounded-xl px-3 py-2.5 transition-colors duration-150 hover:bg-base-300/50">
+      <span className="text-xs font-mono text-base-content/80">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+function CLISettings({
+  onClearHistory,
+}: {
+  onClearHistory: () => void;
+}) {
   const { messages } = useI18n();
+  const { showToast } = useToast();
   const cli = messages.settings.cli;
-  const [historySize, setHistorySize] = useState("500");
-  const [timeout, setTimeout] = useState("30");
-  const [showTimestamps, setShowTimestamps] = useState(false);
-  const [syntaxHighlight, setSyntaxHighlight] = useState(true);
-  const [pipelineMode, setPipelineMode] = useState(false);
+  const [cliSettings, setCliSettings] = useAppSettingsSection("cli");
 
   return (
     <>
@@ -637,16 +1012,37 @@ function CLISettings() {
         <Row label={cli.maxHistoryEntries}>
           <input
             type="number"
-            value={historySize}
-            onChange={(e) => setHistorySize(e.target.value)}
+            value={cliSettings.historySize}
+            onChange={(e) =>
+              setCliSettings((previous) => ({
+                ...previous,
+                historySize: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
         <Row label={cli.showTimestamps}>
-          <Toggle checked={showTimestamps} onChange={setShowTimestamps} />
+          <Toggle
+            checked={cliSettings.showTimestamps}
+            onChange={(nextValue) =>
+              setCliSettings((previous) => ({
+                ...previous,
+                showTimestamps: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row label={cli.syntaxHighlighting}>
-          <Toggle checked={syntaxHighlight} onChange={setSyntaxHighlight} />
+          <Toggle
+            checked={cliSettings.syntaxHighlighting}
+            onChange={(nextValue) =>
+              setCliSettings((previous) => ({
+                ...previous,
+                syntaxHighlighting: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
 
@@ -654,19 +1050,41 @@ function CLISettings() {
         <Row label={cli.commandTimeout}>
           <input
             type="number"
-            value={timeout}
-            onChange={(e) => setTimeout(e.target.value)}
+            value={cliSettings.timeout}
+            onChange={(e) =>
+              setCliSettings((previous) => ({
+                ...previous,
+                timeout: e.target.value,
+              }))
+            }
             className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
         <Row label={cli.pipelineMode} description={cli.pipelineModeDescription}>
-          <Toggle checked={pipelineMode} onChange={setPipelineMode} />
+          <Toggle
+            checked={cliSettings.pipelineMode}
+            onChange={(nextValue) =>
+              setCliSettings((previous) => ({
+                ...previous,
+                pipelineMode: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
 
       <Section title={cli.actions}>
         <Row label={cli.clearHistory} description={cli.clearHistoryDescription}>
-          <button className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error">
+          <button
+            onClick={() => {
+              onClearHistory();
+              showToast({
+                message: cli.clearHistory,
+                tone: "info",
+              });
+            }}
+            className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error"
+          >
             <RotateCcw size={11} /> {messages.common.clear}
           </button>
         </Row>
@@ -699,11 +1117,9 @@ function ShortcutsSettings() {
 
 function PrivacySettings() {
   const { messages } = useI18n();
+  const { showToast } = useToast();
   const privacy = messages.settings.privacy;
-  const [telemetry, setTelemetry] = useState(false);
-  const [crashReports, setCrashReports] = useState(false);
-  const [savePasswords, setSavePasswords] = useState(true);
-  const [auditLog, setAuditLog] = useState(false);
+  const [privacySettings, setPrivacySettings] = useAppSettingsSection("privacy");
 
   return (
     <>
@@ -712,13 +1128,29 @@ function PrivacySettings() {
           label={privacy.anonymousTelemetry}
           description={privacy.anonymousTelemetryDescription}
         >
-          <Toggle checked={telemetry} onChange={setTelemetry} />
+          <Toggle
+            checked={privacySettings.telemetry}
+            onChange={(nextValue) =>
+              setPrivacySettings((previous) => ({
+                ...previous,
+                telemetry: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row
           label={privacy.crashReports}
           description={privacy.crashReportsDescription}
         >
-          <Toggle checked={crashReports} onChange={setCrashReports} />
+          <Toggle
+            checked={privacySettings.crashReports}
+            onChange={(nextValue) =>
+              setPrivacySettings((previous) => ({
+                ...previous,
+                crashReports: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
 
@@ -727,13 +1159,29 @@ function PrivacySettings() {
           label={privacy.savePasswords}
           description={privacy.savePasswordsDescription}
         >
-          <Toggle checked={savePasswords} onChange={setSavePasswords} />
+          <Toggle
+            checked={privacySettings.savePasswords}
+            onChange={(nextValue) =>
+              setPrivacySettings((previous) => ({
+                ...previous,
+                savePasswords: nextValue,
+              }))
+            }
+          />
         </Row>
         <Row
           label={privacy.auditLog}
           description={privacy.auditLogDescription}
         >
-          <Toggle checked={auditLog} onChange={setAuditLog} />
+          <Toggle
+            checked={privacySettings.auditLog}
+            onChange={(nextValue) =>
+              setPrivacySettings((previous) => ({
+                ...previous,
+                auditLog: nextValue,
+              }))
+            }
+          />
         </Row>
       </Section>
 
@@ -742,7 +1190,26 @@ function PrivacySettings() {
           label={privacy.clearCachedData}
           description={privacy.clearCachedDataDescription}
         >
-          <button className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error">
+          <button
+            onClick={() => {
+              void clearPrivacyRuntimeData()
+                .then(() => {
+                  showToast({
+                    message: privacy.clearCachedData,
+                    tone: "success",
+                  });
+                })
+                .catch((error) => {
+                  showToast({
+                    message:
+                      error instanceof Error ? error.message : String(error),
+                    tone: "error",
+                    duration: 1800,
+                  });
+                });
+            }}
+            className="btn btn-ghost btn-xs gap-1.5 cursor-pointer text-base-content/50 hover:text-error"
+          >
             <RotateCcw size={11} /> {messages.common.reset}
           </button>
         </Row>

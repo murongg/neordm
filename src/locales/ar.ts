@@ -47,7 +47,7 @@ export const ar: Messages = {
   },
   ai: {
     title: "وكيل Redis الذكي",
-    subtitle: "مدعوم بواسطة Claude · واعٍ بالسياق",
+    subtitle: "مدعوم بواسطة OpenAI · واعٍ بالسياق",
     online: "متصل",
     quickActions: "إجراءات سريعة",
     placeholder: "اسأل عن بيانات Redis الخاصة بك...",
@@ -160,8 +160,10 @@ export const ar: Messages = {
     },
     ai: {
       apiConfiguration: "إعدادات API",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "النموذج",
       maxTokens: "الحد الأقصى للرموز",
       behavior: "السلوك",
@@ -169,6 +171,10 @@ export const ar: Messages = {
       autoSuggestDescription: "توليد أوامر Redis من اللغة الطبيعية",
       includeKeyContext: "تضمين سياق المفتاح",
       includeKeyContextDescription: "إرسال معلومات المفتاح المحدد إلى الذكاء الاصطناعي",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "حفظ API Key",
     },
     cli: {

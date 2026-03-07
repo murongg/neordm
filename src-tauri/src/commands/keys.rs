@@ -1,25 +1,38 @@
 use crate::models::{
     RedisKeyLookupInput, RedisKeyRenameInput, RedisKeyRenamePairInput, RedisKeySummary,
-    RedisKeyValueResponse, RedisKeysRenameInput,
+    RedisKeyValueResponse, RedisKeysListInput, RedisKeysRenameInput,
 };
 use crate::redis_support::{format_cli_output, normalize_key_type, open_connection};
 use redis::Value;
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 use std::collections::HashMap;
 
+const DEFAULT_SCAN_COUNT: u32 = 200;
+const DEFAULT_MAX_KEYS: u32 = 10_000;
+const MAX_SCAN_COUNT: u32 = 5_000;
+const MAX_TOTAL_KEYS: u32 = 50_000;
+
 #[tauri::command]
 pub async fn list_redis_keys(
-    input: crate::models::RedisConnectionTestInput,
+    input: RedisKeysListInput,
 ) -> Result<Vec<RedisKeySummary>, String> {
-    let mut connection = open_connection(&input).await?;
+    let mut connection = open_connection(&input.connection).await?;
     let mut cursor = 0_u64;
-    let mut collected_keys: Vec<String> = Vec::new();
+    let scan_count = input
+        .scan_count
+        .unwrap_or(DEFAULT_SCAN_COUNT)
+        .clamp(1, MAX_SCAN_COUNT);
+    let max_keys = input
+        .max_keys
+        .unwrap_or(DEFAULT_MAX_KEYS)
+        .clamp(1, MAX_TOTAL_KEYS) as usize;
+    let mut collected_keys: Vec<String> = Vec::with_capacity(max_keys.min(1_024));
 
     loop {
         let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
             .arg(cursor)
             .arg("COUNT")
-            .arg(200)
+            .arg(scan_count)
             .query_async(&mut connection)
             .await
             .map_err(|error| format!("Failed to scan keys: {error}"))?;
@@ -27,13 +40,14 @@ pub async fn list_redis_keys(
         collected_keys.extend(batch);
         cursor = next_cursor;
 
-        if cursor == 0 || collected_keys.len() >= 5_000 {
+        if cursor == 0 || collected_keys.len() >= max_keys {
             break;
         }
     }
 
     collected_keys.sort();
     collected_keys.dedup();
+    collected_keys.truncate(max_keys);
 
     let mut keys = Vec::with_capacity(collected_keys.len());
 
@@ -59,6 +73,10 @@ pub async fn list_redis_keys(
             key_type: normalize_key_type(&raw_type),
             ttl,
         });
+
+        if keys.len() >= max_keys {
+            break;
+        }
     }
 
     Ok(keys)

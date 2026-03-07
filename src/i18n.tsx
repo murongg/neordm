@@ -11,6 +11,10 @@ import {
   type LocaleOption,
   type Messages,
 } from "./locales";
+import {
+  loadAppSettings,
+  updateAppSettings,
+} from "./lib/appSettings";
 
 export { LOCALE_OPTIONS, SUPPORTED_LOCALES };
 export type { Locale, LocaleOption, Messages };
@@ -81,6 +85,8 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
     const prepareI18n = async () => {
       await initPromise;
+      const appSettings = await loadAppSettings();
+      const configuredLocale = appSettings.general.locale;
 
       const currentLocale = normalizeLocale(
         i18n.resolvedLanguage ?? i18n.language
@@ -88,10 +94,14 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
 
       await Promise.all([
         ensureLocaleLoaded("en"),
-        ensureLocaleLoaded(currentLocale),
+        ensureLocaleLoaded(configuredLocale),
       ]);
 
-      syncDocumentLanguage(currentLocale);
+      if (configuredLocale !== currentLocale) {
+        await i18n.changeLanguage(configuredLocale);
+      }
+
+      syncDocumentLanguage(configuredLocale);
 
       if (!cancelled) {
         setReady(true);
@@ -124,6 +134,13 @@ export function useI18n() {
     async (nextLocale: Locale) => {
       await ensureLocaleLoaded(nextLocale);
       await i18nInstance.changeLanguage(nextLocale);
+      await updateAppSettings((current) => ({
+        ...current,
+        general: {
+          ...current.general,
+          locale: nextLocale,
+        },
+      }));
     },
     [i18nInstance]
   );

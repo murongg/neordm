@@ -28,6 +28,7 @@ interface SidebarProps {
   connections: RedisConnection[];
   activeConnectionId: string;
   isCollapsed: boolean;
+  confirmBeforeDelete: boolean;
   onSelectConnection: (id: string) => void;
   onNewConnection: () => void;
   onEditConnection: (id: string) => void;
@@ -186,6 +187,7 @@ export function Sidebar({
   connections,
   activeConnectionId,
   isCollapsed,
+  confirmBeforeDelete,
   onSelectConnection,
   onNewConnection,
   onEditConnection,
@@ -766,7 +768,15 @@ export function Sidebar({
           {!isConfirmingDelete ? (
             <button
               role="menuitem"
-              onClick={() => setConfirmingDeleteId(contextConnection.id)}
+              onClick={() => {
+                if (!confirmBeforeDelete) {
+                  onDeleteConnection(contextConnection.id);
+                  closeContextMenu();
+                  return;
+                }
+
+                setConfirmingDeleteId(contextConnection.id);
+              }}
               className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono text-error transition-colors duration-150 hover:bg-error/10 cursor-pointer"
             >
               <Trash2 size={12} />

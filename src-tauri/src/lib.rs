@@ -4,9 +4,9 @@ mod redis_support;
 
 use crate::commands::{
     delete_redis_hash_entry, delete_redis_zset_entry, get_redis_key_value, greet, list_redis_keys,
-    rename_redis_key, rename_redis_keys, run_redis_command, test_redis_connection,
-    update_redis_hash_entry, update_redis_json_value, update_redis_string_value,
-    update_redis_zset_entry,
+    proxy_http_request, rename_redis_key, rename_redis_keys, run_redis_command,
+    test_redis_connection, update_redis_hash_entry, update_redis_json_value,
+    update_redis_string_value, update_redis_zset_entry,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -17,6 +17,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             test_redis_connection,
+            proxy_http_request,
             list_redis_keys,
             get_redis_key_value,
             run_redis_command,

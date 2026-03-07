@@ -47,7 +47,7 @@ export const ko: Messages = {
   },
   ai: {
     title: "Redis AI 에이전트",
-    subtitle: "Claude 기반 · 컨텍스트 인식",
+    subtitle: "OpenAI 기반 · 컨텍스트 인식",
     online: "온라인",
     quickActions: "빠른 작업",
     placeholder: "Redis 데이터에 대해 질문해 보세요...",
@@ -160,8 +160,10 @@ export const ko: Messages = {
     },
     ai: {
       apiConfiguration: "API 설정",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "모델",
       maxTokens: "최대 토큰",
       behavior: "동작",
@@ -169,6 +171,10 @@ export const ko: Messages = {
       autoSuggestDescription: "자연어에서 Redis 명령 생성",
       includeKeyContext: "키 컨텍스트 포함",
       includeKeyContextDescription: "선택한 키 정보를 AI에 전달",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "API Key 저장",
     },
     cli: {

@@ -73,7 +73,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 
 export function ToastViewport({
-  className = "absolute left-1/2 top-3 -translate-x-1/2",
+  className = "fixed left-1/2 top-3 z-[70] -translate-x-1/2",
 }: {
   className?: string;
 }) {

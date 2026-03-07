@@ -13,6 +13,14 @@ pub(crate) struct RedisConnectionTestInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeysListInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) scan_count: Option<u32>,
+    pub(crate) max_keys: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisKeyLookupInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
@@ -97,6 +105,38 @@ pub(crate) struct RedisZSetEntryDeleteInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
     pub(crate) member: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpProxyHeaderInput {
+    pub(crate) name: String,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpProxyRequestInput {
+    pub(crate) url: String,
+    pub(crate) method: String,
+    pub(crate) headers: Vec<HttpProxyHeaderInput>,
+    pub(crate) body: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpProxyHeaderOutput {
+    pub(crate) name: String,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpProxyResponse {
+    pub(crate) status: u16,
+    pub(crate) status_text: String,
+    pub(crate) headers: Vec<HttpProxyHeaderOutput>,
+    pub(crate) body: String,
 }
 
 #[derive(Debug, Serialize)]

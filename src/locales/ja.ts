@@ -51,7 +51,7 @@ export const ja: Messages = {
   },
   ai: {
     title: "Redis AI エージェント",
-    subtitle: "Claude 搭載 · コンテキスト対応",
+    subtitle: "OpenAI 搭載 · コンテキスト対応",
     online: "オンライン",
     quickActions: "クイックアクション",
     placeholder: "Redis データについて質問してください...",
@@ -167,8 +167,10 @@ export const ja: Messages = {
     },
     ai: {
       apiConfiguration: "API 設定",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "モデル",
       maxTokens: "最大トークン数",
       behavior: "動作",
@@ -176,6 +178,10 @@ export const ja: Messages = {
       autoSuggestDescription: "自然言語から Redis コマンドを生成します",
       includeKeyContext: "キーのコンテキストを含める",
       includeKeyContextDescription: "選択中のキー情報を AI に送信します",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "API Key を保存",
     },
     cli: {

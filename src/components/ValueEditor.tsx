@@ -21,6 +21,7 @@ import {
 import type { KeyValue, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
 import { getRedisErrorMessage } from "../lib/redis";
+import { useAppSettings } from "../hooks/useAppSettings";
 import { useModalTransition } from "../hooks/useModalTransition";
 import type { JsonCodeEditorProps } from "./JsonCodeEditor";
 import { useToast } from "./ToastProvider";
@@ -30,7 +31,9 @@ const LazyJsonCodeEditor = lazy(() => import("./JsonCodeEditor"));
 interface ValueEditorProps {
   keyValue: KeyValue | null;
   onRefreshKeyValue: () => Promise<void>;
+  onDeleteKey: (key: string) => Promise<void>;
   onUpdateStringValue: (key: string, nextValue: string) => Promise<void>;
+  onUpdateKeyTtl: (key: string, nextTtl: number) => Promise<void>;
   onUpdateJsonValue: (key: string, nextValue: string) => Promise<void>;
   onUpdateHashEntry: (
     key: string,
@@ -55,10 +58,21 @@ interface TtlUnits {
   day: string;
 }
 
+interface EditorRuntimeSettings {
+  autoFormatJson: boolean;
+  wordWrap: boolean;
+  syntaxHighlighting: boolean;
+  maxValueSize: string;
+  defaultTtl: string;
+  hashDisplayMode: "table" | "json";
+}
+
 export function ValueEditor({
   keyValue,
   onRefreshKeyValue,
+  onDeleteKey,
   onUpdateStringValue,
+  onUpdateKeyTtl,
   onUpdateJsonValue,
   onUpdateHashEntry,
   onDeleteHashEntry,
@@ -66,10 +80,13 @@ export function ValueEditor({
   onDeleteZSetEntry,
 }: ValueEditorProps) {
   const { messages } = useI18n();
+  const appSettings = useAppSettings();
   const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [isDeletingKey, setIsDeletingKey] = useState(false);
   const [editingTTL, setEditingTTL] = useState(false);
   const [ttlInput, setTtlInput] = useState("");
+  const [isUpdatingTTL, setIsUpdatingTTL] = useState(false);
   const [editingHashRow, setEditingHashRow] = useState<{
     field: string;
     value: string;
@@ -80,6 +97,10 @@ export function ValueEditor({
   } | null>(null);
 
   useEffect(() => {
+    setEditingTTL(false);
+    setTtlInput("");
+    setIsDeletingKey(false);
+    setIsUpdatingTTL(false);
     setEditingHashRow(null);
     setEditingZSetRow(null);
   }, [keyValue?.key, keyValue?.type]);
@@ -114,6 +135,68 @@ export function ValueEditor({
     });
   };
 
+  const handleSaveTtl = async () => {
+    if (isUpdatingTTL) {
+      return;
+    }
+
+    const rawTtlValue =
+      ttlInput.trim().length > 0 ? ttlInput.trim() : editorSettings.defaultTtl;
+    const nextTtl = Number.parseInt(rawTtlValue, 10);
+
+    if (!Number.isInteger(nextTtl) || nextTtl < -1 || nextTtl === 0) {
+      showToast({
+        message: "TTL must be -1 or a positive integer",
+        tone: "error",
+        duration: 1800,
+      });
+      return;
+    }
+
+    setIsUpdatingTTL(true);
+
+    try {
+      await onUpdateKeyTtl(keyValue.key, nextTtl);
+      setEditingTTL(false);
+      setTtlInput("");
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    } finally {
+      setIsUpdatingTTL(false);
+    }
+  };
+
+  const handleDeleteKey = async () => {
+    if (isDeletingKey) {
+      return;
+    }
+
+    if (
+      appSettings.general.confirmDelete &&
+      !window.confirm(`${messages.valueEditor.deleteKey}: ${keyValue.key}?`)
+    ) {
+      return;
+    }
+
+    setIsDeletingKey(true);
+
+    try {
+      await onDeleteKey(keyValue.key);
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    } finally {
+      setIsDeletingKey(false);
+    }
+  };
+
   const ttlDisplay =
     keyValue.ttl === -1
       ? messages.valueEditor.noExpiry
@@ -122,6 +205,7 @@ export function ValueEditor({
       : formatTTLFull(keyValue.ttl, messages.units.full);
   const usesTableViewer =
     keyValue.type === "hash" || keyValue.type === "zset";
+  const editorSettings: EditorRuntimeSettings = appSettings.editor;
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0">
@@ -164,10 +248,18 @@ export function ValueEditor({
               )}
             </button>
             <button
+              onClick={() => {
+                void handleDeleteKey();
+              }}
+              disabled={isDeletingKey}
               className="btn btn-ghost btn-xs cursor-pointer text-error hover:bg-error/10"
               aria-label={messages.valueEditor.deleteKey}
             >
-              <Trash2 size={12} />
+              {isDeletingKey ? (
+                <LoaderCircle size={12} className="animate-spin" />
+              ) : (
+                <Trash2 size={12} />
+              )}
             </button>
           </div>
         </div>
@@ -180,29 +272,58 @@ export function ValueEditor({
                 type="number"
                 value={ttlInput}
                 onChange={(e) => setTtlInput(e.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void handleSaveTtl();
+                  } else if (event.key === "Escape") {
+                    setEditingTTL(false);
+                  }
+                }}
                 className="input input-xs w-24 font-mono bg-base-200 user-select-text"
-                placeholder={messages.valueEditor.ttlInputPlaceholder}
+                placeholder={
+                  editorSettings.defaultTtl !== "-1"
+                    ? editorSettings.defaultTtl
+                    : messages.valueEditor.ttlInputPlaceholder
+                }
                 autoFocus
               />
               <button
                 className="btn btn-ghost btn-xs text-success cursor-pointer"
-                onClick={() => setEditingTTL(false)}
+                onClick={() => void handleSaveTtl()}
+                disabled={isUpdatingTTL}
               >
-                <Save size={11} />
+                {isUpdatingTTL ? (
+                  <LoaderCircle size={11} className="animate-spin" />
+                ) : (
+                  <Save size={11} />
+                )}
               </button>
               <button
                 className="btn btn-ghost btn-xs cursor-pointer"
-                onClick={() => setEditingTTL(false)}
+                onClick={() => {
+                  setEditingTTL(false);
+                  setTtlInput("");
+                }}
+                disabled={isUpdatingTTL}
               >
                 <X size={11} />
               </button>
             </div>
           ) : (
-            <button
-              onClick={() => {
-                setTtlInput(String(keyValue.ttl > 0 ? keyValue.ttl : ""));
-                setEditingTTL(true);
-              }}
+              <button
+                onClick={() => {
+                  setTtlInput(
+                    String(
+                      keyValue.ttl > 0
+                        ? keyValue.ttl
+                        : editorSettings.defaultTtl !== "-1"
+                        ? editorSettings.defaultTtl
+                        : ""
+                    )
+                  );
+                  setEditingTTL(true);
+                }}
               className="text-xs font-mono text-base-content/50 hover:text-base-content cursor-pointer flex items-center gap-1 transition-colors duration-150"
             >
               {ttlDisplay}
@@ -220,21 +341,24 @@ export function ValueEditor({
         {keyValue.type === "string" && (
           <StringViewer
             value={keyValue.value as string}
+            settings={editorSettings}
             onSave={(nextValue) => onUpdateStringValue(keyValue.key, nextValue)}
           />
         )}
         {keyValue.type === "json" && (
           <JsonEditorViewer
             value={keyValue.value as string}
+            settings={editorSettings}
             onSave={(nextValue) => onUpdateJsonValue(keyValue.key, nextValue)}
           />
         )}
         {keyValue.type === "stream" && (
-          <StringViewer value={keyValue.value as string} />
+          <StringViewer value={keyValue.value as string} settings={editorSettings} />
         )}
         {keyValue.type === "hash" && (
           <HashViewer
             value={keyValue.value as Record<string, string>}
+            settings={editorSettings}
             onCopy={copyText}
             onRefresh={onRefreshKeyValue}
             onEditRow={(field, value) => {
@@ -277,6 +401,7 @@ export function ValueEditor({
           keyName={keyValue.key}
           initialField={editingHashRow.field}
           initialValue={editingHashRow.value}
+          settings={editorSettings}
           onClose={() => setEditingHashRow(null)}
           onSave={async (nextField, nextValue) => {
             await onUpdateHashEntry(
@@ -313,9 +438,11 @@ export function ValueEditor({
 
 function StringViewer({
   value,
+  settings,
   onSave,
 }: {
   value: string;
+  settings: EditorRuntimeSettings;
   onSave?: (nextValue: string) => Promise<void>;
 }) {
   const { messages } = useI18n();
@@ -331,13 +458,22 @@ function StringViewer({
     setIsSaving(false);
   }, [value]);
 
+  const maxPreviewBytes = parseMaxValueSizeBytes(settings.maxValueSize);
+  const canAutoFormat =
+    settings.autoFormatJson && estimateTextSize(value) <= maxPreviewBytes;
   let formatted = value;
   let isJson = false;
-  try {
-    formatted = JSON.stringify(JSON.parse(value), null, 2);
-    isJson = true;
-  } catch {}
+  if (canAutoFormat) {
+    try {
+      formatted = JSON.stringify(JSON.parse(value), null, 2);
+      isJson = true;
+    } catch {}
+  }
   const editorModeLabel = isJson ? "JSON" : "TEXT";
+  const previewValue = truncateTextByBytes(
+    isJson ? formatted : value,
+    maxPreviewBytes
+  );
 
   const handleSave = async () => {
     if (!onSave) {
@@ -367,6 +503,8 @@ function StringViewer({
           className="min-h-0 flex-1"
           autoFocus
           mode={isJson ? "json" : "text"}
+          wordWrap={settings.wordWrap}
+          syntaxHighlightingEnabled={settings.syntaxHighlighting}
         />
         {error ? (
           <p className="rounded-lg border border-error/15 bg-error/8 px-3 py-2 text-xs text-error">
@@ -412,7 +550,9 @@ function StringViewer({
       <button
         disabled={!onSave}
         onClick={() => {
-          setEditVal(formatJsonDraft(value));
+          setEditVal(
+            isJson && settings.autoFormatJson ? formatJsonDraft(value) : value
+          );
           setError("");
           setIsEditing(true);
         }}
@@ -420,11 +560,15 @@ function StringViewer({
       >
         <Edit3 size={11} />
       </button>
-      <pre className="text-xs font-mono bg-base-200 rounded-xl p-4 overflow-auto whitespace-pre-wrap break-all user-select-text leading-relaxed">
-        {isJson ? (
-          <JsonHighlight code={formatted} />
+      <pre
+        className={`text-xs font-mono bg-base-200 rounded-xl p-4 overflow-auto user-select-text leading-relaxed ${
+          settings.wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+        }`}
+      >
+        {isJson && settings.syntaxHighlighting ? (
+          <JsonHighlight code={previewValue} />
         ) : (
-          <span className="text-base-content">{value}</span>
+          <span className="text-base-content">{previewValue}</span>
         )}
       </pre>
     </div>
@@ -433,26 +577,33 @@ function StringViewer({
 
 function JsonEditorViewer({
   value,
+  settings,
   onSave,
 }: {
   value: string;
+  settings: EditorRuntimeSettings;
   onSave?: (nextValue: string) => Promise<void>;
 }) {
   const { messages } = useI18n();
-  const [draft, setDraft] = useState(() => formatJsonDraft(value));
+  const shouldAutoFormat =
+    settings.autoFormatJson &&
+    estimateTextSize(value) <= parseMaxValueSizeBytes(settings.maxValueSize);
+  const [draft, setDraft] = useState(() =>
+    shouldAutoFormat ? formatJsonDraft(value) : value
+  );
   const [error, setError] = useState(() => getJsonDraftError(value));
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    setDraft(formatJsonDraft(value));
+    setDraft(shouldAutoFormat ? formatJsonDraft(value) : value);
     setError(getJsonDraftError(value));
     setSaveError("");
     setIsSaving(false);
-  }, [value]);
+  }, [shouldAutoFormat, value]);
 
   const handleReset = () => {
-    setDraft(formatJsonDraft(value));
+    setDraft(shouldAutoFormat ? formatJsonDraft(value) : value);
     setError(getJsonDraftError(value));
     setSaveError("");
   };
@@ -512,6 +663,8 @@ function JsonEditorViewer({
           setSaveError("");
         }}
         className="h-full min-h-0 flex-1"
+        wordWrap={settings.wordWrap}
+        syntaxHighlightingEnabled={settings.syntaxHighlighting}
       />
     </div>
   );
@@ -771,12 +924,14 @@ function TableRowActions({
 
 function HashViewer({
   value,
+  settings,
   onCopy,
   onRefresh,
   onEditRow,
   onDeleteRow,
 }: {
   value: Record<string, string>;
+  settings: EditorRuntimeSettings;
   onCopy: (text: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onEditRow: (field: string, value: string) => void;
@@ -789,6 +944,30 @@ function HashViewer({
   useEffect(() => {
     setActionError("");
   }, [value]);
+
+  if (settings.hashDisplayMode === "json") {
+    const jsonText = truncateTextByBytes(
+      JSON.stringify(value, null, 2),
+      parseMaxValueSizeBytes(settings.maxValueSize)
+    );
+
+    return (
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        <TableActionError error={actionError} />
+        <pre
+          className={`rounded-xl border border-base-200/50 bg-base-200/40 p-4 text-xs font-mono leading-relaxed user-select-text ${
+            settings.wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre overflow-auto"
+          }`}
+        >
+          {settings.syntaxHighlighting ? (
+            <JsonHighlight code={jsonText} />
+          ) : (
+            <span className="text-base-content">{jsonText}</span>
+          )}
+        </pre>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -1108,6 +1287,8 @@ function JsonCodeEditor({
   surfaceClassName = "bg-base-200",
   autoFocus = false,
   mode = "json",
+  wordWrap = true,
+  syntaxHighlightingEnabled = true,
 }: {
   value: string;
   onChange: (nextValue: string) => void;
@@ -1115,6 +1296,8 @@ function JsonCodeEditor({
   surfaceClassName?: string;
   autoFocus?: boolean;
   mode?: "json" | "text";
+  wordWrap?: boolean;
+  syntaxHighlightingEnabled?: boolean;
 }) {
   return (
     <Suspense
@@ -1126,6 +1309,7 @@ function JsonCodeEditor({
           surfaceClassName={surfaceClassName}
           autoFocus={autoFocus}
           mode={mode}
+          wordWrap={wordWrap}
         />
       }
     >
@@ -1136,6 +1320,8 @@ function JsonCodeEditor({
         surfaceClassName={surfaceClassName}
         autoFocus={autoFocus}
         mode={mode}
+        wordWrap={wordWrap}
+        syntaxHighlightingEnabled={syntaxHighlightingEnabled}
       />
     </Suspense>
   );
@@ -1147,6 +1333,7 @@ function JsonCodeEditorFallback({
   className = "h-[18rem]",
   surfaceClassName = "bg-base-200",
   autoFocus = false,
+  wordWrap = true,
 }: JsonCodeEditorProps) {
   return (
     <div
@@ -1155,7 +1342,9 @@ function JsonCodeEditorFallback({
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="textarea h-full w-full resize-none overflow-auto border-0 bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none user-select-text"
+        className={`textarea h-full w-full resize-none overflow-auto border-0 bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none user-select-text ${
+          wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+        }`}
         spellCheck={false}
         autoFocus={autoFocus}
       />
@@ -1228,6 +1417,35 @@ function formatJsonDraft(value: string) {
   } catch {
     return value;
   }
+}
+
+function parseMaxValueSizeBytes(value: string) {
+  const parsed = Number.parseFloat(value);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 1024 * 1024;
+  }
+
+  return Math.max(1, Math.round(parsed * 1024 * 1024));
+}
+
+function estimateTextSize(value: string) {
+  return new TextEncoder().encode(value).length;
+}
+
+function truncateTextByBytes(value: string, maxBytes: number) {
+  if (estimateTextSize(value) <= maxBytes) {
+    return value;
+  }
+
+  const encoder = new TextEncoder();
+  let end = value.length;
+
+  while (end > 0 && encoder.encode(`${value.slice(0, end)}…`).length > maxBytes) {
+    end -= 1;
+  }
+
+  return `${value.slice(0, end)}…`;
 }
 
 function compactJsonDraft(value: string) {
@@ -1351,12 +1569,14 @@ function HashRowEditDrawer({
   keyName,
   initialField,
   initialValue,
+  settings,
   onClose,
   onSave,
 }: {
   keyName: string;
   initialField: string;
   initialValue: string;
+  settings: EditorRuntimeSettings;
   onClose: () => void;
   onSave: (nextField: string, nextValue: string) => Promise<void>;
 }) {
@@ -1367,7 +1587,9 @@ function HashRowEditDrawer({
   );
   const [field, setField] = useState(initialField);
   const [value, setValue] = useState(() =>
-    usesJsonValueEditor ? formatJsonDraft(initialValue) : initialValue
+    usesJsonValueEditor && settings.autoFormatJson
+      ? formatJsonDraft(initialValue)
+      : initialValue
   );
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -1375,7 +1597,9 @@ function HashRowEditDrawer({
   const error = saveError || jsonValidationError;
 
   const handleResetValue = () => {
-    setValue(formatJsonDraft(initialValue));
+    setValue(
+      settings.autoFormatJson ? formatJsonDraft(initialValue) : initialValue
+    );
     setSaveError("");
   };
 
@@ -1456,6 +1680,8 @@ function HashRowEditDrawer({
               }}
               className="h-[18rem]"
               surfaceClassName="bg-base-100"
+              wordWrap={settings.wordWrap}
+              syntaxHighlightingEnabled={settings.syntaxHighlighting}
             />
           </div>
         ) : (

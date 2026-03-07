@@ -6,10 +6,11 @@ import { useToast } from "./ToastProvider";
 
 interface AIAgentProps {
   messages: ChatMessage[];
-  onSend: (msg: string) => void;
+  isResponding: boolean;
+  onSend: (msg: string) => void | Promise<void>;
 }
 
-export function AIAgent({ messages, onSend }: AIAgentProps) {
+export function AIAgent({ messages, isResponding, onSend }: AIAgentProps) {
   const { messages: i18nMessages } = useI18n();
   const { showToast } = useToast();
   const [input, setInput] = useState("");
@@ -21,7 +22,7 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
   }, [messages]);
 
   const handleSend = () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isResponding) return;
     onSend(input.trim());
     setInput("");
   };
@@ -70,6 +71,7 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
             onCopyCmd={handleCopyCmd}
           />
         ))}
+        {isResponding && <ThinkingBubble />}
         <div ref={bottomRef} />
       </div>
 
@@ -83,6 +85,7 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
             {i18nMessages.ai.suggestions.map((s) => (
               <button
                 key={s}
+                disabled={isResponding}
                 onClick={() => onSend(s)}
                 className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-base-200 hover:bg-base-100 text-base-content/60 hover:text-base-content transition-colors duration-150 cursor-pointer border border-base-content/5"
               >
@@ -103,15 +106,33 @@ export function AIAgent({ messages, onSend }: AIAgentProps) {
             onKeyDown={(e) => e.key === "Enter" && handleSend()}
             placeholder={i18nMessages.ai.placeholder}
             className="input input-sm flex-1 bg-base-200 border-base-content/10 font-mono text-xs user-select-text"
+            disabled={isResponding}
           />
           <button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isResponding}
             className="btn btn-sm btn-success cursor-pointer disabled:cursor-not-allowed"
             aria-label={i18nMessages.ai.send}
           >
             <Send size={13} />
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ThinkingBubble() {
+  return (
+    <div className="flex gap-2">
+      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-success/20">
+        <Bot size={11} className="text-success" />
+      </div>
+      <div className="rounded-xl rounded-tl-sm bg-base-200 px-3 py-2">
+        <div className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-success/60 animate-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-success/50 animate-pulse [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-success/40 animate-pulse [animation-delay:240ms]" />
         </div>
       </div>
     </div>

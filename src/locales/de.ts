@@ -47,7 +47,7 @@ export const de: Messages = {
   },
   ai: {
     title: "Redis KI-Agent",
-    subtitle: "Mit Claude · Kontextbewusst",
+    subtitle: "Mit OpenAI · Kontextbewusst",
     online: "Online",
     quickActions: "Schnellaktionen",
     placeholder: "Frage etwas zu deinen Redis-Daten...",
@@ -160,8 +160,10 @@ export const de: Messages = {
     },
     ai: {
       apiConfiguration: "API-Konfiguration",
+      providerList: "Providers",
       apiKey: "Anthropic API-Schlüssel",
-      apiKeyPlaceholder: "sk-ant-...",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "Modell",
       maxTokens: "Max. Tokens",
       behavior: "Verhalten",
@@ -169,6 +171,10 @@ export const de: Messages = {
       autoSuggestDescription: "Erzeugt Redis-Befehle aus natürlicher Sprache",
       includeKeyContext: "Schlüsselkontext einbeziehen",
       includeKeyContextDescription: "Informationen zum ausgewählten Schlüssel an die KI senden",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "API-Schlüssel speichern",
     },
     cli: {

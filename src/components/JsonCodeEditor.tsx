@@ -12,6 +12,8 @@ export interface JsonCodeEditorProps {
   surfaceClassName?: string;
   autoFocus?: boolean;
   mode?: "json" | "text";
+  wordWrap?: boolean;
+  syntaxHighlightingEnabled?: boolean;
 }
 
 const jsonEditorTheme = EditorView.theme({
@@ -87,13 +89,28 @@ export default function JsonCodeEditor({
   surfaceClassName = "bg-base-200",
   autoFocus = false,
   mode = "json",
+  wordWrap = true,
+  syntaxHighlightingEnabled = true,
 }: JsonCodeEditorProps) {
   const extensions = useMemo(
-    () =>
-      mode === "json"
-        ? [json(), jsonEditorTheme, jsonSyntaxTheme]
-        : [jsonEditorTheme],
-    [mode]
+    () => {
+      const nextExtensions = [jsonEditorTheme];
+
+      if (wordWrap) {
+        nextExtensions.push(EditorView.lineWrapping);
+      }
+
+      if (mode === "json") {
+        nextExtensions.unshift(json());
+
+        if (syntaxHighlightingEnabled) {
+          nextExtensions.push(jsonSyntaxTheme);
+        }
+      }
+
+      return nextExtensions;
+    },
+    [mode, syntaxHighlightingEnabled, wordWrap]
   );
 
   return (

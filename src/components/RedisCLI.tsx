@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Terminal, Trash2, Copy } from "lucide-react";
 import type { CliEntry } from "../types";
 import { useI18n } from "../i18n";
+import { useAppSettings } from "../hooks/useAppSettings";
 import { getCliAutocompleteSuggestions } from "../lib/redisCli";
 
 interface RedisCLIProps {
@@ -21,14 +22,25 @@ const CLI_EXAMPLES = [
   "JSON.GET profile:1 $",
 ];
 
-function formatHistoryLine(entry: CliEntry) {
+function formatTimestamp(timestamp: Date) {
+  return timestamp.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatHistoryLine(entry: CliEntry, showTimestamps: boolean) {
+  const prefix = showTimestamps ? `[${formatTimestamp(entry.timestamp)}] ` : "";
+
   switch (entry.type) {
     case "command":
-      return `${entry.promptLabel ?? "redis>"} ${entry.content}`;
+      return `${prefix}${entry.promptLabel ?? "redis>"} ${entry.content}`;
     case "error":
-      return `(error) ${entry.content}`;
+      return `${prefix}(error) ${entry.content}`;
     default:
-      return entry.content;
+      return `${prefix}${entry.content}`;
   }
 }
 
@@ -40,6 +52,7 @@ export function RedisCLI({
   promptLabel,
 }: RedisCLIProps) {
   const { messages } = useI18n();
+  const appSettings = useAppSettings();
   const [input, setInput] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -47,13 +60,21 @@ export function RedisCLI({
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftInputRef = useRef("");
 
+  const cliSettings = appSettings.cli;
+  const commandHistoryLimit = useMemo(() => {
+    const parsed = Number.parseInt(cliSettings.historySize, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 500;
+  }, [cliSettings.historySize]);
   const suggestions = useMemo(
     () => getCliAutocompleteSuggestions(input, cmdHistory),
     [cmdHistory, input]
   );
   const transcript = useMemo(
-    () => history.map(formatHistoryLine).join("\n"),
-    [history]
+    () =>
+      history
+        .map((entry) => formatHistoryLine(entry, cliSettings.showTimestamps))
+        .join("\n"),
+    [cliSettings.showTimestamps, history]
   );
 
   useEffect(() => {
@@ -64,7 +85,7 @@ export function RedisCLI({
     const cmd = input.trim();
     if (!cmd) return;
     onRun(cmd);
-    setCmdHistory((prev) => [cmd, ...prev.slice(0, 49)]);
+    setCmdHistory((prev) => [cmd, ...prev.slice(0, commandHistoryLimit - 1)]);
     setHistoryIndex(-1);
     draftInputRef.current = "";
     setInput("");
@@ -168,7 +189,12 @@ export function RedisCLI({
           </div>
         )}
         {history.map((entry) => (
-          <CliLine key={entry.id} entry={entry} />
+          <CliLine
+            key={entry.id}
+            entry={entry}
+            showTimestamps={cliSettings.showTimestamps}
+            syntaxHighlighting={cliSettings.syntaxHighlighting}
+          />
         ))}
         <div ref={bottomRef} />
       </div>
@@ -198,12 +224,12 @@ export function RedisCLI({
             </div>
           )}
         </div>
-        {/* <div className="mb-1.5 flex items-center justify-between gap-3">
+        <div className="mb-1.5 flex items-center justify-between gap-3">
           <span className="min-w-0 truncate font-mono text-[11px] text-success">
             {promptLabel}
           </span>
           <kbd className="shrink-0 kbd kbd-xs text-base-content/30">Enter</kbd>
-        </div> */}
+        </div>
         <div className="flex items-center gap-2 bg-base-200 rounded-xl px-3 py-2">
           <span className="shrink-0 text-success">›</span>
           <input
@@ -227,25 +253,79 @@ export function RedisCLI({
   );
 }
 
-function CliLine({ entry }: { entry: CliEntry }) {
+function CliTimestamp({ entry }: { entry: CliEntry }) {
+  return (
+    <span className="shrink-0 font-mono text-[10px] text-base-content/25">
+      [{formatTimestamp(entry.timestamp)}]
+    </span>
+  );
+}
+
+function CliCommandText({
+  content,
+  syntaxHighlighting,
+}: {
+  content: string;
+  syntaxHighlighting: boolean;
+}) {
+  if (!syntaxHighlighting) {
+    return <span className="text-base-content font-mono">{content}</span>;
+  }
+
+  const [commandName, ...argumentsList] = content.split(/\s+/);
+
+  return (
+    <span className="font-mono">
+      <span className="text-info">{commandName}</span>
+      {argumentsList.length > 0 ? (
+        <>
+          {" "}
+          <span className="text-base-content/75">
+            {argumentsList.join(" ")}
+          </span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+function CliLine({
+  entry,
+  showTimestamps,
+  syntaxHighlighting,
+}: {
+  entry: CliEntry;
+  showTimestamps: boolean;
+  syntaxHighlighting: boolean;
+}) {
   if (entry.type === "command") {
     return (
       <div className="flex items-start gap-2 py-0.5">
+        {showTimestamps ? <CliTimestamp entry={entry} /> : null}
         <span className="shrink-0 font-mono text-success">
           {entry.promptLabel ?? "redis>"}
         </span>
-        <span className="text-base-content font-mono">{entry.content}</span>
+        <CliCommandText
+          content={entry.content}
+          syntaxHighlighting={syntaxHighlighting}
+        />
       </div>
     );
   }
   if (entry.type === "error") {
     return (
-      <div className="text-error font-mono pl-4 py-0.5">{entry.content}</div>
+      <div className="flex items-start gap-2 py-0.5">
+        {showTimestamps ? <CliTimestamp entry={entry} /> : null}
+        <div className="text-error font-mono pl-4">{entry.content}</div>
+      </div>
     );
   }
   return (
-    <div className="text-base-content/60 font-mono pl-4 py-0.5 whitespace-pre-wrap">
-      {entry.content}
+    <div className="flex items-start gap-2 py-0.5">
+      {showTimestamps ? <CliTimestamp entry={entry} /> : null}
+      <div className="text-base-content/60 font-mono pl-4 whitespace-pre-wrap">
+        {entry.content}
+      </div>
     </div>
   );
 }

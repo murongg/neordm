@@ -1,4 +1,9 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DEFAULT_APP_SETTINGS,
+  loadAppSettings,
+  updateAppSettings,
+} from "../lib/appSettings";
 
 export type ThemeMode = "light" | "dark" | "system";
 
@@ -19,17 +24,48 @@ function applyTheme(mode: ThemeMode) {
   document.documentElement.setAttribute("data-color-mode", resolved);
 }
 
-const STORAGE_KEY = "neordm-theme-mode";
-
 export function useTheme() {
-  const [mode, setMode] = useState<ThemeMode>(
-    () => (localStorage.getItem(STORAGE_KEY) as ThemeMode) ?? "dark"
+  const [mode, setModeState] = useState<ThemeMode>(
+    DEFAULT_APP_SETTINGS.appearance.themeMode
   );
+  const hasHydratedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void loadAppSettings().then((settings) => {
+      if (cancelled) {
+        return;
+      }
+
+      setModeState(settings.appearance.themeMode);
+      hasHydratedRef.current = true;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const setMode = useCallback((nextMode: ThemeMode) => {
+    setModeState(nextMode);
+
+    if (!hasHydratedRef.current) {
+      return;
+    }
+
+    void updateAppSettings((current) => ({
+      ...current,
+      appearance: {
+        ...current.appearance,
+        themeMode: nextMode,
+      },
+    }));
+  }, []);
 
   // Apply on mount & mode change
   useEffect(() => {
     applyTheme(mode);
-    localStorage.setItem(STORAGE_KEY, mode);
   }, [mode]);
 
   // Listen for system preference changes when mode === "system"

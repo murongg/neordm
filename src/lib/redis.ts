@@ -34,6 +34,11 @@ export interface RedisJsonValueUpdate {
   value: string;
 }
 
+export interface ListRedisKeysOptions {
+  scanCount?: number;
+  maxKeys?: number;
+}
+
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
   "host" | "port" | "db" | "tls"
@@ -75,10 +80,15 @@ export async function testRedisConnection(
 }
 
 export async function listRedisKeys(
-  connection: RedisConnectionInvokeInput
+  connection: RedisConnectionInvokeInput,
+  options: ListRedisKeysOptions = {}
 ): Promise<RedisKey[]> {
   return invoke("list_redis_keys", {
-    input: toConnectionInput(connection),
+    input: {
+      connection: toConnectionInput(connection),
+      scanCount: options.scanCount,
+      maxKeys: options.maxKeys,
+    },
   });
 }
 

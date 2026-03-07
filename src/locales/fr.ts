@@ -47,7 +47,7 @@ export const fr: Messages = {
   },
   ai: {
     title: "Agent IA Redis",
-    subtitle: "Propulsé par Claude · Sensible au contexte",
+    subtitle: "Propulsé par OpenAI · Sensible au contexte",
     online: "En ligne",
     quickActions: "Actions rapides",
     placeholder: "Posez une question sur vos données Redis...",
@@ -160,8 +160,10 @@ export const fr: Messages = {
     },
     ai: {
       apiConfiguration: "Configuration API",
+      providerList: "Providers",
       apiKey: "Clé API Anthropic",
-      apiKeyPlaceholder: "sk-ant-...",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "Modèle",
       maxTokens: "Tokens max.",
       behavior: "Comportement",
@@ -169,6 +171,10 @@ export const fr: Messages = {
       autoSuggestDescription: "Génère des commandes Redis depuis le langage naturel",
       includeKeyContext: "Inclure le contexte de la clé",
       includeKeyContextDescription: "Envoyer les infos de la clé sélectionnée à l’IA",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "Enregistrer la clé API",
     },
     cli: {

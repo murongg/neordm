@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppStore } from "./store/useAppStore";
 import { useTheme } from "./hooks/useTheme";
 import { Sidebar } from "./components/Sidebar";
@@ -16,12 +16,44 @@ import { Tooltip } from "./components/Tooltip";
 import { Bot, Terminal, Edit3, Wifi, Server, Info } from "lucide-react";
 import { useI18n } from "./i18n";
 import { getCliPromptLabel } from "./lib/redisCli";
+import { installPrivacyRuntimeHandlers } from "./lib/privacyRuntime";
 
 function App() {
   const store = useAppStore();
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
+
+  useEffect(() => {
+    installPrivacyRuntimeHandlers();
+  }, []);
+
+  useEffect(() => {
+    const parsedFontSize = Number.parseInt(
+      store.appSettings.appearance.fontSize,
+      10
+    );
+    const nextFontSize =
+      Number.isFinite(parsedFontSize) && parsedFontSize >= 11 && parsedFontSize <= 18
+        ? parsedFontSize
+        : 15;
+
+    document.documentElement.style.fontSize = `${nextFontSize}px`;
+  }, [store.appSettings.appearance.fontSize]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-ui-density",
+      store.appSettings.appearance.compactMode ? "compact" : "comfortable"
+    );
+  }, [store.appSettings.appearance.compactMode]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute(
+      "data-ui-animations",
+      store.appSettings.appearance.animationsEnabled ? "enabled" : "disabled"
+    );
+  }, [store.appSettings.appearance.animationsEnabled]);
 
   return (
     <ToastProvider>
@@ -40,6 +72,7 @@ function App() {
             connections={store.connections}
             activeConnectionId={store.activeConnectionId}
             isCollapsed={store.isSidebarCollapsed}
+            confirmBeforeDelete={store.appSettings.general.confirmDelete}
             onSelectConnection={store.selectConnection}
             onNewConnection={store.openNewConnectionModal}
             onEditConnection={store.openEditConnectionModal}
@@ -58,6 +91,8 @@ function App() {
             isRefreshing={store.isLoadingKeys}
             onRefresh={store.refreshKeys}
             keySeparator={store.keySeparator}
+            showKeyType={store.appSettings.appearance.showKeyType}
+            showTtl={store.appSettings.appearance.showTtl}
             keys={store.keys}
             selectedKey={store.selectedKey}
             onSelectKey={store.selectKey}
@@ -68,7 +103,7 @@ function App() {
           />
 
           <main className="relative flex-1 flex flex-col min-w-0 bg-base-300">
-            <ToastViewport className="absolute left-1/2 top-3 -translate-x-1/2" />
+            <ToastViewport />
 
             {/* Topbar */}
             <div data-tauri-drag-region className="flex items-center justify-between px-4 h-12 border-b border-base-100/50 shrink-0 select-none">
@@ -134,7 +169,9 @@ function App() {
                 <ValueEditor
                   keyValue={store.keyValue}
                   onRefreshKeyValue={store.refreshKeyValue}
+                  onDeleteKey={store.deleteKey}
                   onUpdateStringValue={store.updateStringValue}
+                  onUpdateKeyTtl={store.updateKeyTtl}
                   onUpdateJsonValue={store.updateJsonValue}
                   onUpdateHashEntry={store.updateHashEntry}
                   onDeleteHashEntry={store.deleteHashEntry}
@@ -143,7 +180,11 @@ function App() {
                 />
               )}
               {store.panelTab === "ai" && (
-                <AIAgent messages={store.chatMessages} onSend={store.sendChatMessage} />
+                <AIAgent
+                  messages={store.chatMessages}
+                  isResponding={store.isAiResponding}
+                  onSend={store.sendChatMessage}
+                />
               )}
               {store.panelTab === "cli" && (
                 <RedisCLI
@@ -181,6 +222,7 @@ function App() {
             onThemeChange={setThemeMode}
             keySeparator={store.keySeparator}
             onKeySeparatorChange={store.setKeySeparator}
+            onClearCliHistory={store.clearCliHistory}
           />
         )}
       </div>

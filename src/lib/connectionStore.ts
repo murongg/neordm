@@ -80,10 +80,23 @@ export async function loadStoredConnections(): Promise<RedisConnection[]> {
 }
 
 export async function persistConnections(
-  connections: RedisConnection[]
+  connections: RedisConnection[],
+  options?: { savePasswords?: boolean }
 ): Promise<void> {
+  const savePasswords = options?.savePasswords ?? true;
+
   await connectionStore.set(
     CONNECTIONS_KEY,
-    connections.map(toPersistedConnection)
+    connections.map((connection) => {
+      const persistedConnection = toPersistedConnection(connection);
+
+      if (savePasswords) {
+        return persistedConnection;
+      }
+
+      const { password: _password, ...sanitizedConnection } = persistedConnection;
+      return sanitizedConnection;
+    })
   );
+  await connectionStore.save();
 }

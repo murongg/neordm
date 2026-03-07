@@ -214,8 +214,10 @@ export interface Messages {
     };
     ai: {
       apiConfiguration: string;
+      providerList: string;
       apiKey: string;
       apiKeyPlaceholder: string;
+      baseUrl: string;
       model: string;
       maxTokens: string;
       behavior: string;
@@ -223,6 +225,10 @@ export interface Messages {
       autoSuggestDescription: string;
       includeKeyContext: string;
       includeKeyContextDescription: string;
+      enabled: string;
+      disabled: string;
+      testConnection: string;
+      testingConnection: string;
       saveApiKey: string;
     };
     cli: {

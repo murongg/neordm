@@ -47,7 +47,7 @@ export const hi: Messages = {
   },
   ai: {
     title: "Redis AI एजेंट",
-    subtitle: "Claude द्वारा संचालित · संदर्भ-सचेत",
+    subtitle: "OpenAI द्वारा संचालित · संदर्भ-सचेत",
     online: "ऑनलाइन",
     quickActions: "त्वरित क्रियाएँ",
     placeholder: "अपने Redis डेटा के बारे में पूछें...",
@@ -160,8 +160,10 @@ export const hi: Messages = {
     },
     ai: {
       apiConfiguration: "API कॉन्फ़िगरेशन",
-      apiKey: "Anthropic API Key",
-      apiKeyPlaceholder: "sk-ant-...",
+      providerList: "Providers",
+      apiKey: "OpenAI API Key",
+      apiKeyPlaceholder: "sk-...",
+      baseUrl: "Base URL",
       model: "मॉडल",
       maxTokens: "अधिकतम tokens",
       behavior: "व्यवहार",
@@ -169,6 +171,10 @@ export const hi: Messages = {
       autoSuggestDescription: "प्राकृतिक भाषा से Redis कमांड बनाएँ",
       includeKeyContext: "key context शामिल करें",
       includeKeyContextDescription: "चयनित key की जानकारी AI को भेजें",
+      enabled: "Enabled",
+      disabled: "Disabled",
+      testConnection: "Test connection",
+      testingConnection: "Testing...",
       saveApiKey: "API Key सहेजें",
     },
     cli: {
