@@ -309,12 +309,6 @@ export function RedisCLI({
               </div>
             </div>
           )}
-          <div className="mb-1.5 flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate font-mono text-[11px] text-success">
-              {promptLabel}
-            </span>
-            <kbd className="shrink-0 kbd kbd-xs text-base-content/30">Enter</kbd>
-          </div>
           <div className="flex items-center gap-2 bg-base-200 rounded-xl px-3 py-2">
             <span className="shrink-0 text-success">›</span>
             <input
@@ -407,14 +401,14 @@ function CliLine({
     return (
       <div className="flex items-start gap-2 py-0.5">
         {showTimestamps ? <CliTimestamp entry={entry} /> : null}
-        <div className="text-error font-mono pl-4">{entry.content}</div>
+        <div className="text-error font-mono">{entry.content}</div>
       </div>
     );
   }
   return (
     <div className="flex items-start gap-2 py-0.5">
       {showTimestamps ? <CliTimestamp entry={entry} /> : null}
-      <div className="text-base-content/60 font-mono pl-4 whitespace-pre-wrap">
+      <div className="text-base-content/60 font-mono whitespace-pre-wrap">
         {entry.content}
       </div>
     </div>
