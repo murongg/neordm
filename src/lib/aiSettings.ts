@@ -1,16 +1,6 @@
 import { settingsStore } from "./settingsStore";
 
-export const AI_PROVIDER_IDS = [
-  "openai",
-  "anthropic",
-  "google",
-  "xai",
-  "azure-openai",
-  "mistral",
-  "groq",
-  "deepseek",
-  "together",
-] as const;
+export const AI_PROVIDER_IDS = ["openai"] as const;
 
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
 
@@ -52,14 +42,6 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
       baseUrl: DEFAULT_OPENAI_BASE_URL,
       model: "gpt-4.1-mini",
     }),
-    anthropic: createProviderConfig(),
-    google: createProviderConfig(),
-    xai: createProviderConfig(),
-    "azure-openai": createProviderConfig(),
-    mistral: createProviderConfig(),
-    groq: createProviderConfig(),
-    deepseek: createProviderConfig(),
-    together: createProviderConfig(),
   },
   maxTokens: 2048,
   autoSuggest: true,
@@ -68,12 +50,6 @@ export const DEFAULT_AI_SETTINGS: AiSettings = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function normalizeProviderId(value: unknown): AiProviderId {
-  return AI_PROVIDER_IDS.includes(value as AiProviderId)
-    ? (value as AiProviderId)
-    : DEFAULT_AI_SETTINGS.activeProviderId;
 }
 
 function normalizeProviderConfig(
@@ -101,17 +77,13 @@ function normalizeNewShape(value: Record<string, unknown>): AiSettings {
   const providersValue = isRecord(value.providers) ? value.providers : {};
 
   return {
-    activeProviderId: normalizeProviderId(value.activeProviderId),
-    providers: AI_PROVIDER_IDS.reduce<Record<AiProviderId, AiProviderConfig>>(
-      (result, providerId) => {
-        result[providerId] = normalizeProviderConfig(
-          providersValue[providerId],
-          DEFAULT_AI_SETTINGS.providers[providerId]
-        );
-        return result;
-      },
-      {} as Record<AiProviderId, AiProviderConfig>
-    ),
+    activeProviderId: "openai",
+    providers: {
+      openai: normalizeProviderConfig(
+        providersValue.openai,
+        DEFAULT_AI_SETTINGS.providers.openai
+      ),
+    },
     maxTokens:
       typeof value.maxTokens === "number" &&
       Number.isFinite(value.maxTokens) &&
@@ -133,7 +105,6 @@ function normalizeLegacyShape(value: Record<string, unknown>): AiSettings {
   return {
     ...DEFAULT_AI_SETTINGS,
     providers: {
-      ...DEFAULT_AI_SETTINGS.providers,
       openai: {
         apiKey:
           typeof value.apiKey === "string"
@@ -180,13 +151,13 @@ function normalizeAiSettings(value: unknown): AiSettings {
 
 export function getAiProviderConfig(
   settings: AiSettings,
-  providerId: AiProviderId
+  providerId: AiProviderId = "openai"
 ): AiProviderConfig {
-  return settings.providers[providerId] ?? DEFAULT_AI_SETTINGS.providers[providerId];
+  return settings.providers[providerId] ?? DEFAULT_AI_SETTINGS.providers.openai;
 }
 
 export function getActiveAiProviderConfig(settings: AiSettings) {
-  return getAiProviderConfig(settings, settings.activeProviderId);
+  return getAiProviderConfig(settings, "openai");
 }
 
 function loadLegacyAiSettings(): AiSettings | null {

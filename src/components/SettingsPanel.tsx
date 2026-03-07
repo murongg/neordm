@@ -19,10 +19,8 @@ import { useI18n, type Locale } from "../i18n";
 import { useModalTransition } from "../hooks/useModalTransition";
 import {
   DEFAULT_AI_SETTINGS,
-  getAiProviderConfig,
   loadAiSettings,
   persistAiSettings,
-  type AiProviderId,
 } from "../lib/aiSettings";
 import {
   DEFAULT_APP_SETTINGS,
@@ -751,9 +749,6 @@ function AISettings() {
   const { showToast } = useToast();
   const ai = messages.settings.ai;
   const [settings, setSettings] = useState(DEFAULT_AI_SETTINGS);
-  const [selectedProviderId, setSelectedProviderId] = useState<AiProviderId>(
-    DEFAULT_AI_SETTINGS.activeProviderId
-  );
   const [showKey, setShowKey] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
 
@@ -766,7 +761,6 @@ function AISettings() {
       }
 
       setSettings(nextSettings);
-      setSelectedProviderId(nextSettings.activeProviderId);
     });
 
     return () => {
@@ -774,18 +768,17 @@ function AISettings() {
     };
   }, []);
 
-  const selectedProviderConfig = getAiProviderConfig(settings, selectedProviderId);
-  const selectedProviderMeta =
-    AI_PROVIDER_OPTIONS.find((provider) => provider.id === selectedProviderId) ??
-    AI_PROVIDER_OPTIONS[0];
+  const selectedProviderConfig = settings.providers.openai;
 
-  const updateSelectedProviderConfig = (patch: Partial<typeof selectedProviderConfig>) => {
+  const updateSelectedProviderConfig = (
+    patch: Partial<typeof selectedProviderConfig>
+  ) => {
     setSettings((previous) => ({
       ...previous,
       providers: {
         ...previous.providers,
-        [selectedProviderId]: {
-          ...previous.providers[selectedProviderId],
+        openai: {
+          ...previous.providers.openai,
           ...patch,
         },
       },
@@ -806,9 +799,9 @@ function AISettings() {
     setIsTestingConnection(true);
 
     try {
-      await testAiProviderConnection(selectedProviderId, selectedProviderConfig);
+      await testAiProviderConnection(selectedProviderConfig);
       showToast({
-        message: `${selectedProviderMeta.name} ${ai.enabled}`,
+        message: `OpenAI ${ai.enabled}`,
         tone: "success",
         duration: 1800,
       });
@@ -826,24 +819,6 @@ function AISettings() {
   return (
     <>
       <Section title={ai.apiConfiguration}>
-        <Row label={ai.providerList} description={selectedProviderMeta.name}>
-          <SelectInput
-            value={selectedProviderId}
-            onChange={(value) => {
-              const providerId = value as AiProviderId;
-              setSelectedProviderId(providerId);
-              setSettings((previous) => ({
-                ...previous,
-                activeProviderId: providerId,
-              }));
-            }}
-            options={AI_PROVIDER_OPTIONS.map((provider) => ({
-              value: provider.id,
-              label: provider.name,
-            }))}
-          />
-        </Row>
-
         <SettingsField label="API Key">
           <div className="flex items-center gap-2">
             <input
@@ -961,23 +936,6 @@ function AISettings() {
     </>
   );
 }
-
-const AI_PROVIDER_OPTIONS: Array<{
-  id: AiProviderId;
-  name: string;
-  monogram: string;
-  badgeClass: string;
-}> = [
-  { id: "openai", name: "OpenAI", monogram: "◎", badgeClass: "bg-emerald-500/15 text-emerald-500" },
-  { id: "anthropic", name: "Anthropic", monogram: "AI", badgeClass: "bg-orange-500/15 text-orange-500" },
-  { id: "google", name: "Google", monogram: "✦", badgeClass: "bg-blue-500/15 text-blue-500" },
-  { id: "xai", name: "xAI Grok", monogram: "𝕏", badgeClass: "bg-slate-500/15 text-slate-500" },
-  { id: "azure-openai", name: "Azure OpenAI", monogram: "A", badgeClass: "bg-sky-500/15 text-sky-500" },
-  { id: "mistral", name: "Mistral", monogram: "M", badgeClass: "bg-amber-500/15 text-amber-500" },
-  { id: "groq", name: "Groq", monogram: "G", badgeClass: "bg-rose-500/15 text-rose-500" },
-  { id: "deepseek", name: "DeepSeek", monogram: "D", badgeClass: "bg-indigo-500/15 text-indigo-500" },
-  { id: "together", name: "Together.ai", monogram: "T", badgeClass: "bg-violet-500/15 text-violet-500" },
-];
 
 function SettingsField({
   label,

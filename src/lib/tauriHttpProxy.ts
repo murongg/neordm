@@ -57,3 +57,28 @@ export async function tauriProxyFetch(
     ),
   });
 }
+
+let proxyFetchDepth = 0;
+let originalFetch: typeof globalThis.fetch | null = null;
+
+export async function withTauriProxyFetch<T>(operation: () => Promise<T>) {
+  const currentFetch = globalThis.fetch;
+
+  if (proxyFetchDepth === 0 && typeof currentFetch === "function") {
+    originalFetch = currentFetch.bind(globalThis);
+    globalThis.fetch = tauriProxyFetch as typeof globalThis.fetch;
+  }
+
+  proxyFetchDepth += 1;
+
+  try {
+    return await operation();
+  } finally {
+    proxyFetchDepth = Math.max(0, proxyFetchDepth - 1);
+
+    if (proxyFetchDepth === 0 && originalFetch) {
+      globalThis.fetch = originalFetch;
+      originalFetch = null;
+    }
+  }
+}

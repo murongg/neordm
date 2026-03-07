@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Bot, Send, Sparkles, Terminal, User, Copy, Check } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "../types";
 import { useI18n } from "../i18n";
 import { useToast } from "./ToastProvider";
@@ -211,30 +213,92 @@ function MessageBubble({
 }
 
 function MessageContent({ content }: { content: string }) {
-  // Handle markdown-style code blocks and bold
-  const parts = content.split(/(`[^`]+`|\*\*[^*]+\*\*)/g);
   return (
-    <>
-      {parts.map((part, i) => {
-        if (part.startsWith("`") && part.endsWith("`")) {
+    <Markdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        p: ({ children }) => <p className="whitespace-pre-wrap">{children}</p>,
+        strong: ({ children }) => (
+          <strong className="font-semibold text-base-content">{children}</strong>
+        ),
+        em: ({ children }) => <em className="italic">{children}</em>,
+        ul: ({ children }) => (
+          <ul className="my-1 list-disc space-y-1 pl-4">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="my-1 list-decimal space-y-1 pl-4">{children}</ol>
+        ),
+        li: ({ children }) => <li className="pl-0.5">{children}</li>,
+        blockquote: ({ children }) => (
+          <blockquote className="my-2 border-l-2 border-success/30 pl-3 text-base-content/60">
+            {children}
+          </blockquote>
+        ),
+        a: ({ href, children }) => (
+          <a
+            href={href}
+            target="_blank"
+            rel="noreferrer"
+            className="text-success underline decoration-success/50 underline-offset-2"
+          >
+            {children}
+          </a>
+        ),
+        code: ({ className, children }) => {
+          const isBlock = Boolean(className);
+
+          if (isBlock) {
+            return (
+              <code className="block overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-[11px] text-success">
+                {children}
+              </code>
+            );
+          }
+
           return (
-            <span
-              key={i}
-              className="px-1 py-0.5 rounded bg-base-300 text-success text-[10px]"
-            >
-              {part.slice(1, -1)}
-            </span>
+            <code className="rounded bg-base-300 px-1 py-0.5 text-[11px] text-success">
+              {children}
+            </code>
           );
-        }
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return (
-            <strong key={i} className="font-semibold text-base-content">
-              {part.slice(2, -2)}
-            </strong>
-          );
-        }
-        return <span key={i}>{part}</span>;
-      })}
-    </>
+        },
+        pre: ({ children }) => <pre className="my-2 overflow-x-auto">{children}</pre>,
+        h1: ({ children }) => (
+          <h1 className="mt-1 mb-2 text-sm font-semibold text-base-content">
+            {children}
+          </h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="mt-1 mb-2 text-sm font-semibold text-base-content">
+            {children}
+          </h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="mt-1 mb-1.5 text-xs font-semibold text-base-content">
+            {children}
+          </h3>
+        ),
+        hr: () => <hr className="my-2 border-base-content/10" />,
+        table: ({ children }) => (
+          <div className="my-2 overflow-x-auto rounded-lg border border-base-content/10">
+            <table className="min-w-full border-collapse text-[11px]">
+              {children}
+            </table>
+          </div>
+        ),
+        thead: ({ children }) => <thead className="bg-base-300/80">{children}</thead>,
+        th: ({ children }) => (
+          <th className="border-b border-base-content/10 px-2 py-1.5 text-left font-semibold text-base-content">
+            {children}
+          </th>
+        ),
+        td: ({ children }) => (
+          <td className="border-b border-base-content/5 px-2 py-1.5 align-top">
+            {children}
+          </td>
+        ),
+      }}
+    >
+      {content}
+    </Markdown>
   );
 }
