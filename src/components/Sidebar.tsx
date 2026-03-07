@@ -94,7 +94,7 @@ function ConnectionStatusBadge({
   disconnectLabel?: string;
   onShowTooltip?: (target: HTMLElement, content: string) => void;
   onHideTooltip?: () => void;
-  placement?: "overlay" | "inline";
+  placement?: "overlay" | "inline" | "row-end";
 }) {
   const [displayStatus, setDisplayStatus] = useState(status);
   const [isVisible, setIsVisible] = useState(true);
@@ -140,6 +140,8 @@ function ConnectionStatusBadge({
   const placementClassName =
     placement === "inline"
       ? "relative shrink-0"
+      : placement === "row-end"
+      ? "absolute right-3 top-1/2 -translate-y-1/2"
       : "absolute -bottom-0.5 -right-0.5";
   const badgeClassName = `${placementClassName} grid h-3.5 w-3.5 place-items-center rounded-full ring-1 ring-base-300/90 backdrop-blur-sm transition-[opacity,transform,background-color,box-shadow] duration-150 ease-out motion-reduce:transition-none ${
     STATUS_BADGE_CLASSES[displayStatus]
@@ -552,7 +554,7 @@ export function Sidebar({
   return (
     <aside
       className={`relative z-20 flex h-full flex-col border-r border-base-100/50 bg-base-300 transition-[width] duration-200 ease-linear motion-reduce:transition-none ${
-        isCollapsed ? "w-14" : "w-56"
+        isCollapsed ? "w-14" : "w-[13.5rem]"
       }`}
     >
       {sidebarTooltip ? (
@@ -576,7 +578,7 @@ export function Sidebar({
         />
         <div
           className={`relative z-10 flex h-full items-center ${
-            isCollapsed ? "justify-center" : "px-3"
+            isCollapsed ? "justify-center" : "px-3.5"
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -584,7 +586,7 @@ export function Sidebar({
               <Database size={15} className="text-success" />
             </div>
             {!isCollapsed ? (
-              <span className="truncate text-[11px] font-mono uppercase tracking-[0.18em] text-base-content/55">
+              <span className="truncate text-[11px] font-mono uppercase tracking-[0.18em] text-base-content/50">
                 NeoRDM
               </span>
             ) : null}
@@ -595,7 +597,7 @@ export function Sidebar({
       <div
         ref={listContainerRef}
         className={`relative flex flex-1 flex-col overflow-y-auto py-3 ${
-          isCollapsed ? "items-center" : "px-2"
+          isCollapsed ? "items-center" : "px-2.5"
         }`}
       >
         {activeIndicatorRect && (
@@ -633,7 +635,7 @@ export function Sidebar({
             >
               <div
                 className={`relative z-10 group flex items-center py-1.5 ${
-                  isCollapsed ? "justify-center" : "w-full gap-2"
+                  isCollapsed ? "justify-center" : "w-full"
                 }`}
               >
                 <button
@@ -642,24 +644,32 @@ export function Sidebar({
                   }}
                   onClick={() => onSelectConnection(conn.id)}
                   onContextMenu={(event) => openContextMenu(event, conn.id)}
-                  onMouseEnter={(event) =>
-                    showSidebarTooltip(event.currentTarget, conn.name)
-                  }
+                  onMouseEnter={(event) => {
+                    if (isCollapsed) {
+                      showSidebarTooltip(event.currentTarget, conn.name);
+                    }
+                  }}
                   onMouseLeave={hideSidebarTooltip}
-                  onFocus={(event) =>
-                    showSidebarTooltip(event.currentTarget, conn.name)
-                  }
+                  onFocus={(event) => {
+                    if (isCollapsed) {
+                      showSidebarTooltip(event.currentTarget, conn.name);
+                    }
+                  }}
                   onBlur={hideSidebarTooltip}
                   aria-haspopup="menu"
                   aria-expanded={contextMenu?.connectionId === conn.id}
                   className={`
                     relative flex items-center rounded-xl cursor-pointer
-                    transition-all duration-200
-                    ${isCollapsed ? "h-9 w-9 justify-center" : "h-10 w-full min-w-0 gap-3 px-3 justify-start"}
+                    transition-[background-color,color,transform,box-shadow] duration-150
+                    ${
+                      isCollapsed
+                        ? "h-9 w-9 justify-center"
+                        : "h-10 w-full min-w-0 justify-start gap-3 px-3 pr-10 text-left"
+                    }
                     ${
                       isActive
-                        ? "scale-[1.03]"
-                        : "hover:bg-base-100/50 hover:scale-105"
+                        ? "text-base-content"
+                        : "text-base-content/72 hover:bg-base-100/56 hover:text-base-content"
                     }
                   `}
                   aria-label={conn.name}
@@ -670,7 +680,7 @@ export function Sidebar({
                   />
                   {!isCollapsed ? (
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-xs font-mono text-base-content/85">
+                      <div className="truncate text-xs font-mono">
                         {conn.name}
                       </div>
                     </div>
@@ -689,12 +699,9 @@ export function Sidebar({
                 ) : (
                   <ConnectionStatusBadge
                     status={conn.status}
-                    placement="inline"
+                    placement="row-end"
                     onDisconnect={() => onDisconnectConnection(conn.id)}
                     onContextMenu={(event) => openContextMenu(event, conn.id)}
-                    disconnectLabel={messages.common.disconnect}
-                    onShowTooltip={showSidebarTooltip}
-                    onHideTooltip={hideSidebarTooltip}
                   />
                 )}
               </div>
@@ -719,7 +726,7 @@ export function Sidebar({
           className={`rounded-xl border border-dashed border-base-content/20 text-base-content/30 transition-all duration-200 hover:border-success/50 hover:bg-base-100/50 hover:text-success cursor-pointer ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
-              : "flex h-10 w-full items-center gap-3 px-3"
+              : "mt-1 flex h-10 w-full items-center gap-3 px-3"
           }`}
           aria-label={messages.sidebar.newConnection}
         >
@@ -829,14 +836,14 @@ export function Sidebar({
             }
           }}
           onBlur={hideSidebarTooltip}
-          className={`rounded-xl cursor-pointer transition-all duration-200 ${
+          className={`rounded-xl cursor-pointer transition-[background-color,color] duration-150 ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
               : "flex h-10 w-full items-center gap-3 px-3"
           } ${
             panelTab === "cli"
-              ? "bg-success/20 text-success"
-              : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
+              ? "bg-success/18 text-success"
+              : "text-base-content/42 hover:bg-base-100/50 hover:text-base-content"
           }`}
           aria-label={messages.sidebar.cli}
         >
@@ -859,14 +866,14 @@ export function Sidebar({
             }
           }}
           onBlur={hideSidebarTooltip}
-          className={`rounded-xl cursor-pointer transition-all duration-200 ${
+          className={`rounded-xl cursor-pointer transition-[background-color,color] duration-150 ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
               : "flex h-10 w-full items-center gap-3 px-3"
           } ${
             panelTab === "ai"
-              ? "bg-success/20 text-success"
-              : "text-base-content/40 hover:bg-base-100/50 hover:text-base-content"
+              ? "bg-success/18 text-success"
+              : "text-base-content/42 hover:bg-base-100/50 hover:text-base-content"
           }`}
           aria-label={messages.sidebar.aiAgent}
         >
@@ -891,7 +898,7 @@ export function Sidebar({
             }
           }}
           onBlur={hideSidebarTooltip}
-          className={`cursor-pointer rounded-xl text-base-content/40 transition-all duration-200 hover:bg-base-100/50 hover:text-base-content ${
+          className={`cursor-pointer rounded-xl text-base-content/42 transition-[background-color,color] duration-150 hover:bg-base-100/50 hover:text-base-content ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
               : "flex h-10 w-full items-center gap-3 px-3"
@@ -911,25 +918,19 @@ export function Sidebar({
           onMouseEnter={(event) => {
             if (isCollapsed) {
               showSidebarTooltip(event.currentTarget, messages.sidebar.expand);
-              return;
             }
-
-            showSidebarTooltip(event.currentTarget, messages.sidebar.collapse);
           }}
           onMouseLeave={hideSidebarTooltip}
           onFocus={(event) => {
             if (isCollapsed) {
               showSidebarTooltip(event.currentTarget, messages.sidebar.expand);
-              return;
             }
-
-            showSidebarTooltip(event.currentTarget, messages.sidebar.collapse);
           }}
           onBlur={hideSidebarTooltip}
-          className={`cursor-pointer rounded-xl text-base-content/40 transition-all duration-200 hover:bg-base-100/50 hover:text-base-content ${
+          className={`cursor-pointer rounded-xl text-base-content/42 transition-[background-color,color] duration-150 hover:bg-base-100/50 hover:text-base-content ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
-              : "mt-1 flex h-10 w-full items-center gap-3 px-3"
+              : "mt-1.5 flex h-10 w-full items-center gap-3 px-3"
           }`}
           aria-label={
             isCollapsed ? messages.sidebar.expand : messages.sidebar.collapse
