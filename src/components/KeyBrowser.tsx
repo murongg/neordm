@@ -1,5 +1,7 @@
 import {
+  memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -65,6 +67,27 @@ interface KeyTreeLeafNode {
 }
 
 type KeyTreeNode = KeyTreeGroupNode | KeyTreeLeafNode;
+
+type VisibleTreeRow =
+  | {
+      kind: "group";
+      key: string;
+      motionId: string;
+      group: KeyTreeGroupNode;
+      isExpanded: boolean;
+    }
+  | {
+      kind: "key";
+      key: string;
+      motionId: string;
+      redisKey: RedisKey;
+      label: string;
+      depth: number;
+    };
+
+const KEY_BROWSER_REORDER_ANIMATION_LIMIT = 240;
+const KEY_BROWSER_ROW_HEIGHT = 32;
+const KEY_BROWSER_VIRTUAL_OVERSCAN = 10;
 
 const TYPE_CONFIG: Record<
   RedisKeyType,
@@ -211,6 +234,50 @@ function buildTree(keys: RedisKey[], separator: string): KeyTreeNode[] {
   };
 
   return serialize(root);
+}
+
+function flattenVisibleTreeRows(
+  nodes: KeyTreeNode[],
+  expandedGroups: Set<string>,
+  getGroupMotionId: (groupId: string) => string,
+  getKeyMotionId: (key: string) => string
+): VisibleTreeRow[] {
+  const rows: VisibleTreeRow[] = [];
+
+  const visit = (currentNodes: KeyTreeNode[]) => {
+    currentNodes.forEach((node) => {
+      if (node.kind === "group") {
+        const isExpanded = expandedGroups.has(node.id);
+
+        rows.push({
+          kind: "group",
+          key: `group:${getGroupMotionId(node.id)}`,
+          motionId: `group:${getGroupMotionId(node.id)}`,
+          group: node,
+          isExpanded,
+        });
+
+        if (isExpanded) {
+          visit(node.children);
+        }
+
+        return;
+      }
+
+      rows.push({
+        kind: "key",
+        key: `key:${getKeyMotionId(node.redisKey.key)}`,
+        motionId: `key:${getKeyMotionId(node.redisKey.key)}`,
+        redisKey: node.redisKey,
+        label: node.label,
+        depth: node.depth,
+      });
+    });
+  };
+
+  visit(nodes);
+
+  return rows;
 }
 
 function getParentGroupIds(key: string, separator: string) {
@@ -368,18 +435,25 @@ export function KeyBrowser({
   const previousPositionsRef = useRef<Map<string, number>>(new Map());
   const motionCleanupTimersRef = useRef<Map<string, number>>(new Map());
   const pendingKeySelectTimerRef = useRef<number | null>(null);
+  const scrollMetricsFrameRef = useRef<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const pendingReorderAnimationRef = useRef(false);
   const pendingRenameKeysRef = useRef<{
     oldKey: string;
     newKey: string;
   } | null>(null);
   const hasConnection = Boolean(connection);
+  const [scrollMetrics, setScrollMetrics] = useState({
+    scrollTop: 0,
+    viewportHeight: 0,
+  });
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   const filtered = useMemo(() => {
-    const q = searchQuery.replace(/\*/g, "").toLowerCase();
+    const q = deferredSearchQuery.replace(/\*/g, "").toLowerCase();
     if (!q) return keys;
     return keys.filter((keyItem) => keyItem.key.toLowerCase().includes(q));
-  }, [keys, searchQuery]);
+  }, [deferredSearchQuery, keys]);
 
   const tree = useMemo(
     () => buildTree(filtered, keySeparator),
@@ -407,25 +481,6 @@ export function KeyBrowser({
     });
   };
 
-  const setMotionElement = useCallback(
-    (id: string, element: HTMLElement | null) => {
-      const current = motionElementsRef.current;
-      const activeTimer = motionCleanupTimersRef.current.get(id);
-
-      if (!element) {
-        if (activeTimer) {
-          window.clearTimeout(activeTimer);
-          motionCleanupTimersRef.current.delete(id);
-        }
-        current.delete(id);
-        return;
-      }
-
-      current.set(id, element);
-    },
-    []
-  );
-
   const getKeyMotionId = useCallback(
     (key: string) => {
       const pendingRename = pendingRenameKeysRef.current;
@@ -447,6 +502,103 @@ export function KeyBrowser({
     (groupId: string) => groupMotionIds[groupId] ?? groupId,
     [groupMotionIds]
   );
+  const visibleRows = useMemo(
+    () =>
+      flattenVisibleTreeRows(
+        tree,
+        expandedGroups,
+        getGroupMotionId,
+        getKeyMotionId
+      ),
+    [expandedGroups, getGroupMotionId, getKeyMotionId, tree]
+  );
+  const enableReorderAnimations =
+    visibleRows.length <= KEY_BROWSER_REORDER_ANIMATION_LIMIT;
+  const updateScrollMetrics = useCallback(() => {
+    const container = scrollContainerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const nextScrollTop = container.scrollTop;
+    const nextViewportHeight = container.clientHeight;
+
+    setScrollMetrics((previous) => {
+      if (
+        previous.scrollTop === nextScrollTop &&
+        previous.viewportHeight === nextViewportHeight
+      ) {
+        return previous;
+      }
+
+      return {
+        scrollTop: nextScrollTop,
+        viewportHeight: nextViewportHeight,
+      };
+    });
+  }, []);
+  const handleScroll = useCallback(() => {
+    if (scrollMetricsFrameRef.current !== null) {
+      return;
+    }
+
+    scrollMetricsFrameRef.current = window.requestAnimationFrame(() => {
+      scrollMetricsFrameRef.current = null;
+      updateScrollMetrics();
+    });
+  }, [updateScrollMetrics]);
+  const setMotionElement = useCallback(
+    (id: string, element: HTMLElement | null) => {
+      const current = motionElementsRef.current;
+      const activeTimer = motionCleanupTimersRef.current.get(id);
+
+      if (!enableReorderAnimations) {
+        if (activeTimer) {
+          window.clearTimeout(activeTimer);
+          motionCleanupTimersRef.current.delete(id);
+        }
+        current.delete(id);
+        return;
+      }
+
+      if (!element) {
+        if (activeTimer) {
+          window.clearTimeout(activeTimer);
+          motionCleanupTimersRef.current.delete(id);
+        }
+        current.delete(id);
+        return;
+      }
+
+      current.set(id, element);
+    },
+    [enableReorderAnimations]
+  );
+  const totalRows = visibleRows.length;
+  const viewportHeight = scrollMetrics.viewportHeight || 480;
+  const maxVisibleStartIndex = Math.max(0, totalRows - 1);
+  const rawVisibleStartIndex =
+    Math.floor(scrollMetrics.scrollTop / KEY_BROWSER_ROW_HEIGHT) -
+    KEY_BROWSER_VIRTUAL_OVERSCAN;
+  const visibleStartIndex = Math.min(
+    maxVisibleStartIndex,
+    Math.max(0, rawVisibleStartIndex)
+  );
+  const rawVisibleEndIndex =
+    Math.ceil(
+      (scrollMetrics.scrollTop + viewportHeight) / KEY_BROWSER_ROW_HEIGHT
+    ) + KEY_BROWSER_VIRTUAL_OVERSCAN;
+  const visibleEndIndex =
+    totalRows === 0
+      ? 0
+      : Math.min(totalRows, Math.max(visibleStartIndex + 1, rawVisibleEndIndex));
+  const topSpacerHeight = visibleStartIndex * KEY_BROWSER_ROW_HEIGHT;
+  const bottomSpacerHeight = Math.max(
+    0,
+    (totalRows - visibleEndIndex) * KEY_BROWSER_ROW_HEIGHT
+  );
+  const virtualRows = visibleRows.slice(visibleStartIndex, visibleEndIndex);
 
   const clearPendingKeySelection = useCallback(() => {
     if (pendingKeySelectTimerRef.current) {
@@ -807,6 +959,22 @@ export function KeyBrowser({
   }, [tree]);
 
   useLayoutEffect(() => {
+    if (!enableReorderAnimations) {
+      motionCleanupTimersRef.current.forEach((timer) => {
+        window.clearTimeout(timer);
+      });
+      motionCleanupTimersRef.current.clear();
+      motionElementsRef.current.forEach((element) => {
+        element.style.transition = "";
+        element.style.transform = "";
+        element.style.willChange = "";
+      });
+      previousPositionsRef.current = new Map();
+      pendingReorderAnimationRef.current = false;
+      pendingRenameKeysRef.current = null;
+      return;
+    }
+
     const nextPositions = new Map<string, number>();
 
     motionElementsRef.current.forEach((element, id) => {
@@ -868,12 +1036,46 @@ export function KeyBrowser({
     previousPositionsRef.current = nextPositions;
     pendingReorderAnimationRef.current = false;
     pendingRenameKeysRef.current = null;
-  }, [expandedGroups, groupMotionIds, keyMotionIds, tree]);
+  }, [
+    enableReorderAnimations,
+    expandedGroups,
+    groupMotionIds,
+    keyMotionIds,
+    tree,
+  ]);
+
+  useLayoutEffect(() => {
+    updateScrollMetrics();
+
+    const container = scrollContainerRef.current;
+
+    if (!container || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      updateScrollMetrics();
+    });
+
+    resizeObserver.observe(container);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [updateScrollMetrics]);
+
+  useLayoutEffect(() => {
+    updateScrollMetrics();
+  }, [totalRows, updateScrollMetrics]);
 
   useEffect(() => {
     return () => {
       if (pendingKeySelectTimerRef.current) {
         window.clearTimeout(pendingKeySelectTimerRef.current);
+      }
+
+      if (scrollMetricsFrameRef.current !== null) {
+        window.cancelAnimationFrame(scrollMetricsFrameRef.current);
       }
 
       motionCleanupTimersRef.current.forEach((timer) => {
@@ -1006,6 +1208,8 @@ export function KeyBrowser({
       </div>
 
       <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto py-1"
         style={{ scrollbarGutter: "stable" }}
       >
@@ -1018,178 +1222,60 @@ export function KeyBrowser({
           </div>
         ) : (
           <>
-            {tree.map((node) => (
-              <KeyTreeItem
-                key={
-                  node.kind === "group"
-                    ? `group:${getGroupMotionId(node.id)}`
-                    : `key:${getKeyMotionId(node.redisKey.key)}`
-                }
-                node={node}
-                expandedGroups={expandedGroups}
-                onToggleGroup={toggleGroup}
-                selectedKeyName={activeSelectedKeyName}
-                onSelectKey={handleKeyClick}
-                getGroupMotionId={getGroupMotionId}
-                getKeyMotionId={getKeyMotionId}
-                setMotionElement={setMotionElement}
-                editingGroupId={editingGroupId}
-                editingKeyName={editingKeyName}
-                renameDraft={renameDraft}
-                renameError={renameError}
-                isRenaming={isRenaming}
-                renameInputRef={renameInputRef}
-                onStartRename={startRename}
-                onStartGroupRename={startGroupRename}
-                onRenameDraftChange={handleRenameDraftChange}
-                onCancelRename={cancelRename}
-                onSubmitRename={submitRename}
-                onSubmitGroupRename={submitGroupRename}
-                showKeyType={showKeyType}
-                showTtl={showTtl}
-                typeConfig={typeConfig}
-              />
-            ))}
+            {topSpacerHeight > 0 ? (
+              <div style={{ height: topSpacerHeight }} aria-hidden="true" />
+            ) : null}
+            {virtualRows.map((row) =>
+              row.kind === "group" ? (
+                <MemoGroupRow
+                  key={row.key}
+                  motionId={row.motionId}
+                  setMotionElement={setMotionElement}
+                  group={row.group}
+                  isExpanded={row.isExpanded}
+                  isEditing={editingGroupId === row.group.id}
+                  renameDraft={renameDraft}
+                  renameError={renameError}
+                  isRenaming={isRenaming}
+                  renameInputRef={renameInputRef}
+                  onToggle={() => toggleGroup(row.group.id)}
+                  onStartRename={() => startGroupRename(row.group)}
+                  onRenameDraftChange={handleRenameDraftChange}
+                  onCancelRename={cancelRename}
+                  onSubmitRename={() => submitGroupRename(row.group)}
+                />
+              ) : (
+                <MemoKeyRow
+                  key={row.key}
+                  motionId={row.motionId}
+                  setMotionElement={setMotionElement}
+                  redisKey={row.redisKey}
+                  label={row.label}
+                  depth={row.depth}
+                  isSelected={activeSelectedKeyName === row.redisKey.key}
+                  isEditing={editingKeyName === row.redisKey.key}
+                  renameDraft={renameDraft}
+                  renameError={renameError}
+                  isRenaming={isRenaming}
+                  renameInputRef={renameInputRef}
+                  onStartRename={() => startRename(row.redisKey)}
+                  onRenameDraftChange={handleRenameDraftChange}
+                  onCancelRename={cancelRename}
+                  onSubmitRename={() => submitRename(row.redisKey)}
+                  onClick={() => handleKeyClick(row.redisKey)}
+                  showKeyType={showKeyType}
+                  showTtl={showTtl}
+                  typeConfig={typeConfig}
+                />
+              )
+            )}
+            {bottomSpacerHeight > 0 ? (
+              <div style={{ height: bottomSpacerHeight }} aria-hidden="true" />
+            ) : null}
           </>
         )}
       </div>
     </div>
-  );
-}
-
-function KeyTreeItem({
-  node,
-  expandedGroups,
-  onToggleGroup,
-  selectedKeyName,
-  onSelectKey,
-  getGroupMotionId,
-  getKeyMotionId,
-  setMotionElement,
-  editingGroupId,
-  editingKeyName,
-  renameDraft,
-  renameError,
-  isRenaming,
-  renameInputRef,
-  onStartRename,
-  onStartGroupRename,
-  onRenameDraftChange,
-  onCancelRename,
-  onSubmitRename,
-  onSubmitGroupRename,
-  showKeyType,
-  showTtl,
-  typeConfig,
-}: {
-  node: KeyTreeNode;
-  expandedGroups: Set<string>;
-  onToggleGroup: (group: string) => void;
-  selectedKeyName: string | null;
-  onSelectKey: (key: RedisKey) => void;
-  getGroupMotionId: (groupId: string) => string;
-  getKeyMotionId: (key: string) => string;
-  setMotionElement: (id: string, element: HTMLElement | null) => void;
-  editingGroupId: string | null;
-  editingKeyName: string | null;
-  renameDraft: string;
-  renameError: string;
-  isRenaming: boolean;
-  renameInputRef: React.RefObject<HTMLInputElement | null>;
-  onStartRename: (key: RedisKey) => void;
-  onStartGroupRename: (group: KeyTreeGroupNode) => void;
-  onRenameDraftChange: (value: string) => void;
-  onCancelRename: () => void;
-  onSubmitRename: (key: RedisKey) => Promise<void>;
-  onSubmitGroupRename: (group: KeyTreeGroupNode) => Promise<void>;
-  showKeyType: boolean;
-  showTtl: boolean;
-  typeConfig: typeof TYPE_CONFIG;
-}) {
-  if (node.kind === "group") {
-    const isExpanded = expandedGroups.has(node.id);
-    const motionId = `group:${getGroupMotionId(node.id)}`;
-
-    return (
-      <div>
-        <GroupRow
-          motionId={motionId}
-          setMotionElement={setMotionElement}
-          group={node}
-          isExpanded={isExpanded}
-          isEditing={editingGroupId === node.id}
-          renameDraft={renameDraft}
-          renameError={renameError}
-          isRenaming={isRenaming}
-          renameInputRef={renameInputRef}
-          onToggle={() => onToggleGroup(node.id)}
-          onStartRename={() => onStartGroupRename(node)}
-          onRenameDraftChange={onRenameDraftChange}
-          onCancelRename={onCancelRename}
-          onSubmitRename={() => onSubmitGroupRename(node)}
-        />
-        {isExpanded && (
-          <div>
-            {node.children.map((childNode) => (
-              <KeyTreeItem
-                key={
-                  childNode.kind === "group"
-                    ? `group:${getGroupMotionId(childNode.id)}`
-                    : `key:${getKeyMotionId(childNode.redisKey.key)}`
-                }
-                node={childNode}
-                expandedGroups={expandedGroups}
-                onToggleGroup={onToggleGroup}
-                selectedKeyName={selectedKeyName}
-                onSelectKey={onSelectKey}
-                getGroupMotionId={getGroupMotionId}
-                getKeyMotionId={getKeyMotionId}
-                setMotionElement={setMotionElement}
-                editingGroupId={editingGroupId}
-                editingKeyName={editingKeyName}
-                renameDraft={renameDraft}
-                renameError={renameError}
-                isRenaming={isRenaming}
-                renameInputRef={renameInputRef}
-                onStartRename={onStartRename}
-                onStartGroupRename={onStartGroupRename}
-                onRenameDraftChange={onRenameDraftChange}
-                onCancelRename={onCancelRename}
-                onSubmitRename={onSubmitRename}
-                onSubmitGroupRename={onSubmitGroupRename}
-                showKeyType={showKeyType}
-                showTtl={showTtl}
-                typeConfig={typeConfig}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <KeyRow
-      motionId={`key:${getKeyMotionId(node.redisKey.key)}`}
-      setMotionElement={setMotionElement}
-      redisKey={node.redisKey}
-      label={node.label}
-      depth={node.depth}
-      isSelected={selectedKeyName === node.redisKey.key}
-      isEditing={editingKeyName === node.redisKey.key}
-      renameDraft={renameDraft}
-      renameError={renameError}
-      isRenaming={isRenaming}
-      renameInputRef={renameInputRef}
-      onStartRename={() => onStartRename(node.redisKey)}
-      onRenameDraftChange={onRenameDraftChange}
-      onCancelRename={onCancelRename}
-      onSubmitRename={() => onSubmitRename(node.redisKey)}
-      onClick={() => onSelectKey(node.redisKey)}
-      showKeyType={showKeyType}
-      showTtl={showTtl}
-      typeConfig={typeConfig}
-    />
   );
 }
 
@@ -1510,3 +1596,40 @@ function KeyRow({
     </button>
   );
 }
+
+type GroupRowProps = Parameters<typeof GroupRow>[0];
+type KeyRowProps = Parameters<typeof KeyRow>[0];
+
+function areGroupRowPropsEqual(
+  previous: GroupRowProps,
+  next: GroupRowProps
+) {
+  return (
+    previous.motionId === next.motionId &&
+    previous.group === next.group &&
+    previous.isExpanded === next.isExpanded &&
+    previous.isEditing === next.isEditing &&
+    previous.renameDraft === next.renameDraft &&
+    previous.renameError === next.renameError &&
+    previous.isRenaming === next.isRenaming
+  );
+}
+
+function areKeyRowPropsEqual(previous: KeyRowProps, next: KeyRowProps) {
+  return (
+    previous.motionId === next.motionId &&
+    previous.redisKey === next.redisKey &&
+    previous.label === next.label &&
+    previous.depth === next.depth &&
+    previous.isSelected === next.isSelected &&
+    previous.isEditing === next.isEditing &&
+    previous.renameDraft === next.renameDraft &&
+    previous.renameError === next.renameError &&
+    previous.isRenaming === next.isRenaming &&
+    previous.showKeyType === next.showKeyType &&
+    previous.showTtl === next.showTtl
+  );
+}
+
+const MemoGroupRow = memo(GroupRow, areGroupRowPropsEqual);
+const MemoKeyRow = memo(KeyRow, areKeyRowPropsEqual);

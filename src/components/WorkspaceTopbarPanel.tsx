@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { Bot, Edit3, Server, Terminal, Wifi } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
+import { prepareAIAgentExperience } from "../lib/aiPrefetch";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 
 export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
@@ -36,7 +37,16 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
           <Edit3 size={11} /> {messages.app.tabs.editor}
         </button>
         <button
-          onClick={() => workspace.setPanelTab("ai")}
+          onMouseEnter={() => {
+            void prepareAIAgentExperience().catch(() => {});
+          }}
+          onFocus={() => {
+            void prepareAIAgentExperience().catch(() => {});
+          }}
+          onClick={() => {
+            void prepareAIAgentExperience().catch(() => {});
+            workspace.setPanelTab("ai");
+          }}
           className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "ai" ? "tab-active" : ""}`}
         >
           <Bot size={11} /> {messages.app.tabs.ai}

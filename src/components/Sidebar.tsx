@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import type { RedisConnection, PanelTab } from "../types";
 import { useI18n } from "../i18n";
+import { prepareAIAgentExperience } from "../lib/aiPrefetch";
 
 interface SidebarProps {
   connections: RedisConnection[];
@@ -863,14 +864,19 @@ export function Sidebar({
           ) : null}
         </button>
         <button
-          onClick={() => onSetPanelTab("ai")}
+          onClick={() => {
+            void prepareAIAgentExperience().catch(() => {});
+            onSetPanelTab("ai");
+          }}
           onMouseEnter={(event) => {
+            void prepareAIAgentExperience().catch(() => {});
             if (isCollapsed) {
               showSidebarTooltip(event.currentTarget, messages.sidebar.aiAgent);
             }
           }}
           onMouseLeave={hideSidebarTooltip}
           onFocus={(event) => {
+            void prepareAIAgentExperience().catch(() => {});
             if (isCollapsed) {
               showSidebarTooltip(event.currentTarget, messages.sidebar.aiAgent);
             }

@@ -1,7 +1,6 @@
 import { memo, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
-import { getCliPromptLabel } from "../lib/redisCli";
 import { useAppPreferencesStore } from "../store/useAppPreferencesState";
 import { useCliState } from "../store/useCliState";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
@@ -36,10 +35,6 @@ export const RedisCLIPanel = memo(function RedisCLIPanel() {
     onSyncConnectionStatus: workspace.syncConnectionStatus,
     selectedDb: workspace.selectedDb,
   });
-  const promptLabel = useMemo(
-    () => getCliPromptLabel(activeConnection, workspace.selectedDb),
-    [activeConnection, workspace.selectedDb]
-  );
   const connectionName = activeConnection
     ? `${activeConnection.host}:${activeConnection.port}`
     : messages.app.status.notConnected;
@@ -49,7 +44,6 @@ export const RedisCLIPanel = memo(function RedisCLIPanel() {
       history={cli.cliHistory}
       onClear={cli.clearCliHistory}
       onRun={cli.runCliCommand}
-      promptLabel={promptLabel}
       connectionName={connectionName}
     />
   );

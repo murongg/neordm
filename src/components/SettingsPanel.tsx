@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import type { ThemeMode } from "../hooks/useTheme";
 import {
   X,
@@ -10,21 +10,10 @@ import {
   Shield,
   ChevronRight,
   Check,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Info,
-  LoaderCircle,
   RotateCcw,
 } from "lucide-react";
 import { useI18n, type Locale } from "../i18n";
 import { useModalTransition } from "../hooks/useModalTransition";
-import {
-  DEFAULT_AI_SETTINGS,
-  loadAiSettings,
-  persistAiSettings,
-  type OpenAiApiStyle,
-} from "../lib/aiSettings";
 import {
   DEFAULT_APP_SETTINGS,
   loadAppSettings,
@@ -32,12 +21,6 @@ import {
   updateAppSettings,
   type AppSettings,
 } from "../lib/appSettings";
-import {
-  testAiProviderConnection,
-  type AiProviderConnectionTestCheck,
-  type AiProviderConnectionTestCheckStatus,
-  type AiProviderConnectionTestResult,
-} from "../lib/openai";
 import { clearPrivacyRuntimeData } from "../lib/privacyRuntime";
 import { useCliStore } from "../store/useCliState";
 import { useToast } from "./ToastProvider";
@@ -71,6 +54,14 @@ const CATEGORIES: {
   { id: "shortcuts", icon: <Keyboard size={14} /> },
   { id: "privacy", icon: <Shield size={14} /> },
 ];
+
+const LazySettingsAISection = lazy(async () => ({
+  default: (await import("./SettingsAISection")).SettingsAISection,
+}));
+
+function AISettingsFallback() {
+  return <div className="h-24 rounded-xl bg-base-300/40" />;
+}
 
 export function SettingsPanel({
   onClose,
@@ -168,7 +159,11 @@ export function SettingsPanel({
             )}
             {category === "appearance" && <AppearanceSettings themeMode={themeMode} onThemeChange={onThemeChange} />}
             {category === "editor" && <EditorSettings />}
-            {category === "ai" && <AISettings />}
+            {category === "ai" && (
+              <Suspense fallback={<AISettingsFallback />}>
+                <LazySettingsAISection />
+              </Suspense>
+            )}
             {category === "cli" && <CLISettings />}
             {category === "shortcuts" && <ShortcutsSettings />}
             {category === "privacy" && <PrivacySettings />}
@@ -748,436 +743,6 @@ function EditorSettings() {
         </Row>
       </Section>
     </>
-  );
-}
-
-function AISettings() {
-  const { messages } = useI18n();
-  const { showToast } = useToast();
-  const ai = messages.settings.ai;
-  const [settings, setSettings] = useState(DEFAULT_AI_SETTINGS);
-  const [showKey, setShowKey] = useState(false);
-  const [isTestingConnection, setIsTestingConnection] = useState(false);
-  const [connectionTestResult, setConnectionTestResult] =
-    useState<AiProviderConnectionTestResult | null>(null);
-  const [connectionTestChecks, setConnectionTestChecks] = useState<
-    AiProviderConnectionTestCheck[]
-  >([]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    void loadAiSettings().then((nextSettings) => {
-      if (!isMounted) {
-        return;
-      }
-
-      setSettings(nextSettings);
-    });
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const selectedProviderConfig = settings.providers.openai;
-
-  const updateSelectedProviderConfig = (
-    patch: Partial<typeof selectedProviderConfig>
-  ) => {
-    setConnectionTestResult(null);
-    setConnectionTestChecks([]);
-
-    setSettings((previous) => ({
-      ...previous,
-      providers: {
-        ...previous.providers,
-        openai: {
-          ...previous.providers.openai,
-          ...patch,
-        },
-      },
-    }));
-  };
-
-  const handleSave = async () => {
-    await persistAiSettings(settings);
-
-    showToast({
-      message: ai.saveApiKey,
-      tone: "success",
-      duration: 1600,
-    });
-  };
-
-  const handleTestConnection = async () => {
-    setIsTestingConnection(true);
-    setConnectionTestResult(null);
-    setConnectionTestChecks([]);
-
-    try {
-      const result = await testAiProviderConnection(selectedProviderConfig, {
-        onUpdate: setConnectionTestChecks,
-      });
-
-      if (result.preferredApiStyle) {
-        const nextSettings = {
-          ...settings,
-          providers: {
-            ...settings.providers,
-            openai: {
-              ...settings.providers.openai,
-              apiStyle: result.preferredApiStyle,
-              capabilities: result.capabilities,
-            },
-          },
-        };
-
-        setSettings(nextSettings);
-        await persistAiSettings(nextSettings);
-      }
-
-      setConnectionTestResult(result);
-
-      showToast({
-        message: result.summary,
-        tone: result.ok ? "success" : "error",
-        duration: result.ok ? 1900 : 2800,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setConnectionTestResult({
-        ok: false,
-        summary: "OpenAI connection test failed.",
-        normalizedBaseUrl: selectedProviderConfig.baseUrl.trim(),
-        model: selectedProviderConfig.model.trim(),
-        preferredApiStyle: null,
-        capabilities: {
-          responses: null,
-          chatCompletions: null,
-          testedAt: null,
-        },
-        checks: [
-          {
-            id: "config",
-            label: "Config",
-            status: "error",
-            detail: message,
-          },
-        ],
-      });
-      setConnectionTestChecks([]);
-      showToast({
-        message,
-        tone: "error",
-        duration: 2800,
-      });
-    } finally {
-      setIsTestingConnection(false);
-    }
-  };
-
-  const activeConnectionTestChecks =
-    connectionTestResult?.checks ??
-    (connectionTestChecks.length > 0 ? connectionTestChecks : DEFAULT_AI_TEST_CHECKS);
-  const activeConnectionTestTone = connectionTestResult
-    ? connectionTestResult.ok
-      ? "success"
-      : "error"
-    : "info";
-  const activeRunningCheck = connectionTestChecks.find(
-    (check) => check.status === "running"
-  );
-  const activeConnectionTestSummary = connectionTestResult
-    ? connectionTestResult.summary
-    : activeRunningCheck
-    ? `Testing ${activeRunningCheck.label}...`
-    : `Runtime currently uses ${formatApiStyleLabel(
-        selectedProviderConfig.apiStyle
-      )}. Test checks \`GET /models\`, \`POST /responses\`, and \`POST /chat/completions\`.`;
-
-  return (
-    <>
-      <Section title={ai.apiConfiguration}>
-        <SettingsField label="API Key">
-          <div className="flex items-center gap-2">
-            <input
-              type={showKey ? "text" : "password"}
-              value={selectedProviderConfig.apiKey}
-              onChange={(e) =>
-                updateSelectedProviderConfig({ apiKey: e.target.value })
-              }
-              placeholder={ai.apiKeyPlaceholder}
-              className="input input-xs h-8 min-h-8 flex-1 bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-            />
-            <button
-              type="button"
-              onClick={() => setShowKey((previous) => !previous)}
-              className="btn btn-ghost btn-xs btn-square h-8 min-h-8 w-8 cursor-pointer"
-            >
-              {showKey ? <EyeOff size={15} /> : <Eye size={15} />}
-            </button>
-          </div>
-        </SettingsField>
-
-        <SettingsField label={ai.baseUrl}>
-          <input
-            type="url"
-            value={selectedProviderConfig.baseUrl}
-            onChange={(e) =>
-              updateSelectedProviderConfig({ baseUrl: e.target.value })
-            }
-            placeholder="https://api.openai.com/v1"
-            className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-          />
-        </SettingsField>
-
-        <div className="grid gap-1 md:grid-cols-[minmax(0,1fr)_140px]">
-          <SettingsField label={ai.model}>
-            <input
-              value={selectedProviderConfig.model}
-              onChange={(e) =>
-                updateSelectedProviderConfig({ model: e.target.value })
-              }
-              placeholder="gpt-4.1-mini"
-              className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-            />
-          </SettingsField>
-
-          <SettingsField label={ai.maxTokens}>
-            <input
-              type="number"
-              min="1"
-              value={settings.maxTokens}
-              onChange={(e) =>
-                setSettings((previous) => ({
-                  ...previous,
-                  maxTokens: Math.max(1, Number(e.target.value) || 1),
-                }))
-              }
-              className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-            />
-          </SettingsField>
-        </div>
-
-        <div className="flex items-center justify-end gap-1.5 px-3 pt-2">
-          <button
-            type="button"
-            onClick={handleTestConnection}
-            disabled={isTestingConnection}
-            className="btn btn-outline btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
-          >
-            {isTestingConnection ? (
-              <>
-                <LoaderCircle size={12} className="animate-spin" />
-                {ai.testingConnection}
-              </>
-            ) : (
-              ai.testConnection
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="btn btn-success btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
-          >
-            <Check size={12} /> {ai.saveApiKey}
-          </button>
-        </div>
-
-        <ConnectionTestStatus
-          tone={activeConnectionTestTone}
-          summary={activeConnectionTestSummary}
-          checks={activeConnectionTestChecks}
-          isTesting={isTestingConnection}
-          apiStyle={selectedProviderConfig.apiStyle}
-        />
-      </Section>
-
-      <Section title={ai.behavior}>
-        <Row label={ai.autoSuggest} description={ai.autoSuggestDescription}>
-          <Toggle
-            checked={settings.autoSuggest}
-            onChange={(nextValue) =>
-              setSettings((previous) => ({
-                ...previous,
-                autoSuggest: nextValue,
-              }))
-            }
-          />
-        </Row>
-        <Row
-          label={ai.includeKeyContext}
-          description={ai.includeKeyContextDescription}
-        >
-          <Toggle
-            checked={settings.includeKeyContext}
-            onChange={(nextValue) =>
-              setSettings((previous) => ({
-                ...previous,
-                includeKeyContext: nextValue,
-              }))
-            }
-          />
-        </Row>
-      </Section>
-    </>
-  );
-}
-
-const CONNECTION_TEST_TONE_STYLES = {
-  success: "text-success",
-  error: "text-error",
-  info: "text-base-content/65",
-} as const;
-
-const CONNECTION_TEST_CHECK_STYLES: Record<
-  AiProviderConnectionTestCheckStatus,
-  string
-> = {
-  pending: "text-base-content/35",
-  running: "text-info",
-  success: "text-success",
-  info: "text-base-content/55",
-  error: "text-error",
-};
-
-const DEFAULT_AI_TEST_CHECKS: AiProviderConnectionTestCheck[] = [
-  {
-    id: "config",
-    label: "Config",
-    status: "info",
-    detail: "Validates the API key, base URL, and selected model first.",
-  },
-  {
-    id: "models",
-    label: "GET /models",
-    status: "info",
-    detail: "Checks whether the gateway is reachable through the Tauri backend proxy.",
-  },
-  {
-    id: "responses",
-    label: "POST /responses",
-    status: "info",
-    detail: "Verifies the same runtime endpoint the AI agent will use.",
-  },
-  {
-    id: "chat",
-    label: "POST /chat/completions",
-    status: "info",
-    detail: "Checks legacy OpenAI chat compatibility on the same gateway.",
-  },
-];
-
-function ConnectionTestStatus({
-  tone,
-  summary,
-  checks,
-  isTesting,
-  apiStyle,
-}: {
-  tone: keyof typeof CONNECTION_TEST_TONE_STYLES;
-  summary: string;
-  checks: AiProviderConnectionTestCheck[];
-  isTesting: boolean;
-  apiStyle: OpenAiApiStyle;
-}) {
-  const SummaryIcon =
-    tone === "success" ? Check : tone === "error" ? AlertCircle : Info;
-
-  return (
-    <div
-      aria-live="polite"
-      className="mt-3 border-t border-base-content/10 px-3 pt-3"
-    >
-      <div className="flex items-start gap-2">
-        {isTesting ? (
-          <LoaderCircle
-            size={13}
-            className="mt-0.5 shrink-0 animate-spin text-info"
-          />
-        ) : (
-          <SummaryIcon
-            size={13}
-            className={`mt-0.5 shrink-0 ${CONNECTION_TEST_TONE_STYLES[tone]}`}
-          />
-        )}
-
-        <div className="min-w-0 flex-1">
-          <p
-            className={`text-[11px] leading-5 font-mono ${
-              isTesting ? "text-info" : CONNECTION_TEST_TONE_STYLES[tone]
-            }`}
-          >
-            {summary}
-          </p>
-          <p className="mt-1 text-[10px] font-mono text-base-content/40">
-            Runtime API: {formatApiStyleLabel(apiStyle)}
-          </p>
-
-          <div className="mt-2 space-y-1.5 pb-0.5">
-            {checks.map((check) => (
-              <ConnectionTestCheckRow key={check.id} check={check} />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function formatApiStyleLabel(apiStyle: OpenAiApiStyle) {
-  return apiStyle === "chat-completions"
-    ? "POST /chat/completions"
-    : "POST /responses";
-}
-
-function ConnectionTestCheckRow({
-  check,
-}: {
-  check: AiProviderConnectionTestCheck;
-}) {
-  const CheckIcon =
-    check.status === "success"
-      ? Check
-      : check.status === "error"
-      ? AlertCircle
-      : check.status === "running"
-      ? LoaderCircle
-      : Info;
-
-  return (
-    <div className="flex items-start gap-2 text-[10px] font-mono leading-4">
-      <CheckIcon
-        size={11}
-        className={`mt-[2px] shrink-0 ${
-          check.status === "running" ? "animate-spin" : ""
-        } ${CONNECTION_TEST_CHECK_STYLES[check.status]}`}
-      />
-      <div className="min-w-0">
-        <p className={CONNECTION_TEST_CHECK_STYLES[check.status]}>
-          {check.label}
-        </p>
-        <p className="mt-0.5 break-words text-base-content/45">{check.detail}</p>
-      </div>
-    </div>
-  );
-}
-
-function SettingsField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="flex flex-col gap-2 rounded-xl px-3 py-2.5 transition-colors duration-150 hover:bg-base-300/50">
-      <span className="text-xs font-mono text-base-content/80">
-        {label}
-      </span>
-      {children}
-    </label>
   );
 }
 

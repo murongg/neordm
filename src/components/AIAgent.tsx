@@ -3,6 +3,7 @@ import {
   useCallback,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -94,6 +95,8 @@ export function AIAgent({
   const [input, setInput] = useState("");
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const messageStreamRef = useRef<HTMLDivElement>(null);
+  const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const autoScrollPinnedRef = useRef(true);
   const lastAutoScrollAtRef = useRef(0);
@@ -116,7 +119,23 @@ export function AIAgent({
     autoScrollPinnedRef.current = distanceFromBottom < 80;
   }, []);
 
-  const scheduleScrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback(() => {
+    const anchor = bottomAnchorRef.current;
+    const container = scrollContainerRef.current;
+
+    if (anchor) {
+      anchor.scrollIntoView({
+        block: "end",
+      });
+      return;
+    }
+
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, []);
+
+  const scheduleScrollToBottom = useCallback((force = false) => {
     if (scrollFrameRef.current !== null) {
       return;
     }
@@ -133,14 +152,14 @@ export function AIAgent({
       const shouldThrottle =
         now - lastAutoScrollAtRef.current < 120 && isResponding;
 
-      if (!autoScrollPinnedRef.current || shouldThrottle) {
+      if ((!autoScrollPinnedRef.current && !force) || shouldThrottle) {
         return;
       }
 
       lastAutoScrollAtRef.current = now;
-      container.scrollTop = container.scrollHeight;
+      scrollToBottom();
     });
-  }, [isResponding]);
+  }, [isResponding, scrollToBottom]);
 
   useEffect(() => {
     scheduleScrollToBottom();
@@ -153,6 +172,28 @@ export function AIAgent({
     messages.length,
     scheduleScrollToBottom,
   ]);
+
+  useLayoutEffect(() => {
+    scheduleScrollToBottom(true);
+  }, []);
+
+  useEffect(() => {
+    const messageStream = messageStreamRef.current;
+
+    if (!messageStream || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleScrollToBottom();
+    });
+
+    resizeObserver.observe(messageStream);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [scheduleScrollToBottom]);
 
   useEffect(() => {
     return () => {
@@ -221,14 +262,17 @@ export function AIAgent({
         onScroll={updateAutoScrollPinned}
         className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3"
       >
-        {renderedMessages}
-        {isResponding && (
-          <ThinkingBubble
-            activeToolName={deferredActiveToolName}
-            toolEvents={deferredActiveToolEvents}
-            assistantEvents={deferredActiveAssistantEvents}
-          />
-        )}
+        <div ref={messageStreamRef} className="flex flex-col gap-3">
+          {renderedMessages}
+          {isResponding && (
+            <ThinkingBubble
+              activeToolName={deferredActiveToolName}
+              toolEvents={deferredActiveToolEvents}
+              assistantEvents={deferredActiveAssistantEvents}
+            />
+          )}
+          <div ref={bottomAnchorRef} aria-hidden="true" className="h-px w-full" />
+        </div>
       </div>
 
       {/* Suggestions */}

@@ -14,7 +14,6 @@ interface RedisCLIProps {
   onRun: (cmd: string) => void;
   onClear: () => void;
   connectionName: string;
-  promptLabel: string;
 }
 
 const CLI_EXAMPLES = [
@@ -53,7 +52,6 @@ export function RedisCLI({
   onRun,
   onClear,
   connectionName,
-  promptLabel,
 }: RedisCLIProps) {
   const { messages } = useI18n();
   const appSettings = useAppSettings();

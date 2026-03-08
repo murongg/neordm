@@ -1,10 +1,6 @@
-import { useEffect, useState } from "react";
+import { Suspense, lazy, useEffect, useState } from "react";
 import { useTheme } from "./hooks/useTheme";
-import { AIAgentPanel } from "./components/AIAgentPanel";
-import { ConnectionModalHost } from "./components/ConnectionModalHost";
 import { KeyBrowserPanel } from "./components/KeyBrowserPanel";
-import { RedisCLIPanel } from "./components/RedisCLIPanel";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { SidebarPanel } from "./components/SidebarPanel";
 import { StatusBarPanel } from "./components/StatusBarPanel";
 import {
@@ -15,6 +11,7 @@ import { ValueEditorPanel } from "./components/ValueEditorPanel";
 import { WorkspaceTopbarPanel } from "./components/WorkspaceTopbarPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "./i18n";
+import { prepareAIAgentExperience } from "./lib/aiPrefetch";
 import { installPrivacyRuntimeHandlers } from "./lib/privacyRuntime";
 import {
   useAppPreferencesStore,
@@ -25,10 +22,47 @@ import {
   useRedisWorkspaceStore,
 } from "./store/useRedisWorkspaceState";
 
+const loadAIAgentPanel = () => import("./components/AIAgentPanel");
+const loadConnectionModalHost = () => import("./components/ConnectionModalHost");
+const loadRedisCLIPanel = () => import("./components/RedisCLIPanel");
+const loadSettingsPanel = () => import("./components/SettingsPanel");
+
+const LazyAIAgentPanel = lazy(async () => ({
+  default: (await loadAIAgentPanel()).AIAgentPanel,
+}));
+const LazyConnectionModalHost = lazy(async () => ({
+  default: (await loadConnectionModalHost()).ConnectionModalHost,
+}));
+const LazyRedisCLIPanel = lazy(async () => ({
+  default: (await loadRedisCLIPanel()).RedisCLIPanel,
+}));
+const LazySettingsPanel = lazy(async () => ({
+  default: (await loadSettingsPanel()).SettingsPanel,
+}));
+
+function scheduleIdleTask(task: () => void, timeout = 1200) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  if ("requestIdleCallback" in window) {
+    const idleHandle = window.requestIdleCallback(task, { timeout });
+    return () => window.cancelIdleCallback(idleHandle);
+  }
+
+  const timer = globalThis.setTimeout(task, timeout);
+  return () => globalThis.clearTimeout(timer);
+}
+
+function PanelFallback() {
+  return <div className="flex flex-1 min-h-0 bg-base-300" />;
+}
+
 function App() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
+  const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
   useInitializeAppPreferencesStore();
   const preferences = useAppPreferencesStore(
     useShallow((state) => ({
@@ -51,6 +85,31 @@ function App() {
   useEffect(() => {
     installPrivacyRuntimeHandlers();
   }, []);
+
+  useEffect(() => {
+    return scheduleIdleTask(() => {
+      void loadConnectionModalHost();
+      void loadRedisCLIPanel();
+    }, 1500);
+  }, []);
+
+  useEffect(() => {
+    if (panelTab !== "ai") {
+      return;
+    }
+
+    setHasMountedAiPanel(true);
+
+    const frame = window.requestAnimationFrame(() => {
+      void prepareAIAgentExperience().catch((error) => {
+        console.error("Failed to prepare AI agent experience", error);
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [panelTab]);
 
   useEffect(() => {
     const parsedFontSize = Number.parseInt(
@@ -103,29 +162,44 @@ function App() {
             {/* Panel content */}
             <div className="flex-1 flex flex-col min-h-0">
               {panelTab === "editor" && <ValueEditorPanel />}
-              <div
-                className={
-                  panelTab === "ai" ? "flex flex-1 flex-col min-h-0" : "hidden"
-                }
-              >
-                <AIAgentPanel initialGreeting={messages.store.greeting} />
-              </div>
-              {panelTab === "cli" && <RedisCLIPanel />}
+              {hasMountedAiPanel ? (
+                <Suspense fallback={panelTab === "ai" ? <PanelFallback /> : null}>
+                  <div
+                    className={
+                      panelTab === "ai"
+                        ? "flex flex-1 flex-col min-h-0"
+                        : "hidden"
+                    }
+                    aria-hidden={panelTab !== "ai"}
+                  >
+                    <LazyAIAgentPanel initialGreeting={messages.store.greeting} />
+                  </div>
+                </Suspense>
+              ) : null}
+              {panelTab === "cli" && (
+                <Suspense fallback={<PanelFallback />}>
+                  <LazyRedisCLIPanel />
+                </Suspense>
+              )}
             </div>
 
             <StatusBarPanel />
           </main>
         </div>
 
-        <ConnectionModalHost />
+        <Suspense fallback={null}>
+          <LazyConnectionModalHost />
+        </Suspense>
         {showSettings && (
-          <SettingsPanel
-            onClose={() => setShowSettings(false)}
-            themeMode={themeMode}
-            onThemeChange={setThemeMode}
-            keySeparator={preferences.keySeparator}
-            onKeySeparatorChange={preferences.setKeySeparator}
-          />
+          <Suspense fallback={null}>
+            <LazySettingsPanel
+              onClose={() => setShowSettings(false)}
+              themeMode={themeMode}
+              onThemeChange={setThemeMode}
+              keySeparator={preferences.keySeparator}
+              onKeySeparatorChange={preferences.setKeySeparator}
+            />
+          </Suspense>
         )}
       </div>
     </ToastProvider>
