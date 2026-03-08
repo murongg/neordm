@@ -11,6 +11,7 @@ import {
 import {
   Search,
   RefreshCw,
+  Plus,
   ChevronDown,
   LoaderCircle,
   Hash,
@@ -26,7 +27,11 @@ import {
 import type { RedisConnection, RedisKey, RedisKeyType } from "../types";
 import { useI18n } from "../i18n";
 import { EmptyConnectionsIllustration } from "./EmptyConnectionsIllustration";
-import { getRedisErrorMessage } from "../lib/redis";
+import {
+  getRedisErrorMessage,
+  type RedisKeyCreateInput,
+} from "../lib/redis";
+import { CreateKeyModal } from "./CreateKeyModal";
 
 interface KeyBrowserProps {
   connection?: RedisConnection;
@@ -34,6 +39,8 @@ interface KeyBrowserProps {
   onSelectDb: (db: number) => void;
   isRefreshing: boolean;
   onRefresh: () => void;
+  onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
+  defaultTtl: string;
   keySeparator: string;
   showKeyType: boolean;
   showTtl: boolean;
@@ -399,12 +406,36 @@ function placeInputCursorAtEnd(input: HTMLInputElement | null) {
   input.scrollLeft = input.scrollWidth;
 }
 
+function getAncestorGroupIds(key: string, separator: string) {
+  if (!separator) {
+    return [];
+  }
+
+  const segments = key.split(separator);
+
+  if (segments.length <= 1) {
+    return [];
+  }
+
+  const groupIds: string[] = [];
+  let currentGroupId = segments[0] ?? "";
+
+  for (let index = 1; index < segments.length; index += 1) {
+    groupIds.push(currentGroupId);
+    currentGroupId = `${currentGroupId}${separator}${segments[index]}`;
+  }
+
+  return groupIds;
+}
+
 export function KeyBrowser({
   connection,
   selectedDb,
   onSelectDb,
   isRefreshing,
   onRefresh,
+  onCreateKey,
+  defaultTtl,
   keySeparator,
   showKeyType,
   showTtl,
@@ -426,6 +457,7 @@ export function KeyBrowser({
   const [renameDraft, setRenameDraft] = useState("");
   const [renameError, setRenameError] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [groupMotionIds, setGroupMotionIds] = useState<Record<string, string>>(
     {}
   );
@@ -448,6 +480,14 @@ export function KeyBrowser({
     viewportHeight: 0,
   });
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const closeCreateForm = useCallback(() => {
+    setIsCreateOpen(false);
+  }, []);
+  const openCreateForm = useCallback(() => {
+    setIsCreateOpen(true);
+    setEditingGroupId(null);
+    setEditingKeyName(null);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.replace(/\*/g, "").toLowerCase();
@@ -655,6 +695,23 @@ export function KeyBrowser({
     collapseAllGroups,
     expandAllGroups,
   ]);
+
+  const handleCreatedKey = useCallback(
+    (createdKey: RedisKey) => {
+      const ancestorGroupIds = getAncestorGroupIds(createdKey.key, keySeparator);
+
+      if (ancestorGroupIds.length) {
+        setExpandedGroups((previous) => {
+          const next = new Set(previous);
+          ancestorGroupIds.forEach((groupId) => next.add(groupId));
+          return next;
+        });
+      }
+
+      closeCreateForm();
+    },
+    [closeCreateForm, keySeparator]
+  );
 
   const startRename = useCallback((redisKey: RedisKey) => {
     const renameTarget = getRenameTarget(redisKey.key, keySeparator);
@@ -1121,12 +1178,13 @@ export function KeyBrowser({
   const typeConfig = TYPE_CONFIG;
 
   return (
-    <div className="flex flex-col w-64 bg-base-200 border-r border-base-100/50 h-full shrink-0">
-      <div
-        data-tauri-drag-region
-        className="px-3 border-b border-base-100/50 shrink-0 select-none"
-        style={{ paddingTop: "10px", paddingBottom: "10px" }}
-      >
+    <>
+      <div className="flex flex-col w-64 bg-base-200 border-r border-base-100/50 h-full shrink-0">
+        <div
+          data-tauri-drag-region
+          className="relative px-3 border-b border-base-100/50 shrink-0 select-none"
+          style={{ paddingTop: "10px", paddingBottom: "10px" }}
+        >
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-1.5">
             <span className="text-xs font-mono font-semibold text-base-content/70 uppercase tracking-wider">
@@ -1137,6 +1195,20 @@ export function KeyBrowser({
             </span>
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={openCreateForm}
+              disabled={!hasConnection}
+              className={`btn btn-ghost btn-xs h-6 w-6 p-0 text-base-content/60 hover:bg-base-100/60 hover:text-base-content/90 ${
+                hasConnection
+                  ? "cursor-pointer"
+                  : "cursor-not-allowed opacity-40"
+              }`}
+              aria-label={messages.keyBrowser.create}
+              title={messages.keyBrowser.create}
+            >
+              <Plus size={12} strokeWidth={2.25} />
+            </button>
             <button
               type="button"
               onClick={toggleAllGroups}
@@ -1274,8 +1346,17 @@ export function KeyBrowser({
             ) : null}
           </>
         )}
+        </div>
       </div>
-    </div>
+      {isCreateOpen ? (
+        <CreateKeyModal
+          defaultTtl={defaultTtl}
+          onClose={closeCreateForm}
+          onCreateKey={onCreateKey}
+          onCreated={handleCreatedKey}
+        />
+      ) : null}
+    </>
   );
 }
 

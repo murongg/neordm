@@ -1,9 +1,250 @@
 use crate::models::{
     RedisHashEntryDeleteInput, RedisHashEntryUpdateInput, RedisJsonValueUpdateInput,
+    RedisKeyCreateEntryInput, RedisKeyCreateInput, RedisKeyCreateMemberInput, RedisKeySummary,
     RedisStringValueUpdateInput, RedisZSetEntryDeleteInput, RedisZSetEntryUpdateInput,
 };
-use crate::redis_support::open_connection;
+use crate::redis_support::{normalize_key_type, open_connection};
 use serde_json::Value as JsonValue;
+
+fn require_text<'a>(value: Option<&'a str>, field_name: &str) -> Result<&'a str, String> {
+    value.ok_or_else(|| format!("{field_name} cannot be empty"))
+}
+
+fn validate_non_empty_values(
+    values: Option<Vec<String>>,
+    field_name: &str,
+) -> Result<Vec<String>, String> {
+    let items: Vec<String> = values
+        .unwrap_or_default()
+        .into_iter()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .collect();
+
+    if items.is_empty() {
+        return Err(format!("{field_name} cannot be empty"));
+    }
+
+    Ok(items)
+}
+
+fn validate_entries(
+    entries: Option<Vec<RedisKeyCreateEntryInput>>,
+) -> Result<Vec<(String, String)>, String> {
+    let next_entries: Vec<(String, String)> = entries
+        .unwrap_or_default()
+        .into_iter()
+        .map(|entry| (entry.field.trim().to_string(), entry.value))
+        .filter(|(field, _)| !field.is_empty())
+        .collect();
+
+    if next_entries.is_empty() {
+        return Err("Field list cannot be empty".to_string());
+    }
+
+    Ok(next_entries)
+}
+
+fn validate_members(
+    members: Option<Vec<RedisKeyCreateMemberInput>>,
+) -> Result<Vec<(String, f64)>, String> {
+    let next_members: Vec<(String, f64)> = members
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|member| {
+            let name = member.member.trim().to_string();
+
+            if name.is_empty() {
+                return None;
+            }
+
+            Some((name, member.score))
+        })
+        .collect();
+
+    if next_members.is_empty() {
+        return Err("Member list cannot be empty".to_string());
+    }
+
+    if next_members.iter().any(|(_, score)| !score.is_finite()) {
+        return Err("Score must be a finite number".to_string());
+    }
+
+    Ok(next_members)
+}
+
+#[tauri::command]
+pub async fn create_redis_key(input: RedisKeyCreateInput) -> Result<RedisKeySummary, String> {
+    let RedisKeyCreateInput {
+        connection,
+        key,
+        key_type,
+        ttl,
+        value,
+        values,
+        entries,
+        members,
+    } = input;
+    let key = key.trim().to_string();
+
+    if key.is_empty() {
+        return Err("Key name cannot be empty".to_string());
+    }
+
+    let key_type = match key_type.trim().to_ascii_lowercase().as_str() {
+        "string" => "string",
+        "hash" => "hash",
+        "list" => "list",
+        "set" => "set",
+        "zset" => "zset",
+        "stream" => "stream",
+        "json" => "json",
+        _ => return Err("Unsupported key type".to_string()),
+    };
+    let ttl = ttl.unwrap_or(-1);
+
+    if ttl == 0 || ttl < -1 {
+        return Err("TTL must be -1 or a positive integer".to_string());
+    }
+
+    let value = value.unwrap_or_default();
+
+    if key_type == "json" {
+        serde_json::from_str::<JsonValue>(&value)
+            .map_err(|error| format!("Invalid JSON: {error}"))?;
+    }
+
+    let mut connection = open_connection(&connection).await?;
+    let exists: i64 = redis::cmd("EXISTS")
+        .arg(&key)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to inspect key: {error}"))?;
+
+    if exists != 0 {
+        return Err("Key already exists".to_string());
+    }
+
+    match key_type {
+        "string" => {
+            let created: Option<String> = redis::cmd("SET")
+                .arg(&key)
+                .arg(&value)
+                .arg("NX")
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create string key: {error}"))?;
+
+            if created.is_none() {
+                return Err("Key already exists".to_string());
+            }
+        }
+        "json" => {
+            let created: Option<String> = redis::cmd("JSON.SET")
+                .arg(&key)
+                .arg("$")
+                .arg(require_text(Some(&value), "JSON value")?)
+                .arg("NX")
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create JSON key: {error}"))?;
+
+            if created.is_none() {
+                return Err("Key already exists".to_string());
+            }
+        }
+        "hash" => {
+            let entries = validate_entries(entries.clone())?;
+            let mut command = redis::cmd("HSET");
+            command.arg(&key);
+
+            for (field, entry_value) in entries {
+                command.arg(field).arg(entry_value);
+            }
+
+            let _: i64 = command
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create hash key: {error}"))?;
+        }
+        "list" => {
+            let values = validate_non_empty_values(values.clone(), "Value list")?;
+            let mut command = redis::cmd("RPUSH");
+            command.arg(&key);
+
+            for item in values {
+                command.arg(item);
+            }
+
+            let _: i64 = command
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create list key: {error}"))?;
+        }
+        "set" => {
+            let values = validate_non_empty_values(values.clone(), "Value list")?;
+            let mut command = redis::cmd("SADD");
+            command.arg(&key);
+
+            for item in values {
+                command.arg(item);
+            }
+
+            let _: i64 = command
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create set key: {error}"))?;
+        }
+        "zset" => {
+            let members = validate_members(members.clone())?;
+            let mut command = redis::cmd("ZADD");
+            command.arg(&key);
+
+            for (member, score) in members {
+                command.arg(score).arg(member);
+            }
+
+            let _: i64 = command
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create sorted set key: {error}"))?;
+        }
+        "stream" => {
+            let entries = validate_entries(entries.clone())?;
+            let mut command = redis::cmd("XADD");
+            command.arg(&key).arg("*");
+
+            for (field, entry_value) in entries {
+                command.arg(field).arg(entry_value);
+            }
+
+            let _: String = command
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to create stream key: {error}"))?;
+        }
+        _ => return Err("Unsupported key type".to_string()),
+    }
+
+    if ttl > 0 {
+        let applied: bool = redis::cmd("EXPIRE")
+            .arg(&key)
+            .arg(ttl)
+            .query_async(&mut connection)
+            .await
+            .map_err(|error| format!("Failed to set key TTL: {error}"))?;
+
+        if !applied {
+            return Err("Failed to set key TTL".to_string());
+        }
+    }
+
+    Ok(RedisKeySummary {
+        key: key.to_string(),
+        key_type: normalize_key_type(key_type),
+        ttl,
+    })
+}
 
 #[tauri::command]
 pub async fn update_redis_hash_entry(input: RedisHashEntryUpdateInput) -> Result<(), String> {

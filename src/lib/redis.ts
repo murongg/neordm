@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { KeyValue, RedisConnection, RedisKey } from "../types";
+import type {
+  KeyValue,
+  RedisConnection,
+  RedisKey,
+  RedisKeyType,
+} from "../types";
 
 export interface RedisKeyRenamePair {
   oldKey: string;
@@ -32,6 +37,26 @@ export interface RedisStringValueUpdate {
 
 export interface RedisJsonValueUpdate {
   value: string;
+}
+
+export interface RedisKeyCreateEntryInput {
+  field: string;
+  value: string;
+}
+
+export interface RedisKeyCreateMemberInput {
+  member: string;
+  score: number;
+}
+
+export interface RedisKeyCreateInput {
+  key: string;
+  type: RedisKeyType;
+  ttl?: number;
+  value?: string;
+  values?: string[];
+  entries?: RedisKeyCreateEntryInput[];
+  members?: RedisKeyCreateMemberInput[];
 }
 
 export interface ListRedisKeysOptions {
@@ -100,6 +125,24 @@ export async function getRedisKeyValue(
     input: {
       connection: toConnectionInput(connection),
       key,
+    },
+  });
+}
+
+export async function createRedisKey(
+  connection: RedisConnectionInvokeInput,
+  input: RedisKeyCreateInput
+): Promise<RedisKey> {
+  return invoke("create_redis_key", {
+    input: {
+      connection: toConnectionInput(connection),
+      key: input.key,
+      type: input.type,
+      ttl: input.ttl ?? null,
+      value: input.value ?? null,
+      values: input.values ?? null,
+      entries: input.entries ?? null,
+      members: input.members ?? null,
     },
   });
 }

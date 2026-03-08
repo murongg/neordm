@@ -26,6 +26,34 @@ pub(crate) struct RedisKeyLookupInput {
     pub(crate) key: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyCreateEntryInput {
+    pub(crate) field: String,
+    pub(crate) value: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyCreateMemberInput {
+    pub(crate) member: String,
+    pub(crate) score: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyCreateInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    #[serde(rename = "type")]
+    pub(crate) key_type: String,
+    pub(crate) ttl: Option<i64>,
+    pub(crate) value: Option<String>,
+    pub(crate) values: Option<Vec<String>>,
+    pub(crate) entries: Option<Vec<RedisKeyCreateEntryInput>>,
+    pub(crate) members: Option<Vec<RedisKeyCreateMemberInput>>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RedisCommandInput {

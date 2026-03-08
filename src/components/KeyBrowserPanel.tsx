@@ -8,6 +8,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
   const preferences = useAppPreferencesStore(
     useShallow((state) => ({
       keySeparator: state.keySeparator,
+      defaultTtl: state.appSettings.editor.defaultTtl,
       showKeyType: state.appSettings.appearance.showKeyType,
       showTtl: state.appSettings.appearance.showTtl,
     }))
@@ -16,6 +17,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connections: state.connections,
+      createKey: state.createKey,
       isLoadingKeys: state.isLoadingKeys,
       keys: state.keys,
       refreshKeys: state.refreshKeys,
@@ -44,6 +46,8 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       onSelectDb={workspace.selectDb}
       isRefreshing={workspace.isLoadingKeys}
       onRefresh={workspace.refreshKeys}
+      onCreateKey={workspace.createKey}
+      defaultTtl={preferences.defaultTtl}
       keySeparator={preferences.keySeparator}
       showKeyType={preferences.showKeyType}
       showTtl={preferences.showTtl}

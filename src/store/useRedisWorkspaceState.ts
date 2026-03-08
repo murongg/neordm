@@ -14,12 +14,14 @@ import {
   persistConnections,
 } from "../lib/connectionStore";
 import {
+  createRedisKey,
   getRedisErrorMessage,
   getRedisKeyValue,
   listRedisKeys,
   renameRedisKey,
   renameRedisKeys,
   testRedisConnection,
+  type RedisKeyCreateInput,
 } from "../lib/redis";
 import {
   recordAuditEvent,
@@ -35,6 +37,12 @@ import type {
 function parsePositiveInt(value: string, fallback: number) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function insertRedisKey(keys: RedisKey[], nextKey: RedisKey) {
+  const nextKeys = [...keys.filter((item) => item.key !== nextKey.key), nextKey];
+  nextKeys.sort((left, right) => left.key.localeCompare(right.key));
+  return nextKeys;
 }
 
 interface UseRedisWorkspaceStateOptions {
@@ -113,6 +121,7 @@ interface RedisWorkspaceStoreState {
   refreshKeys: () => Promise<void>;
   refreshKeyValue: () => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
+  createKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
   renameKey: (key: RedisKey, nextKeyName: string) => Promise<RedisKey>;
   renameGroup: (
     groupId: string,
@@ -626,6 +635,49 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       await state.loadKeyValue(activeConnection, key, state.selectedDb);
     },
+    createKey: async (input) => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+      const { notConnectedMessage } = getWorkspaceRuntime();
+      const nextKeyName = input.key.trim();
+
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!nextKeyName.length) {
+        throw new Error("Key name cannot be empty");
+      }
+
+      if (state.keys.some((item) => item.key === nextKeyName)) {
+        throw new Error("Key already exists");
+      }
+
+      const createdKey = await createRedisKey(
+        { ...activeConnection, db: state.selectedDb },
+        {
+          ...input,
+          key: nextKeyName,
+        }
+      );
+
+      const normalizedSearchQuery = state.searchQuery
+        .replace(/\*/g, "")
+        .trim()
+        .toLowerCase();
+      const shouldClearSearch =
+        normalizedSearchQuery.length > 0 &&
+        !createdKey.key.toLowerCase().includes(normalizedSearchQuery);
+
+      set((currentState) => ({
+        keys: insertRedisKey(currentState.keys, createdKey),
+        searchQuery: shouldClearSearch ? "" : currentState.searchQuery,
+      }));
+
+      await state.loadKeyValue(activeConnection, createdKey, state.selectedDb);
+
+      return createdKey;
+    },
     renameKey: async (key, nextKeyName) => {
       const state = get();
       const activeConnection = getActiveConnectionFromState(state);
@@ -865,6 +917,7 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       openEditConnectionModal: state.openEditConnectionModal,
       openNewConnectionModal: state.openNewConnectionModal,
       panelTab: state.panelTab,
+      createKey: state.createKey,
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
       removeKeyFromState: state.removeKeyFromState,
