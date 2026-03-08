@@ -1,0 +1,91 @@
+name: Build Tauri Apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --no-sign
+          - name: Windows
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --no-sign
+
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Restore Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and bundle app
+        id: tauri_build
+        uses: tauri-apps/tauri-action@v0.6.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: ${{ matrix.args }}
+          tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('neordm {0}', github.ref_name) || '' }}
+          releaseBody: ${{ startsWith(github.ref, 'refs/tags/v') && 'Automated build from GitHub Actions.' || '' }}
+          releaseDraft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Normalize artifact paths
+        id: artifact_paths
+        shell: bash
+        env:
+          ARTIFACT_PATHS_JSON: ${{ steps.tauri_build.outputs.artifactPaths }}
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+          const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]');
+          const output = process.env.GITHUB_OUTPUT;
+          fs.appendFileSync(output, `paths<<__PATHS__\n${artifactPaths.join('\n')}\n__PATHS__\n`);
+          EOF
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        if: steps.artifact_paths.outputs.paths != ''
+        with:
+          name: neordm-${{ matrix.name }}-bundles
+          path: ${{ steps.artifact_paths.outputs.paths }}
+          if-no-files-found: error
