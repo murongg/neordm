@@ -391,15 +391,19 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       const normalizedConnection = {
         ...connection,
         name: connection.name || `${connection.host}:${connection.port}`,
+        username: connection.username || undefined,
         password: connection.password || undefined,
+        sshTunnel: connection.sshTunnel,
       };
 
       await testRedisConnection({
         host: normalizedConnection.host,
         port: normalizedConnection.port,
+        username: normalizedConnection.username,
         password: normalizedConnection.password,
         db: normalizedConnection.db,
         tls: normalizedConnection.tls,
+        sshTunnel: normalizedConnection.sshTunnel,
       });
       void recordTelemetryEvent("connection.save");
       void recordAuditEvent("connection.save", {

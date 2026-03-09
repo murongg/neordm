@@ -77,9 +77,7 @@ function App() {
     useShallow((state) => ({
       appSettings: state.appSettings,
       hasHydratedSettings: state.hasHydratedSettings,
-      keySeparator: state.keySeparator,
       persistLastConnectionId: state.persistLastConnectionId,
-      setKeySeparator: state.setKeySeparator,
     }))
   );
   useInitializeRedisWorkspaceState({
@@ -196,8 +194,6 @@ function App() {
               onClose={() => setShowSettings(false)}
               themeMode={themeMode}
               onThemeChange={setThemeMode}
-              keySeparator={preferences.keySeparator}
-              onKeySeparatorChange={preferences.setKeySeparator}
             />
           </Suspense>
         )}

@@ -568,6 +568,10 @@ export function KeyBrowser({
     if (!q) return keys;
     return keys.filter((keyItem) => keyItem.key.toLowerCase().includes(q));
   }, [deferredSearchQuery, keys]);
+  const availableDbIndexes = useMemo(
+    () => Array.from({ length: Math.max(256, selectedDb + 1) }, (_, index) => index),
+    [selectedDb]
+  );
 
   const tree = useMemo(
     () => buildTree(filtered, keySeparator),
@@ -1571,7 +1575,7 @@ export function KeyBrowser({
             hasConnection ? "cursor-pointer" : "cursor-not-allowed opacity-60"
           }`}
         >
-          {Array.from({ length: 16 }, (_, index) => (
+          {availableDbIndexes.map((index) => (
             <option key={index} value={index}>
               db{index} {index === selectedDb ? messages.keyBrowser.activeDb : ""}
             </option>

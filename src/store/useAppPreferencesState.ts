@@ -18,6 +18,11 @@ interface AppPreferencesStoreState {
   setIsSidebarCollapsed: (nextValue: boolean | ((previous: boolean) => boolean)) => void;
   toggleSidebarCollapsed: () => void;
   setKeySeparator: (value: string) => void;
+  setKeyBrowserSettings: (
+    value: Partial<
+      Pick<AppSettings["general"], "keySeparator" | "maxKeys" | "scanCount">
+    >
+  ) => void;
   persistLastConnectionId: (nextConnectionId: string) => void;
 }
 
@@ -65,10 +70,26 @@ export const useAppPreferencesStore = create<AppPreferencesStoreState>(
       get().setIsSidebarCollapsed((previous) => !previous);
     },
     setKeySeparator: (value) => {
+      get().setKeyBrowserSettings({
+        keySeparator: value,
+      });
+    },
+    setKeyBrowserSettings: (value) => {
       const { hasHydratedPreferences } = get();
 
-      set({
-        keySeparator: value,
+      set((state) => {
+        const nextGeneralSettings = {
+          ...state.appSettings.general,
+          ...value,
+        };
+
+        return {
+          appSettings: {
+            ...state.appSettings,
+            general: nextGeneralSettings,
+          },
+          keySeparator: nextGeneralSettings.keySeparator,
+        };
       });
 
       if (hasHydratedPreferences) {
@@ -76,7 +97,7 @@ export const useAppPreferencesStore = create<AppPreferencesStoreState>(
           ...current,
           general: {
             ...current.general,
-            keySeparator: value,
+            ...value,
           },
         }));
       }

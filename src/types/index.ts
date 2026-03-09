@@ -1,13 +1,24 @@
 export type RedisKeyType = "string" | "hash" | "list" | "set" | "zset" | "stream" | "json";
 
+export interface RedisSshTunnel {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  privateKeyPath?: string;
+  passphrase?: string;
+}
+
 export interface RedisConnection {
   id: string;
   name: string;
   host: string;
   port: number;
+  username?: string;
   password?: string;
   db: number;
   tls: boolean;
+  sshTunnel?: RedisSshTunnel;
   status: "connected" | "disconnected" | "connecting" | "error";
   color: string;
 }

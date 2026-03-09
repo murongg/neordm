@@ -1,5 +1,5 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
-import type { RedisConnection } from "../types";
+import type { RedisConnection, RedisSshTunnel } from "../types";
 
 const CONNECTION_STORE_PATH = "connections.json";
 const CONNECTIONS_KEY = "connections";
@@ -12,6 +12,54 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function normalizePersistedSshTunnel(value: unknown): RedisSshTunnel | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const {
+    host,
+    port,
+    username,
+    password,
+    privateKeyPath,
+    passphrase,
+  } = value;
+
+  if (
+    typeof host !== "string" ||
+    typeof port !== "number" ||
+    typeof username !== "string"
+  ) {
+    return undefined;
+  }
+
+  if (password !== undefined && typeof password !== "string") {
+    return undefined;
+  }
+
+  if (privateKeyPath !== undefined && typeof privateKeyPath !== "string") {
+    return undefined;
+  }
+
+  if (passphrase !== undefined && typeof passphrase !== "string") {
+    return undefined;
+  }
+
+  return {
+    host,
+    port,
+    username,
+    password,
+    privateKeyPath,
+    passphrase,
+  };
+}
+
 function normalizePersistedConnection(
   value: unknown
 ): PersistedRedisConnection | null {
@@ -22,9 +70,11 @@ function normalizePersistedConnection(
     name,
     host,
     port,
+    username,
     password,
     db,
     tls,
+    sshTunnel,
     color,
   } = value;
 
@@ -44,14 +94,20 @@ function normalizePersistedConnection(
     return null;
   }
 
+  if (username !== undefined && typeof username !== "string") {
+    return null;
+  }
+
   return {
     id,
     name,
     host,
     port,
+    username,
     password,
     db,
     tls,
+    sshTunnel: normalizePersistedSshTunnel(sshTunnel),
     color,
   };
 }
@@ -94,8 +150,19 @@ export async function persistConnections(
         return persistedConnection;
       }
 
-      const { password: _password, ...sanitizedConnection } = persistedConnection;
-      return sanitizedConnection;
+      const { password: _password, sshTunnel, ...sanitizedConnection } =
+        persistedConnection;
+
+      return {
+        ...sanitizedConnection,
+        sshTunnel: sshTunnel
+          ? {
+              ...sshTunnel,
+              password: undefined,
+              passphrase: undefined,
+            }
+          : undefined,
+      };
     })
   );
   await connectionStore.save();

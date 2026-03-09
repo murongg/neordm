@@ -66,18 +66,31 @@ export interface ListRedisKeysOptions {
 
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
-  "host" | "port" | "db" | "tls"
+  "host" | "port" | "username" | "db" | "tls" | "sshTunnel"
 > & {
   password?: string;
 };
 
 function toConnectionInput(connection: RedisConnectionInvokeInput) {
+  const sshTunnel = connection.sshTunnel;
+
   return {
     host: connection.host.trim(),
     port: connection.port,
+    username: connection.username?.trim() || null,
     password: connection.password?.trim() || null,
     db: connection.db,
     tls: connection.tls,
+    sshTunnel: sshTunnel
+      ? {
+          host: sshTunnel.host.trim(),
+          port: sshTunnel.port,
+          username: sshTunnel.username.trim(),
+          password: sshTunnel.password?.trim() || null,
+          privateKeyPath: sshTunnel.privateKeyPath?.trim() || null,
+          passphrase: sshTunnel.passphrase || null,
+        }
+      : null,
   };
 }
 

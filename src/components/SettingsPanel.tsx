@@ -30,8 +30,6 @@ interface SettingsPanelProps {
   onClose: () => void;
   themeMode: ThemeMode;
   onThemeChange: (mode: ThemeMode) => void;
-  keySeparator: string;
-  onKeySeparatorChange: (separator: string) => void;
 }
 
 type SettingsCategory =
@@ -119,8 +117,6 @@ export function SettingsPanel({
   onClose,
   themeMode,
   onThemeChange,
-  keySeparator,
-  onKeySeparatorChange,
 }: SettingsPanelProps) {
   const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
@@ -204,10 +200,7 @@ export function SettingsPanel({
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto px-6 py-5">
             {category === "general" && (
-              <GeneralSettings
-                keySeparator={keySeparator}
-                onKeySeparatorChange={onKeySeparatorChange}
-              />
+              <GeneralSettings />
             )}
             {category === "appearance" && <AppearanceSettings themeMode={themeMode} onThemeChange={onThemeChange} />}
             {category === "editor" && <EditorSettings />}
@@ -371,13 +364,7 @@ function useAppSettingsSection<K extends keyof AppSettings>(sectionKey: K) {
 
 // ─── Category panels ─────────────────────────────────────────────────────────
 
-function GeneralSettings({
-  keySeparator,
-  onKeySeparatorChange,
-}: {
-  keySeparator: string;
-  onKeySeparatorChange: (separator: string) => void;
-}) {
+function GeneralSettings() {
   const { locale, localeOptions, setLocale, messages } = useI18n();
   const general = messages.settings.general;
   const [generalSettings, setGeneralSettings] = useAppSettingsSection("general");
@@ -411,56 +398,6 @@ function GeneralSettings({
               }));
             }}
             options={localeOptions}
-          />
-        </Row>
-      </Section>
-
-      <Section title={general.keyBrowser}>
-        <Row
-          label={general.keySeparator}
-          description={general.keySeparatorDescription}
-        >
-          <input
-            type="text"
-            value={keySeparator}
-            onChange={(e) => {
-              const nextValue = e.target.value;
-              onKeySeparatorChange(nextValue);
-              setGeneralSettings((previous) => ({
-                ...previous,
-                keySeparator: nextValue,
-              }));
-            }}
-            className="input input-xs w-16 bg-base-300 border-base-content/10 font-mono text-center user-select-text"
-          />
-        </Row>
-        <Row label={general.maxKeys} description={general.maxKeysDescription}>
-          <input
-            type="number"
-            value={generalSettings.maxKeys}
-            onChange={(e) =>
-              setGeneralSettings((previous) => ({
-                ...previous,
-                maxKeys: e.target.value,
-              }))
-            }
-            className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
-          />
-        </Row>
-        <Row
-          label={general.scanCount}
-          description={general.scanCountDescription}
-        >
-          <input
-            type="number"
-            value={generalSettings.scanCount}
-            onChange={(e) =>
-              setGeneralSettings((previous) => ({
-                ...previous,
-                scanCount: e.target.value,
-              }))
-            }
-            className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
           />
         </Row>
       </Section>

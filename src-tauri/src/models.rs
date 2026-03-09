@@ -3,12 +3,25 @@ use serde_json::Value as JsonValue;
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSshTunnelInput {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) username: String,
+    pub(crate) password: Option<String>,
+    pub(crate) private_key_path: Option<String>,
+    pub(crate) passphrase: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisConnectionTestInput {
     pub(crate) host: String,
     pub(crate) port: u16,
+    pub(crate) username: Option<String>,
     pub(crate) password: Option<String>,
     pub(crate) db: i64,
     pub(crate) tls: bool,
+    pub(crate) ssh_tunnel: Option<RedisSshTunnelInput>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,32 +1,70 @@
-import { useEffect, useRef, useState } from "react";
-import { Loader, X, Wifi, Lock, Database } from "lucide-react";
-import type { RedisConnection } from "../types";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Database,
+  FolderOpen,
+  Link2,
+  Loader,
+  Lock,
+  Shield,
+  User,
+  Wifi,
+  X,
+} from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { AppSettings } from "../lib/appSettings";
+import type { RedisConnection, RedisSshTunnel } from "../types";
 import { useI18n } from "../i18n";
 import { useModalTransition } from "../hooks/useModalTransition";
 import { getRandomStableColor } from "../utils/colors";
-import {
-  getRedisErrorMessage,
-  testRedisConnection,
-} from "../lib/redis";
+import { parseRedisConnectionUrl } from "../lib/redisConnection";
+import { getRedisErrorMessage, testRedisConnection } from "../lib/redis";
 import {
   recordCrashReport,
   recordTelemetryEvent,
 } from "../lib/privacyRuntime";
 
+type KeyBrowserSettings = Pick<
+  AppSettings["general"],
+  "keySeparator" | "maxKeys" | "scanCount"
+>;
+
 interface ConnectionModalProps {
   onClose: () => void;
   onSave: (conn: Omit<RedisConnection, "id" | "status">) => Promise<void> | void;
   connection?: RedisConnection;
+  keyBrowserSettings: KeyBrowserSettings;
+  onKeyBrowserSettingsChange: (value: Partial<KeyBrowserSettings>) => void;
 }
 
 type TestStatus = "success" | "error";
 const TEST_STATUS_TRANSITION_MS = 160;
 
-function createInitialForm(connection?: RedisConnection) {
+interface ConnectionFormState {
+  name: string;
+  url: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  db: string;
+  tls: boolean;
+  color: string;
+  sshEnabled: boolean;
+  sshHost: string;
+  sshPort: string;
+  sshUsername: string;
+  sshPassword: string;
+  sshPrivateKeyPath: string;
+  sshPassphrase: string;
+}
+
+function createInitialForm(connection?: RedisConnection): ConnectionFormState {
   return {
     name: connection?.name ?? "",
+    url: "",
     host: connection?.host ?? "127.0.0.1",
     port: String(connection?.port ?? 6379),
+    username: connection?.username ?? "",
     password: connection?.password ?? "",
     db: String(connection?.db ?? 0),
     tls: connection?.tls ?? false,
@@ -35,6 +73,72 @@ function createInitialForm(connection?: RedisConnection) {
       getRandomStableColor({
         scope: "connection",
       }),
+    sshEnabled: Boolean(connection?.sshTunnel),
+    sshHost: connection?.sshTunnel?.host ?? "",
+    sshPort: String(connection?.sshTunnel?.port ?? 22),
+    sshUsername: connection?.sshTunnel?.username ?? "",
+    sshPassword: connection?.sshTunnel?.password ?? "",
+    sshPrivateKeyPath: connection?.sshTunnel?.privateKeyPath ?? "",
+    sshPassphrase: connection?.sshTunnel?.passphrase ?? "",
+  };
+}
+
+function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefined {
+  if (!form.sshEnabled) {
+    return undefined;
+  }
+
+  const host = form.sshHost.trim();
+  const port = Number.parseInt(form.sshPort, 10);
+  const username = form.sshUsername.trim();
+
+  if (!host.length) {
+    throw new Error("SSH host cannot be empty");
+  }
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error("SSH port must be between 1 and 65535");
+  }
+
+  if (!username.length) {
+    throw new Error("SSH username cannot be empty");
+  }
+
+  return {
+    host,
+    port,
+    username,
+    password: form.sshPassword || undefined,
+    privateKeyPath: form.sshPrivateKeyPath.trim() || undefined,
+    passphrase: form.sshPassphrase || undefined,
+  };
+}
+
+function buildConnectionInput(form: ConnectionFormState) {
+  const host = form.host.trim();
+  const port = Number.parseInt(form.port, 10);
+  const db = Number.parseInt(form.db, 10);
+
+  if (!host.length) {
+    throw new Error("Host cannot be empty");
+  }
+
+  if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+    throw new Error("Port must be between 1 and 65535");
+  }
+
+  if (!Number.isInteger(db) || db < 0) {
+    throw new Error("Database must be a non-negative integer");
+  }
+
+  return {
+    host,
+    port,
+    username: form.username.trim() || undefined,
+    password: form.password || undefined,
+    db,
+    tls: form.tls,
+    sshTunnel: buildSshTunnelInput(form),
   };
 }
 
@@ -144,10 +248,65 @@ function ConnectionTestStatusAlert({
   );
 }
 
+function FormCard({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={`rounded-xl border border-base-content/8 bg-base-100/85 p-3.5 shadow-[0_8px_24px_rgba(15,23,42,0.035)] backdrop-blur-sm ${className}`}
+    >
+      {children}
+    </section>
+  );
+}
+
+function FieldLabel({
+  icon,
+  children,
+}: {
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <label className="mb-1 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-[0.16em] text-base-content/42">
+      {icon}
+      <span>{children}</span>
+    </label>
+  );
+}
+
+function ToggleField({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex h-10 items-center justify-between rounded-lg border border-base-content/8 bg-base-100 px-3 cursor-pointer select-none transition-colors duration-150 hover:border-base-content/12">
+      <span className="text-[11px] font-mono text-base-content/68">{label}</span>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="toggle toggle-sm toggle-primary m-0 cursor-pointer"
+      />
+    </label>
+  );
+}
+
 export function ConnectionModal({
   onClose,
   onSave,
   connection,
+  keyBrowserSettings,
+  onKeyBrowserSettingsChange,
 }: ConnectionModalProps) {
   const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
@@ -166,10 +325,51 @@ export function ConnectionModal({
     setTestMessage("");
   }, [connection]);
 
-  const update = (field: string, value: string | boolean) => {
+  const update = <K extends keyof ConnectionFormState>(
+    field: K,
+    value: ConnectionFormState[K]
+  ) => {
     setForm((prev) => ({ ...prev, [field]: value }));
     setTestStatus(null);
     setTestMessage("");
+  };
+
+  const handleImportUrl = () => {
+    try {
+      const parsed = parseRedisConnectionUrl(form.url);
+
+      setForm((previous) => ({
+        ...previous,
+        host: parsed.host,
+        port: String(parsed.port),
+        username: parsed.username ?? "",
+        password: parsed.password ?? "",
+        db: String(parsed.db),
+        tls: parsed.tls,
+      }));
+      setTestStatus(null);
+      setTestMessage("");
+    } catch (error) {
+      setTestStatus("error");
+      setTestMessage(getRedisErrorMessage(error));
+    }
+  };
+
+  const handlePickSshPrivateKeyPath = async () => {
+    try {
+      const selected = await open({
+        directory: false,
+        multiple: false,
+        defaultPath: form.sshPrivateKeyPath || undefined,
+      });
+
+      if (typeof selected === "string" && selected.length > 0) {
+        update("sshPrivateKeyPath", selected);
+      }
+    } catch (error) {
+      setTestStatus("error");
+      setTestMessage(getRedisErrorMessage(error));
+    }
   };
 
   const handleTestConnection = async () => {
@@ -179,13 +379,7 @@ export function ConnectionModal({
     void recordTelemetryEvent("connection.test");
 
     try {
-      await testRedisConnection({
-        host: form.host,
-        port: Number(form.port),
-        password: form.password,
-        db: Number(form.db),
-        tls: form.tls,
-      });
+      await testRedisConnection(buildConnectionInput(form));
       setTestStatus("success");
     } catch (error) {
       void recordCrashReport("connection.test", error);
@@ -197,20 +391,26 @@ export function ConnectionModal({
   };
 
   const handleSave = async () => {
-    if (isSaving) return;
+    if (isSaving) {
+      return;
+    }
 
     setIsSaving(true);
     setTestStatus(null);
     setTestMessage("");
 
     try {
+      const connectionInput = buildConnectionInput(form);
+
       await onSave({
-        name: form.name || `${form.host}:${form.port}`,
-        host: form.host,
-        port: Number(form.port),
-        password: form.password || undefined,
-        db: Number(form.db),
-        tls: form.tls,
+        name: form.name.trim() || `${connectionInput.host}:${connectionInput.port}`,
+        host: connectionInput.host,
+        port: connectionInput.port,
+        username: connectionInput.username,
+        password: connectionInput.password,
+        db: connectionInput.db,
+        tls: connectionInput.tls,
+        sshTunnel: connectionInput.sshTunnel,
         color: form.color,
       });
       requestClose();
@@ -231,17 +431,23 @@ export function ConnectionModal({
       }`}
     >
       <div
-        className={`bg-base-200 rounded-2xl w-full max-w-md mx-4 shadow-2xl border border-base-content/10 overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none ${
+        className={`mx-4 flex max-h-[90vh] w-full max-w-[860px] flex-col overflow-hidden rounded-[24px] border border-base-content/10 bg-base-200/95 shadow-[0_24px_64px_rgba(15,23,42,0.2)] transition-all duration-200 ease-out motion-reduce:transition-none ${
           isVisible
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-3 scale-[0.98] opacity-0"
         }`}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-base-content/10">
-          <h2 className="text-sm font-semibold font-mono">
-            {connection ? messages.common.edit : messages.connectionModal.title}
-          </h2>
+        <div className="flex items-center justify-between border-b border-base-content/8 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="h-2.5 w-2.5 rounded-full shadow-sm"
+              style={{ backgroundColor: form.color }}
+            />
+            <h2 className="text-[15px] font-semibold tracking-tight">
+              {connection ? messages.common.edit : messages.connectionModal.title}
+            </h2>
+          </div>
           <button
             onClick={requestClose}
             className="btn btn-ghost btn-xs btn-circle cursor-pointer"
@@ -250,107 +456,312 @@ export function ConnectionModal({
           </button>
         </div>
 
-        {/* Form */}
-        <div className="px-5 py-4 flex flex-col gap-4">
-          {/* Name */}
-          <div>
-            <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 block">
-              {messages.connectionModal.name}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={form.name}
-                onChange={(e) => update("name", e.target.value)}
-                placeholder={messages.connectionModal.namePlaceholder}
-                className="input input-sm w-full bg-base-300 border-base-content/10 pl-12 font-mono text-xs user-select-text"
-              />
-              <div className="pointer-events-none absolute inset-y-2 left-10 w-px bg-base-content/10" />
-              <label className="absolute left-2.5 top-1/2 h-5 w-5 -translate-y-1/2 cursor-pointer">
-                <span
-                  aria-hidden="true"
-                  className="block h-full w-full rounded-full shadow-sm"
-                  style={{ backgroundColor: form.color }}
-                />
-                <input
-                  type="color"
-                  value={form.color}
-                  onChange={(e) => update("color", e.target.value)}
-                  aria-label={messages.connectionModal.color}
-                  title={messages.connectionModal.color}
-                  className="absolute inset-0 cursor-pointer opacity-0"
-                />
-              </label>
-            </div>
-          </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.28fr)_minmax(250px,0.78fr)]">
+            <div className="flex flex-col gap-3">
+              <FormCard>
+                <div className="flex flex-col gap-3">
+                  <div>
+                    <FieldLabel>{messages.connectionModal.name}</FieldLabel>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={form.name}
+                        onChange={(event) => update("name", event.target.value)}
+                        placeholder={messages.connectionModal.namePlaceholder}
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 pl-11 font-mono text-xs user-select-text"
+                      />
+                      <div className="pointer-events-none absolute inset-y-2.5 left-9.5 w-px bg-base-content/10" />
+                      <label className="absolute left-2.5 top-1/2 h-5 w-5 -translate-y-1/2 cursor-pointer">
+                        <span
+                          aria-hidden="true"
+                          className="block h-full w-full rounded-full shadow-sm ring-3 ring-base-100"
+                          style={{ backgroundColor: form.color }}
+                        />
+                        <input
+                          type="color"
+                          value={form.color}
+                          onChange={(event) => update("color", event.target.value)}
+                          aria-label={messages.connectionModal.color}
+                          title={messages.connectionModal.color}
+                          className="absolute inset-0 cursor-pointer opacity-0"
+                        />
+                      </label>
+                    </div>
+                  </div>
 
-          {/* Host + Port */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Wifi size={9} /> {messages.connectionModal.host}
-              </label>
-              <input
-                type="text"
-                value={form.host}
-                onChange={(e) => update("host", e.target.value)}
-                className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-              />
-            </div>
-            <div className="w-24">
-              <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 block">
-                {messages.connectionModal.port}
-              </label>
-              <input
-                type="number"
-                value={form.port}
-                onChange={(e) => update("port", e.target.value)}
-                className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-              />
-            </div>
-          </div>
+                  <div>
+                    <FieldLabel icon={<Link2 size={10} />}>
+                      {messages.connectionModal.url}
+                    </FieldLabel>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={form.url}
+                        onChange={(event) => update("url", event.target.value)}
+                        placeholder={messages.connectionModal.urlPlaceholder}
+                        className="input input-sm h-10 flex-1 border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleImportUrl}
+                        disabled={isTesting || isSaving || !form.url.trim().length}
+                        className="btn btn-sm h-10 min-h-10 rounded-lg border-base-content/8 bg-base-100 px-3.5 font-mono text-[11px] text-base-content/70 shadow-none hover:bg-base-200"
+                      >
+                        {messages.connectionModal.importUrl}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </FormCard>
 
-          {/* Password */}
-          <div>
-            <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-              <Lock size={9} /> {messages.connectionModal.password}
-            </label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => update("password", e.target.value)}
-              placeholder={messages.connectionModal.passwordPlaceholder}
-              className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-            />
-          </div>
+              <FormCard>
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
+                  <div>
+                    <FieldLabel icon={<Wifi size={10} />}>
+                      {messages.connectionModal.host}
+                    </FieldLabel>
+                    <input
+                      type="text"
+                      value={form.host}
+                      onChange={(event) => update("host", event.target.value)}
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel>{messages.connectionModal.port}</FieldLabel>
+                    <input
+                      type="number"
+                      value={form.port}
+                      onChange={(event) => update("port", event.target.value)}
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                </div>
 
-          {/* DB + TLS row */}
-          <div className="flex gap-3 items-end">
-            <div className="w-24">
-              <label className="text-[10px] font-mono text-base-content/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
-                <Database size={9} /> {messages.connectionModal.database}
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="15"
-                value={form.db}
-                onChange={(e) => update("db", e.target.value)}
-                className="input input-sm w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
-              />
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <FieldLabel icon={<User size={10} />}>
+                      {messages.connectionModal.username}
+                    </FieldLabel>
+                    <input
+                      type="text"
+                      value={form.username}
+                      onChange={(event) => update("username", event.target.value)}
+                      placeholder={messages.connectionModal.usernamePlaceholder}
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel icon={<Lock size={10} />}>
+                      {messages.connectionModal.password}
+                    </FieldLabel>
+                    <input
+                      type="password"
+                      value={form.password}
+                      onChange={(event) => update("password", event.target.value)}
+                      placeholder={messages.connectionModal.passwordPlaceholder}
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3 grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+                  <div>
+                    <FieldLabel icon={<Database size={10} />}>
+                      {messages.connectionModal.database}
+                    </FieldLabel>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={form.db}
+                      onChange={(event) => update("db", event.target.value)}
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                  <div>
+                    <FieldLabel icon={<Shield size={10} />}>
+                      {messages.connectionModal.tls}
+                    </FieldLabel>
+                    <ToggleField
+                      label={messages.connectionModal.tls}
+                      checked={form.tls}
+                      onChange={(checked) => update("tls", checked)}
+                    />
+                  </div>
+                </div>
+              </FormCard>
             </div>
-            <div className="flex-1">
-              <label className="flex items-center gap-3 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={form.tls}
-                  onChange={(e) => update("tls", e.target.checked)}
-                  className="toggle toggle-sm toggle-primary cursor-pointer"
-                />
-                <span className="text-xs font-mono text-base-content/70">
-                  {messages.connectionModal.tls}
-                </span>
-              </label>
+
+            <div className="flex flex-col gap-3">
+              <FormCard className="h-fit">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-[13px] font-semibold">
+                      <Shield size={13} className="text-base-content/55" />
+                      <span>{messages.connectionModal.sshTunnel}</span>
+                    </div>
+                    <p className="mt-1 text-[10px] font-mono text-base-content/40">
+                      {form.sshEnabled
+                        ? `${form.sshHost || "—"}:${form.sshPort || "22"}`
+                        : messages.connectionModal.sshTunnel}
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={form.sshEnabled}
+                    onChange={(event) => update("sshEnabled", event.target.checked)}
+                    className="toggle toggle-sm toggle-primary cursor-pointer"
+                  />
+                </div>
+
+                {form.sshEnabled ? (
+                  <div className="mt-3 flex flex-col gap-3 border-t border-base-content/8 pt-3">
+                    <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6.5rem] xl:grid-cols-1">
+                      <div>
+                        <FieldLabel>{messages.connectionModal.sshHost}</FieldLabel>
+                        <input
+                          type="text"
+                          value={form.sshHost}
+                          onChange={(event) => update("sshHost", event.target.value)}
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>{messages.connectionModal.sshPort}</FieldLabel>
+                        <input
+                          type="number"
+                          value={form.sshPort}
+                          onChange={(event) => update("sshPort", event.target.value)}
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <FieldLabel>{messages.connectionModal.sshUsername}</FieldLabel>
+                        <input
+                          type="text"
+                          value={form.sshUsername}
+                          onChange={(event) => update("sshUsername", event.target.value)}
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+
+                    <div>
+                      <FieldLabel>{messages.connectionModal.sshPrivateKeyPath}</FieldLabel>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={form.sshPrivateKeyPath}
+                          onChange={(event) =>
+                            update("sshPrivateKeyPath", event.target.value)
+                          }
+                          placeholder={
+                            messages.connectionModal.sshPrivateKeyPathPlaceholder
+                          }
+                          className="input input-sm h-10 flex-1 border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handlePickSshPrivateKeyPath();
+                          }}
+                          className="btn btn-sm h-10 min-h-10 w-10 rounded-lg border-base-content/8 bg-base-100 px-0 text-base-content/65 shadow-none hover:bg-base-200"
+                          aria-label={messages.connectionModal.sshPrivateKeyPath}
+                          title={messages.connectionModal.sshPrivateKeyPath}
+                        >
+                          <FolderOpen size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                      <div>
+                        <FieldLabel>{messages.connectionModal.sshPassword}</FieldLabel>
+                        <input
+                          type="password"
+                          value={form.sshPassword}
+                          onChange={(event) => update("sshPassword", event.target.value)}
+                          placeholder={messages.connectionModal.sshPasswordPlaceholder}
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>{messages.connectionModal.sshPassphrase}</FieldLabel>
+                        <input
+                          type="password"
+                          value={form.sshPassphrase}
+                          onChange={(event) => update("sshPassphrase", event.target.value)}
+                          placeholder={messages.connectionModal.sshPassphrasePlaceholder}
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-lg border border-dashed border-base-content/10 bg-base-200/60 px-3.5 py-4 text-center text-[11px] font-mono text-base-content/45">
+                    {messages.connectionModal.sshTunnel}
+                  </div>
+                )}
+              </FormCard>
+
+              <FormCard className="h-fit">
+                <div className="flex items-center gap-2 text-[13px] font-semibold">
+                  <Database size={13} className="text-base-content/55" />
+                  <span>{messages.settings.general.keyBrowser}</span>
+                </div>
+
+                <div className="mt-3 flex flex-col gap-3 border-t border-base-content/8 pt-3">
+                  <div className="grid gap-3 sm:grid-cols-[6rem_minmax(0,1fr)] xl:grid-cols-1">
+                    <div>
+                      <FieldLabel>{messages.settings.general.keySeparator}</FieldLabel>
+                      <input
+                        type="text"
+                        value={keyBrowserSettings.keySeparator}
+                        onChange={(event) =>
+                          onKeyBrowserSettingsChange({
+                            keySeparator: event.target.value,
+                          })
+                        }
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-center text-xs user-select-text"
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>{messages.settings.general.maxKeys}</FieldLabel>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={keyBrowserSettings.maxKeys}
+                        onChange={(event) =>
+                          onKeyBrowserSettingsChange({
+                            maxKeys: event.target.value,
+                          })
+                        }
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <FieldLabel>{messages.settings.general.scanCount}</FieldLabel>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={keyBrowserSettings.scanCount}
+                      onChange={(event) =>
+                        onKeyBrowserSettingsChange({
+                          scanCount: event.target.value,
+                        })
+                      }
+                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                    />
+                  </div>
+                </div>
+              </FormCard>
             </div>
           </div>
         </div>
@@ -362,12 +773,11 @@ export function ConnectionModal({
           failureLabel={messages.connectionModal.failure}
         />
 
-        {/* Footer */}
-        <div className="flex justify-between gap-2 px-5 py-4 border-t border-base-content/10">
+        <div className="flex justify-between gap-2 border-t border-base-content/8 px-5 py-3.5">
           <button
             onClick={handleTestConnection}
             disabled={isTesting || isSaving}
-            className="btn btn-ghost btn-sm cursor-pointer font-mono"
+            className="btn btn-ghost btn-sm h-10 min-h-10 rounded-lg cursor-pointer font-mono text-[11px]"
           >
             {isTesting ? (
               <span className="flex items-center gap-1.5">
@@ -380,23 +790,27 @@ export function ConnectionModal({
           </button>
 
           <div className="flex gap-2">
-          <button onClick={requestClose} disabled={isSaving} className="btn btn-ghost btn-sm cursor-pointer font-mono">
-            {messages.common.cancel}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={isTesting || isSaving}
-            className="btn btn-primary btn-sm cursor-pointer font-mono"
-          >
-            {isSaving ? (
-              <span className="flex items-center gap-1.5">
-                <Loader size={13} className="animate-spin" />
-                {messages.common.save}
-              </span>
-            ) : (
-              messages.common.save
-            )}
-          </button>
+            <button
+              onClick={requestClose}
+              disabled={isSaving}
+              className="btn btn-ghost btn-sm h-10 min-h-10 rounded-lg cursor-pointer font-mono text-[11px]"
+            >
+              {messages.common.cancel}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={isTesting || isSaving}
+              className="btn btn-primary btn-sm h-10 min-h-10 rounded-lg px-4.5 cursor-pointer font-mono text-[11px] shadow-sm"
+            >
+              {isSaving ? (
+                <span className="flex items-center gap-1.5">
+                  <Loader size={13} className="animate-spin" />
+                  {messages.common.save}
+                </span>
+              ) : (
+                messages.common.save
+              )}
+            </button>
           </div>
         </div>
       </div>
