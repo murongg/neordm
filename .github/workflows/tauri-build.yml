@@ -19,11 +19,13 @@ jobs:
             artifact_name: macOS-apple-silicon
             os: macos-15
             target: aarch64-apple-darwin
+            asset_arch: aarch64
             args: --target aarch64-apple-darwin --no-sign
           - name: macOS (Intel)
             artifact_name: macOS-intel
             os: macos-15-intel
             target: x86_64-apple-darwin
+            asset_arch: x64
             args: --target x86_64-apple-darwin --no-sign
           - name: Linux (x64)
             artifact_name: Linux-x64
@@ -91,6 +93,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          VERSION="$(node -p "require('./package.json').version")"
           APP_PATH="$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -type d -name 'NeoRDM.app' | head -n 1)"
 
           if [[ -z "${APP_PATH}" ]]; then
@@ -98,7 +101,7 @@ jobs:
             exit 1
           fi
 
-          OUTPUT_DMG="src-tauri/target/${{ matrix.target }}/release/bundle/dmg/NeoRDM-${{ matrix.target }}-with-fix.dmg"
+          OUTPUT_DMG="src-tauri/target/${{ matrix.target }}/release/bundle/dmg/NeoRDM_${VERSION}_${{ matrix.asset_arch }}.dmg"
 
           bash scripts/macos/repack-dmg-with-fix.sh \
             "${APP_PATH}" \
@@ -118,7 +121,14 @@ jobs:
           const fs = require('fs');
           const customDmgPath = process.env.CUSTOM_DMG_PATH || '';
           const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]')
-            .filter((artifactPath) => !(customDmgPath && artifactPath.endsWith('.dmg')));
+            .filter((artifactPath) => !(customDmgPath && artifactPath.endsWith('.dmg')))
+            .filter((artifactPath) => {
+              try {
+                return fs.statSync(artifactPath).isFile();
+              } catch {
+                return false;
+              }
+            });
 
           if (customDmgPath) {
             artifactPaths.push(customDmgPath);
