@@ -1,7 +1,7 @@
 {
   "name": "neordm",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AI-first Redis desktop client for browsing data, managing keys, and executing Redis workflows.",
   "type": "module",
   "scripts": {
