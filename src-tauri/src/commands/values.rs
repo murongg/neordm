@@ -243,6 +243,8 @@ pub async fn create_redis_key(input: RedisKeyCreateInput) -> Result<RedisKeySumm
         key: key.to_string(),
         key_type: normalize_key_type(key_type),
         ttl,
+        slot: None,
+        node_address: None,
     })
 }
 

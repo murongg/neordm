@@ -18,6 +18,8 @@ import {
   parseRedisConnectionUrl,
 } from "../lib/redisConnection";
 import type {
+  RedisClusterConfig,
+  RedisClusterNode,
   RedisConnection,
   RedisConnectionMode,
   RedisSentinelConfig,
@@ -56,6 +58,7 @@ interface ConnectionFormState {
   mode: RedisConnectionMode;
   host: string;
   port: string;
+  clusterNodes: string;
   sentinelMasterName: string;
   sentinelNodes: string;
   sentinelUsername: string;
@@ -83,13 +86,24 @@ function formatSentinelNodes(nodes?: RedisSentinelNode[]) {
   return nodes.map((node) => `${node.host}:${node.port}`).join("\n");
 }
 
+function formatClusterNodes(nodes?: RedisClusterNode[]) {
+  if (!nodes?.length) {
+    return "";
+  }
+
+  return nodes.map((node) => `${node.host}:${node.port}`).join("\n");
+}
+
 function createInitialForm(connection?: RedisConnection): ConnectionFormState {
   return {
     name: connection?.name ?? "",
     url: "",
-    mode: connection?.mode ?? (connection?.sentinel ? "sentinel" : "direct"),
+    mode:
+      connection?.mode ??
+      (connection?.cluster ? "cluster" : connection?.sentinel ? "sentinel" : "direct"),
     host: connection?.host ?? "127.0.0.1",
     port: String(connection?.port ?? 6379),
+    clusterNodes: formatClusterNodes(connection?.cluster?.nodes),
     sentinelMasterName: connection?.sentinel?.masterName ?? "",
     sentinelNodes: formatSentinelNodes(connection?.sentinel?.nodes),
     sentinelUsername: connection?.sentinel?.username ?? "",
@@ -142,6 +156,43 @@ function parseSentinelNodes(value: string): RedisSentinelNode[] {
 
       if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
         throw new Error(`Invalid sentinel node port: ${segment}`);
+      }
+
+      return {
+        host,
+        port,
+      };
+    });
+}
+
+function parseClusterNodes(value: string): RedisClusterNode[] {
+  return value
+    .split(/[\n,]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      let parsedUrl: URL;
+
+      try {
+        parsedUrl = new URL(
+          segment.includes("://") ? segment : `redis://${segment}`
+        );
+      } catch {
+        throw new Error(`Invalid cluster node: ${segment}`);
+      }
+
+      const host = parsedUrl.hostname.trim();
+
+      if (!host.length) {
+        throw new Error(`Invalid cluster node host: ${segment}`);
+      }
+
+      const port = parsedUrl.port
+        ? Number.parseInt(parsedUrl.port, 10)
+        : 6379;
+
+      if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+        throw new Error(`Invalid cluster node port: ${segment}`);
       }
 
       return {
@@ -210,15 +261,55 @@ function buildSentinelInput(
   };
 }
 
+function buildClusterInput(
+  form: ConnectionFormState
+): RedisClusterConfig | undefined {
+  if (form.mode !== "cluster") {
+    return undefined;
+  }
+
+  const nodes = parseClusterNodes(form.clusterNodes);
+
+  if (!nodes.length) {
+    throw new Error("Add at least one cluster node");
+  }
+
+  return {
+    nodes,
+  };
+}
+
 function buildConnectionInput(form: ConnectionFormState) {
-  const db = Number.parseInt(form.db, 10);
+  const db = form.mode === "cluster" ? 0 : Number.parseInt(form.db, 10);
 
   if (!Number.isInteger(db) || db < 0) {
     throw new Error("Database must be a non-negative integer");
   }
 
   const sentinel = buildSentinelInput(form);
-  const sshTunnel = buildSshTunnelInput(form);
+  const cluster = buildClusterInput(form);
+  const sshTunnel = form.mode === "cluster" ? undefined : buildSshTunnelInput(form);
+
+  if (form.mode === "cluster") {
+    const primaryNode = cluster?.nodes[0];
+
+    if (!primaryNode) {
+      throw new Error("Add at least one cluster node");
+    }
+
+    return {
+      host: primaryNode.host,
+      port: primaryNode.port,
+      mode: "cluster" as const,
+      cluster,
+      sentinel: undefined,
+      username: form.username.trim() || undefined,
+      password: form.password || undefined,
+      db: 0,
+      tls: form.tls,
+      sshTunnel,
+    };
+  }
 
   if (form.mode === "sentinel") {
     const primaryNode = sentinel?.nodes[0];
@@ -231,6 +322,7 @@ function buildConnectionInput(form: ConnectionFormState) {
       host: primaryNode.host,
       port: primaryNode.port,
       mode: "sentinel" as const,
+      cluster: undefined,
       sentinel,
       username: form.username.trim() || undefined,
       password: form.password || undefined,
@@ -255,6 +347,7 @@ function buildConnectionInput(form: ConnectionFormState) {
     host,
     port,
     mode: "direct" as const,
+    cluster: undefined,
     sentinel: undefined,
     username: form.username.trim() || undefined,
     password: form.password || undefined,
@@ -439,6 +532,9 @@ export function ConnectionModal({
   const [testMessage, setTestMessage] = useState<string>("");
   const [form, setForm] = useState(() => createInitialForm(connection));
   const isSentinelMode = form.mode === "sentinel";
+  const isClusterMode = form.mode === "cluster";
+  const sshDisabled = isClusterMode;
+  const effectiveSshEnabled = !sshDisabled && form.sshEnabled;
 
   useEffect(() => {
     setForm(createInitialForm(connection));
@@ -531,6 +627,7 @@ export function ConnectionModal({
         port: connectionInput.port,
         mode: connectionInput.mode,
         sentinel: connectionInput.sentinel,
+        cluster: connectionInput.cluster,
         username: connectionInput.username,
         password: connectionInput.password,
         db: connectionInput.db,
@@ -617,7 +714,7 @@ export function ConnectionModal({
 
                   <div>
                     <FieldLabel>{messages.connectionModal.mode}</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {([
                         {
                           value: "direct" as const,
@@ -628,6 +725,11 @@ export function ConnectionModal({
                           value: "sentinel" as const,
                           icon: <Waypoints size={12} />,
                           label: messages.connectionModal.sentinel,
+                        },
+                        {
+                          value: "cluster" as const,
+                          icon: <Database size={12} />,
+                          label: messages.connectionModal.cluster,
                         },
                       ] satisfies Array<{
                         value: RedisConnectionMode;
@@ -687,6 +789,20 @@ export function ConnectionModal({
                         />
                       </div>
                     </>
+                  ) : isClusterMode ? (
+                    <div>
+                      <FieldLabel>{messages.connectionModal.clusterNodes}</FieldLabel>
+                      <textarea
+                        value={form.clusterNodes}
+                        onChange={(event) =>
+                          update("clusterNodes", event.target.value)
+                        }
+                        placeholder={
+                          messages.connectionModal.clusterNodesPlaceholder
+                        }
+                        className="textarea textarea-sm min-h-[88px] w-full resize-none border-base-content/8 bg-base-100 font-mono text-xs leading-5 user-select-text"
+                      />
+                    </div>
                   ) : (
                     <div>
                       <FieldLabel icon={<Link2 size={10} />}>
@@ -715,7 +831,7 @@ export function ConnectionModal({
               </FormCard>
 
               <FormCard>
-                {!isSentinelMode && (
+                {!isSentinelMode && !isClusterMode && (
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
                     <div>
                       <FieldLabel icon={<Wifi size={10} />}>
@@ -815,8 +931,9 @@ export function ConnectionModal({
                       type="number"
                       min="0"
                       step="1"
-                      value={form.db}
+                      value={isClusterMode ? "0" : form.db}
                       onChange={(event) => update("db", event.target.value)}
+                      disabled={isClusterMode}
                       className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
                     />
                   </div>
@@ -862,13 +979,14 @@ export function ConnectionModal({
                   </div>
                   <input
                     type="checkbox"
-                    checked={form.sshEnabled}
+                    checked={effectiveSshEnabled}
                     onChange={(event) => update("sshEnabled", event.target.checked)}
-                    className="toggle toggle-sm toggle-primary cursor-pointer"
+                    disabled={sshDisabled}
+                    className="toggle toggle-sm toggle-primary cursor-pointer disabled:cursor-not-allowed"
                   />
                 </div>
 
-                {form.sshEnabled ? (
+                {effectiveSshEnabled ? (
                   <div className="mt-3 flex flex-col gap-3 border-t border-base-content/8 pt-3">
                     <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6.5rem] xl:grid-cols-1">
                       <div>
@@ -954,7 +1072,9 @@ export function ConnectionModal({
                   </div>
                 ) : (
                   <div className="mt-3 rounded-lg border border-dashed border-base-content/10 bg-base-200/60 px-3.5 py-4 text-center text-[11px] font-mono text-base-content/45">
-                    {messages.connectionModal.sshTunnel}
+                    {sshDisabled
+                      ? messages.connectionModal.clusterSshUnsupported
+                      : messages.connectionModal.sshTunnel}
                   </div>
                 )}
               </FormCard>

@@ -17,8 +17,15 @@ export function formatRedisAddress(host: string, port: number) {
 }
 
 export function getRedisConnectionEndpointLabel(
-  connection: Pick<RedisConnection, "host" | "port" | "mode" | "sentinel">
+  connection: Pick<
+    RedisConnection,
+    "host" | "port" | "mode" | "sentinel" | "cluster"
+  >
 ) {
+  if (connection.mode === "cluster" && connection.cluster?.nodes?.length) {
+    return `cluster/${connection.cluster.nodes.length} nodes`;
+  }
+
   if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
     return `sentinel/${connection.sentinel.masterName.trim()}`;
   }
@@ -27,8 +34,15 @@ export function getRedisConnectionEndpointLabel(
 }
 
 export function getRedisConnectionDefaultName(
-  connection: Pick<RedisConnection, "host" | "port" | "mode" | "sentinel">
+  connection: Pick<
+    RedisConnection,
+    "host" | "port" | "mode" | "sentinel" | "cluster"
+  >
 ) {
+  if (connection.mode === "cluster" && connection.cluster?.nodes?.length) {
+    return `cluster (${connection.cluster.nodes.length} nodes)`;
+  }
+
   if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
     return `${connection.sentinel.masterName.trim()} (sentinel)`;
   }

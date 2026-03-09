@@ -32,6 +32,7 @@ interface ValueEditorProps {
   keyValue: KeyValue | null;
   onRefreshKeyValue: () => Promise<void>;
   onDeleteKey: (key: string) => Promise<void>;
+  onJumpToClusterNode?: (nodeAddress: string | null) => Promise<void> | void;
   onUpdateStringValue: (key: string, nextValue: string) => Promise<void>;
   onUpdateKeyTtl: (key: string, nextTtl: number) => Promise<void>;
   onUpdateJsonValue: (key: string, nextValue: string) => Promise<void>;
@@ -71,6 +72,7 @@ export function ValueEditor({
   keyValue,
   onRefreshKeyValue,
   onDeleteKey,
+  onJumpToClusterNode,
   onUpdateStringValue,
   onUpdateKeyTtl,
   onUpdateJsonValue,
@@ -229,6 +231,23 @@ export function ValueEditor({
                   {messages.valueEditor.persistent}
                 </span>
               )}
+              {typeof keyValue.slot === "number" && (
+                <span className="badge badge-xs badge-ghost font-mono">
+                  slot {keyValue.slot}
+                </span>
+              )}
+              {keyValue.nodeAddress ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onJumpToClusterNode?.(keyValue.nodeAddress ?? null);
+                  }}
+                  className="badge badge-xs badge-ghost gap-1 border-base-content/10 font-mono transition-colors duration-150 hover:border-primary/20 hover:bg-primary/8 hover:text-primary cursor-pointer"
+                  title={`${messages.valueEditor.browseNode} · ${keyValue.nodeAddress}`}
+                >
+                  {keyValue.nodeAddress}
+                </button>
+              ) : null}
             </div>
             <h2 className="text-sm font-mono font-semibold text-base-content truncate">
               {keyValue.key}

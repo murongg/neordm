@@ -1,8 +1,14 @@
 use crate::models::{
-    RedisConnectionTestInput, RedisSentinelInput, RedisSentinelNodeInput, RedisSshTunnelInput,
+    RedisClusterInput, RedisClusterSlotRange, RedisClusterTopologyNode, RedisConnectionTestInput,
+    RedisSentinelInput, RedisSentinelNodeInput, RedisSshTunnelInput,
 };
 use async_ssh2_lite::{AsyncSession, SessionConfiguration, TokioTcpStream};
-use redis::{aio::MultiplexedConnection, ConnectionInfo, IntoConnectionInfo, Value};
+use redis::{
+    aio::{ConnectionLike, MultiplexedConnection},
+    cluster::ClusterClientBuilder,
+    cluster_async::ClusterConnection,
+    ConnectionInfo, IntoConnectionInfo, RedisFuture, Value,
+};
 use std::{
     env,
     net::ToSocketAddrs,
@@ -16,6 +22,43 @@ trait RedisAsyncStream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T> RedisAsyncStream for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 
 type BoxedRedisAsyncStream = Box<dyn RedisAsyncStream>;
+
+pub(crate) enum RedisConnectionHandle {
+    Single(MultiplexedConnection),
+    Cluster(ClusterConnection),
+}
+
+impl ConnectionLike for RedisConnectionHandle {
+    fn req_packed_command<'a>(&'a mut self, cmd: &'a redis::Cmd) -> RedisFuture<'a, Value> {
+        match self {
+            RedisConnectionHandle::Single(connection) => connection.req_packed_command(cmd),
+            RedisConnectionHandle::Cluster(connection) => connection.req_packed_command(cmd),
+        }
+    }
+
+    fn req_packed_commands<'a>(
+        &'a mut self,
+        cmd: &'a redis::Pipeline,
+        offset: usize,
+        count: usize,
+    ) -> RedisFuture<'a, Vec<Value>> {
+        match self {
+            RedisConnectionHandle::Single(connection) => {
+                connection.req_packed_commands(cmd, offset, count)
+            }
+            RedisConnectionHandle::Cluster(connection) => {
+                connection.req_packed_commands(cmd, offset, count)
+            }
+        }
+    }
+
+    fn get_db(&self) -> i64 {
+        match self {
+            RedisConnectionHandle::Single(connection) => connection.get_db(),
+            RedisConnectionHandle::Cluster(connection) => connection.get_db(),
+        }
+    }
+}
 
 fn build_connection_url(
     host: &str,
@@ -75,6 +118,24 @@ fn build_redis_connection_info(input: &RedisConnectionTestInput) -> Result<Conne
         input.password.as_deref(),
         input.tls,
     )
+}
+
+fn build_cluster_node_urls(input: &RedisConnectionTestInput, cluster: &RedisClusterInput) -> Result<Vec<String>, String> {
+    cluster
+        .nodes
+        .iter()
+        .map(|node| {
+            build_connection_url(
+                &node.host,
+                node.port,
+                0,
+                input.username.as_deref(),
+                input.password.as_deref(),
+                input.tls,
+            )
+            .map(|url| url.to_string())
+        })
+        .collect()
 }
 
 fn build_sentinel_connection_info(
@@ -462,23 +523,211 @@ async fn open_sentinel_connection_over_ssh(
     .await
 }
 
-pub(crate) async fn open_connection(
-    input: &RedisConnectionTestInput,
-) -> Result<MultiplexedConnection, String> {
-    if let Some(sentinel) = &input.sentinel {
-        if let Some(ssh_tunnel) = &input.ssh_tunnel {
-            return open_sentinel_connection_over_ssh(input, sentinel, ssh_tunnel).await;
+fn parse_cluster_master_node(value: Value) -> Result<(String, u16), String> {
+    let values = match value {
+        Value::Array(values) => values,
+        _ => return Err("Cluster returned an invalid node entry".to_string()),
+    };
+
+    if values.len() < 2 {
+        return Err("Cluster returned an incomplete node entry".to_string());
+    }
+
+    let mut values = values.into_iter();
+    let host = redis_value_to_string(
+        values
+            .next()
+            .ok_or_else(|| "Cluster returned an empty node host".to_string())?,
+    )?;
+    let port = redis_value_to_string(
+        values
+            .next()
+            .ok_or_else(|| "Cluster returned an empty node port".to_string())?,
+    )?
+    .parse::<u16>()
+    .map_err(|error| format!("Invalid cluster node port: {error}"))?;
+
+    Ok((host, port))
+}
+
+fn parse_cluster_topology(value: Value) -> Result<Vec<RedisClusterTopologyNode>, String> {
+    let slots = match value {
+        Value::Array(values) => values,
+        _ => return Err("Cluster returned an invalid slots response".to_string()),
+    };
+
+    let mut nodes = std::collections::HashMap::<String, RedisClusterTopologyNode>::new();
+
+    for entry in slots {
+        let values = match entry {
+            Value::Array(values) => values,
+            _ => continue,
+        };
+
+        if values.len() < 3 {
+            continue;
         }
 
-        return open_sentinel_connection(input, sentinel).await;
+        let start = redis_value_to_string(values[0].clone())?
+            .parse::<u16>()
+            .map_err(|error| format!("Invalid cluster slot start: {error}"))?;
+        let end = redis_value_to_string(values[1].clone())?
+            .parse::<u16>()
+            .map_err(|error| format!("Invalid cluster slot end: {error}"))?;
+        let (host, port) = parse_cluster_master_node(values[2].clone())?;
+        let address = format!("{host}:{port}");
+
+        let node = nodes
+            .entry(address.clone())
+            .or_insert_with(|| RedisClusterTopologyNode {
+                host: host.clone(),
+                port,
+                address,
+                slot_ranges: Vec::new(),
+                slot_count: 0,
+            });
+
+        node.slot_ranges.push(RedisClusterSlotRange { start, end });
+        node.slot_count += u32::from(end.saturating_sub(start)) + 1;
+    }
+
+    let mut nodes = nodes.into_values().collect::<Vec<_>>();
+
+    for node in &mut nodes {
+        node.slot_ranges.sort_by_key(|range| range.start);
+    }
+
+    nodes.sort_by_key(|node| {
+        node.slot_ranges
+            .first()
+            .map(|range| range.start)
+            .unwrap_or(u16::MAX)
+    });
+
+    if nodes.is_empty() {
+        return Err("Cluster returned no master nodes".to_string());
+    }
+
+    Ok(nodes)
+}
+
+pub(crate) async fn get_cluster_topology(
+    input: &RedisConnectionTestInput,
+) -> Result<Vec<RedisClusterTopologyNode>, String> {
+    let cluster = input
+        .cluster
+        .as_ref()
+        .ok_or_else(|| "Cluster configuration is missing".to_string())?;
+
+    if input.ssh_tunnel.is_some() {
+        return Err("Redis Cluster over SSH is not supported yet".to_string());
+    }
+
+    let mut errors = Vec::new();
+
+    for node in &cluster.nodes {
+        let connection_info = build_connection_info(
+            &node.host,
+            node.port,
+            0,
+            input.username.as_deref(),
+            input.password.as_deref(),
+            input.tls,
+        )?;
+
+        match open_direct_connection(&connection_info, "Redis Cluster seed").await {
+            Ok(mut connection) => {
+                let response: Value = match redis::cmd("CLUSTER")
+                    .arg("SLOTS")
+                    .query_async(&mut connection)
+                    .await
+                {
+                    Ok(response) => response,
+                    Err(error) => {
+                        errors.push(format!(
+                            "{}:{} failed to inspect cluster slots: {error}",
+                            node.host, node.port
+                        ));
+                        continue;
+                    }
+                };
+
+                return parse_cluster_topology(response);
+            }
+            Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
+        }
+    }
+
+    Err(format!(
+        "Failed to inspect Redis Cluster topology ({})",
+        errors.join(" · ")
+    ))
+}
+
+pub(crate) async fn find_cluster_node_address_for_slot(
+    input: &RedisConnectionTestInput,
+    slot: u16,
+) -> Result<Option<String>, String> {
+    let topology = get_cluster_topology(input).await?;
+
+    Ok(topology.into_iter().find_map(|node| {
+        node.slot_ranges
+            .iter()
+            .any(|range| slot >= range.start && slot <= range.end)
+            .then_some(node.address)
+    }))
+}
+
+async fn open_cluster_connection(
+    input: &RedisConnectionTestInput,
+    cluster: &RedisClusterInput,
+) -> Result<ClusterConnection, String> {
+    if input.ssh_tunnel.is_some() {
+        return Err("Redis Cluster over SSH is not supported yet".to_string());
+    }
+
+    let cluster_urls = build_cluster_node_urls(input, cluster)?;
+    let client = ClusterClientBuilder::new(cluster_urls)
+        .build()
+        .map_err(|error| format!("Failed to create Redis Cluster client: {error}"))?;
+
+    client
+        .get_async_connection()
+        .await
+        .map_err(|error| format!("Failed to connect to Redis Cluster: {error}"))
+}
+
+pub(crate) async fn open_connection(
+    input: &RedisConnectionTestInput,
+) -> Result<RedisConnectionHandle, String> {
+    if let Some(cluster) = &input.cluster {
+        return open_cluster_connection(input, cluster)
+            .await
+            .map(RedisConnectionHandle::Cluster);
+    }
+
+    if let Some(sentinel) = &input.sentinel {
+        if let Some(ssh_tunnel) = &input.ssh_tunnel {
+            return open_sentinel_connection_over_ssh(input, sentinel, ssh_tunnel)
+                .await
+                .map(RedisConnectionHandle::Single);
+        }
+
+        return open_sentinel_connection(input, sentinel)
+            .await
+            .map(RedisConnectionHandle::Single);
     }
 
     if let Some(ssh_tunnel) = &input.ssh_tunnel {
-        return open_ssh_connection(input, ssh_tunnel).await;
+        return open_ssh_connection(input, ssh_tunnel)
+            .await
+            .map(RedisConnectionHandle::Single);
     }
 
     let connection_info = build_redis_connection_info(input)?;
-    open_direct_connection(&connection_info, "Redis").await
+    open_direct_connection(&connection_info, "Redis")
+        .await
+        .map(RedisConnectionHandle::Single)
 }
 
 pub(crate) fn normalize_key_type(raw: &str) -> String {

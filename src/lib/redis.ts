@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   KeyValue,
   RedisConnection,
+  RedisClusterTopologyNode,
   RedisKey,
   RedisKeyType,
 } from "../types";
@@ -62,6 +63,7 @@ export interface RedisKeyCreateInput {
 export interface ListRedisKeysOptions {
   scanCount?: number;
   maxKeys?: number;
+  clusterNodeAddress?: string | null;
 }
 
 type RedisConnectionInvokeInput = Pick<
@@ -70,6 +72,7 @@ type RedisConnectionInvokeInput = Pick<
   | "port"
   | "mode"
   | "sentinel"
+  | "cluster"
   | "username"
   | "db"
   | "tls"
@@ -81,6 +84,7 @@ type RedisConnectionInvokeInput = Pick<
 function toConnectionInput(connection: RedisConnectionInvokeInput) {
   const sshTunnel = connection.sshTunnel;
   const sentinel = connection.mode === "sentinel" ? connection.sentinel : undefined;
+  const cluster = connection.mode === "cluster" ? connection.cluster : undefined;
 
   return {
     host: connection.host.trim(),
@@ -96,6 +100,14 @@ function toConnectionInput(connection: RedisConnectionInvokeInput) {
           username: sentinel.username?.trim() || null,
           password: sentinel.password?.trim() || null,
           tls: Boolean(sentinel.tls),
+        }
+      : null,
+    cluster: cluster
+      ? {
+          nodes: cluster.nodes.map((node) => ({
+            host: node.host.trim(),
+            port: node.port,
+          })),
         }
       : null,
     username: connection.username?.trim() || null,
@@ -151,6 +163,17 @@ export async function listRedisKeys(
       connection: toConnectionInput(connection),
       scanCount: options.scanCount,
       maxKeys: options.maxKeys,
+      clusterNodeAddress: options.clusterNodeAddress ?? null,
+    },
+  });
+}
+
+export async function getRedisClusterTopology(
+  connection: RedisConnectionInvokeInput
+): Promise<RedisClusterTopologyNode[]> {
+  return invoke("get_redis_cluster_topology", {
+    input: {
+      connection: toConnectionInput(connection),
     },
   });
 }
@@ -206,6 +229,14 @@ export async function deleteRedisKeys(
   );
 
   if (!uniqueKeys.length) {
+    return;
+  }
+
+  if (connection.mode === "cluster") {
+    for (const key of uniqueKeys) {
+      await runRedisCommand(connection, `DEL ${escapeRedisCommandArgument(key)}`);
+    }
+
     return;
   }
 

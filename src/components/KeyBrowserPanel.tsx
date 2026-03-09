@@ -27,7 +27,9 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       renameGroup: state.renameGroup,
       renameKey: state.renameKey,
       searchQuery: state.searchQuery,
+      selectClusterNode: state.selectClusterNode,
       selectDb: state.selectDb,
+      selectedClusterNodeAddress: state.selectedClusterNodeAddress,
       selectedDb: state.selectedDb,
       selectedKey: state.selectedKey,
       selectKey: state.selectKey,
@@ -63,6 +65,8 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       onRenameKey={workspace.renameKey}
       onRenameGroup={workspace.renameGroup}
       searchQuery={workspace.searchQuery}
+      selectedClusterNodeAddress={workspace.selectedClusterNodeAddress}
+      onSelectClusterNode={workspace.selectClusterNode}
       onSearchChange={workspace.setSearchQuery}
     />
   );

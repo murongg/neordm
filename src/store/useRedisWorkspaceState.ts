@@ -76,6 +76,7 @@ interface RedisWorkspaceStoreState {
   connections: RedisConnection[];
   activeConnectionId: string;
   selectedDb: number;
+  selectedClusterNodeAddress: string | null;
   keys: RedisKey[];
   selectedKey: RedisKey | null;
   keyValue: KeyValue | null;
@@ -123,6 +124,7 @@ interface RedisWorkspaceStoreState {
   selectDb: (db: number) => Promise<void>;
   refreshKeys: () => Promise<void>;
   refreshKeyValue: () => Promise<void>;
+  selectClusterNode: (nodeAddress: string | null) => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
   createKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
   deleteKey: (key: RedisKey) => Promise<void>;
@@ -184,6 +186,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     connections: [],
     activeConnectionId: "",
     selectedDb: 0,
+    selectedClusterNodeAddress: null,
     keys: [],
     selectedKey: null,
     keyValue: null,
@@ -264,6 +267,8 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
             key: key.key,
             type: "string",
             ttl: key.ttl,
+            slot: key.slot,
+            nodeAddress: key.nodeAddress,
             value: getRedisErrorMessage(error),
           },
         });
@@ -292,6 +297,10 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           {
             maxKeys: parsePositiveInt(appSettings.general.maxKeys, 10_000),
             scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
+            clusterNodeAddress:
+              connection.mode === "cluster"
+                ? get().selectedClusterNodeAddress
+                : null,
           }
         );
 
@@ -341,6 +350,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       set({
         activeConnectionId: connectionId,
+        selectedClusterNodeAddress: null,
         searchQuery: "",
       });
 
@@ -348,6 +358,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         keyValueRequestId += 1;
         set({
           selectedDb: 0,
+          selectedClusterNodeAddress: null,
           keys: [],
           selectedKey: null,
           keyValue: null,
@@ -355,7 +366,10 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         return;
       }
 
-      set({ selectedDb: connection.db });
+      set({
+        selectedDb: connection.db,
+        selectedClusterNodeAddress: null,
+      });
       getWorkspaceRuntime().persistLastConnectionId(connection.id);
 
       try {
@@ -394,8 +408,10 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         name: connection.name || getRedisConnectionDefaultName(connection),
         mode: connection.mode ?? "direct",
         sentinel: connection.mode === "sentinel" ? connection.sentinel : undefined,
+        cluster: connection.mode === "cluster" ? connection.cluster : undefined,
         username: connection.username || undefined,
         password: connection.password || undefined,
+        db: connection.mode === "cluster" ? 0 : connection.db,
         sshTunnel: connection.sshTunnel,
       };
 
@@ -408,6 +424,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         tls: normalizedConnection.tls,
         mode: normalizedConnection.mode,
         sentinel: normalizedConnection.sentinel,
+        cluster: normalizedConnection.cluster,
         sshTunnel: normalizedConnection.sshTunnel,
       });
       void recordTelemetryEvent("connection.save");
@@ -436,6 +453,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           connections: [...state.connections, newConnection],
           activeConnectionId: newConnection.id,
           selectedDb: newConnection.db,
+          selectedClusterNodeAddress: null,
           searchQuery: "",
           selectedKey: null,
           keyValue: null,
@@ -471,6 +489,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       if (activeConnectionId === editingConnectionId) {
         set({
           selectedDb: updatedConnection.db,
+          selectedClusterNodeAddress: null,
           searchQuery: "",
         });
         void loadKeys(updatedConnection, updatedConnection.db).catch(() => undefined);
@@ -521,6 +540,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       keyValueRequestId += 1;
       set({
         searchQuery: "",
+        selectedClusterNodeAddress: null,
         selectedKey: null,
         keyValue: null,
         keys: [],
@@ -534,6 +554,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           isLoadingKeys: false,
           activeConnectionId: "",
           selectedDb: 0,
+          selectedClusterNodeAddress: null,
         });
         persistLastConnectionId("");
         return;
@@ -542,6 +563,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       set({
         activeConnectionId: nextConnection.id,
         selectedDb: nextConnection.db,
+        selectedClusterNodeAddress: null,
       });
       persistLastConnectionId(nextConnection.id);
       void loadKeys(nextConnection, nextConnection.db).catch(() => undefined);
@@ -565,6 +587,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         isLoadingKeys: false,
         activeConnectionId: "",
         selectedDb: 0,
+        selectedClusterNodeAddress: null,
         searchQuery: "",
         keys: [],
         selectedKey: null,
@@ -579,6 +602,18 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       };
 
       if (!activeConnection) {
+        return;
+      }
+
+      if (activeConnection.mode === "cluster") {
+        set({
+          selectedDb: 0,
+          searchQuery: "",
+        });
+        updateConnection(activeConnection.id, (connection) => ({
+          ...connection,
+          db: 0,
+        }));
         return;
       }
 
@@ -629,6 +664,33 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           preserveValue: true,
         }
       );
+    },
+    selectClusterNode: async (nodeAddress) => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+      const normalizedAddress = nodeAddress?.trim() || null;
+
+      if (!activeConnection || activeConnection.mode !== "cluster") {
+        set({ selectedClusterNodeAddress: null });
+        return;
+      }
+
+      if (state.selectedClusterNodeAddress === normalizedAddress) {
+        return;
+      }
+
+      set({
+        selectedClusterNodeAddress: normalizedAddress,
+        searchQuery: "",
+      });
+
+      try {
+        await state.loadKeys(activeConnection, 0, {
+          preserveSelection: true,
+        });
+      } catch {
+        return;
+      }
     },
     selectKey: async (key) => {
       const state = get();
@@ -1015,7 +1077,9 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       saveConnection: state.saveConnection,
       searchQuery: state.searchQuery,
       selectConnection: state.selectConnection,
+      selectClusterNode: state.selectClusterNode,
       selectDb: state.selectDb,
+      selectedClusterNodeAddress: state.selectedClusterNodeAddress,
       selectedDb: state.selectedDb,
       selectedKey: state.selectedKey,
       selectKey: state.selectKey,

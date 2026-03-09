@@ -15,6 +15,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
       removeKeyFromState: state.removeKeyFromState,
+      selectClusterNode: state.selectClusterNode,
       selectedDb: state.selectedDb,
       setKeyValue: state.setKeyValue,
     }))
@@ -41,6 +42,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       keyValue={workspace.keyValue}
       onRefreshKeyValue={workspace.refreshKeyValue}
       onDeleteKey={editor.deleteKey}
+      onJumpToClusterNode={workspace.selectClusterNode}
       onUpdateStringValue={editor.updateStringValue}
       onUpdateKeyTtl={editor.updateKeyTtl}
       onUpdateJsonValue={editor.updateJsonValue}

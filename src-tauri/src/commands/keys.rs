@@ -1,23 +1,144 @@
 use crate::models::{
-    RedisKeyLookupInput, RedisKeyRenameInput, RedisKeyRenamePairInput, RedisKeySummary,
-    RedisKeyValueResponse, RedisKeysListInput, RedisKeysRenameInput,
+    RedisClusterTopologyInput, RedisClusterTopologyNode, RedisKeyLookupInput, RedisKeyRenameInput,
+    RedisKeyRenamePairInput, RedisKeySummary, RedisKeyValueResponse, RedisKeysListInput,
+    RedisKeysRenameInput,
 };
-use crate::redis_support::{format_cli_output, normalize_key_type, open_connection};
+use crate::redis_support::{
+    find_cluster_node_address_for_slot, format_cli_output, get_cluster_topology,
+    normalize_key_type, open_connection,
+};
+use redis::cluster_routing::get_slot;
 use redis::Value;
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const DEFAULT_SCAN_COUNT: u32 = 200;
 const DEFAULT_MAX_KEYS: u32 = 10_000;
 const MAX_SCAN_COUNT: u32 = 5_000;
 const MAX_TOTAL_KEYS: u32 = 50_000;
 
+async fn list_cluster_keys(
+    input: &RedisKeysListInput,
+    scan_count: u32,
+    max_keys: usize,
+) -> Result<Vec<RedisKeySummary>, String> {
+    let cluster_node_filter = input
+        .cluster_node_address
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let topology = get_cluster_topology(&input.connection).await?;
+    let master_nodes = topology
+        .iter()
+        .filter(|node| {
+            cluster_node_filter
+                .map(|value| value == node.address)
+                .unwrap_or(true)
+        })
+        .map(|node| (node.host.clone(), node.port, node.address.clone()))
+        .collect::<Vec<_>>();
+
+    if master_nodes.is_empty() {
+        return Err(match cluster_node_filter {
+            Some(address) => format!("Cluster node not found: {address}"),
+            None => "Cluster returned no master nodes".to_string(),
+        });
+    }
+    let mut collected = Vec::with_capacity(max_keys.min(1_024));
+    let mut seen_keys = HashSet::new();
+
+    for (host, port, node_address) in master_nodes {
+        let mut connection = open_connection(&crate::models::RedisConnectionTestInput {
+            host: host.clone(),
+            port,
+            sentinel: None,
+            cluster: None,
+            username: input.connection.username.clone(),
+            password: input.connection.password.clone(),
+            db: 0,
+            tls: input.connection.tls,
+            ssh_tunnel: None,
+        })
+        .await?;
+
+        let mut cursor = 0_u64;
+
+        loop {
+            let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor)
+                .arg("COUNT")
+                .arg(scan_count)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to scan cluster node {host}:{port}: {error}"))?;
+
+            for key in batch {
+                if !seen_keys.insert(key.clone()) {
+                    continue;
+                }
+
+                let metadata = redis::pipe()
+                    .cmd("TYPE")
+                    .arg(&key)
+                    .cmd("TTL")
+                    .arg(&key)
+                    .query_async::<(String, i64)>(&mut connection)
+                    .await;
+
+                let Ok((raw_type, ttl)) = metadata else {
+                    continue;
+                };
+
+                if raw_type == "none" {
+                    continue;
+                }
+
+                collected.push(RedisKeySummary {
+                    key: key.clone(),
+                    key_type: normalize_key_type(&raw_type),
+                    ttl,
+                    slot: Some(get_slot(key.as_bytes())),
+                    node_address: Some(node_address.clone()),
+                });
+
+                if collected.len() >= max_keys {
+                    break;
+                }
+            }
+
+            cursor = next_cursor;
+
+            if cursor == 0 || collected.len() >= max_keys {
+                break;
+            }
+        }
+
+        if collected.len() >= max_keys {
+            break;
+        }
+    }
+
+    collected.sort_by(|left, right| left.key.cmp(&right.key));
+    collected.truncate(max_keys);
+
+    Ok(collected)
+}
+
+#[tauri::command]
+pub async fn get_redis_cluster_topology(
+    input: RedisClusterTopologyInput,
+) -> Result<Vec<RedisClusterTopologyNode>, String> {
+    if input.connection.cluster.is_none() {
+        return Ok(Vec::new());
+    }
+
+    get_cluster_topology(&input.connection).await
+}
+
 #[tauri::command]
 pub async fn list_redis_keys(
     input: RedisKeysListInput,
 ) -> Result<Vec<RedisKeySummary>, String> {
-    let mut connection = open_connection(&input.connection).await?;
-    let mut cursor = 0_u64;
     let scan_count = input
         .scan_count
         .unwrap_or(DEFAULT_SCAN_COUNT)
@@ -26,6 +147,13 @@ pub async fn list_redis_keys(
         .max_keys
         .unwrap_or(DEFAULT_MAX_KEYS)
         .clamp(1, MAX_TOTAL_KEYS) as usize;
+
+    if input.connection.cluster.is_some() {
+        return list_cluster_keys(&input, scan_count, max_keys).await;
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let mut cursor = 0_u64;
     let mut collected_keys: Vec<String> = Vec::with_capacity(max_keys.min(1_024));
 
     loop {
@@ -72,6 +200,8 @@ pub async fn list_redis_keys(
             key,
             key_type: normalize_key_type(&raw_type),
             ttl,
+            slot: None,
+            node_address: None,
         });
 
         if keys.len() >= max_keys {
@@ -199,10 +329,20 @@ pub async fn get_redis_key_value(
         _ => JsonValue::Null,
     };
 
+    let (slot, node_address) = if input.connection.cluster.is_some() {
+        let slot = get_slot(input.key.as_bytes());
+        let node_address = find_cluster_node_address_for_slot(&input.connection, slot).await?;
+        (Some(slot), node_address)
+    } else {
+        (None, None)
+    };
+
     Ok(RedisKeyValueResponse {
         key: input.key,
         key_type,
         ttl,
+        slot,
+        node_address,
         value,
     })
 }
@@ -238,6 +378,19 @@ pub async fn rename_redis_key(input: RedisKeyRenameInput) -> Result<(), String> 
 
 #[tauri::command]
 pub async fn rename_redis_keys(input: RedisKeysRenameInput) -> Result<(), String> {
+    if input.connection.cluster.is_some() {
+        for rename in &input.renames {
+            rename_redis_key(RedisKeyRenameInput {
+                connection: input.connection.clone(),
+                old_key: rename.old_key.clone(),
+                new_key: rename.new_key.clone(),
+            })
+            .await?;
+        }
+
+        return Ok(());
+    }
+
     let renames: Vec<&RedisKeyRenamePairInput> = input
         .renames
         .iter()

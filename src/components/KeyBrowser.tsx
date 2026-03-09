@@ -26,12 +26,19 @@ import {
   BarChart2,
   Radio,
   Braces,
+  Server,
   Trash2,
 } from "lucide-react";
-import type { RedisConnection, RedisKey, RedisKeyType } from "../types";
+import type {
+  RedisClusterTopologyNode,
+  RedisConnection,
+  RedisKey,
+  RedisKeyType,
+} from "../types";
 import { useI18n } from "../i18n";
 import { EmptyConnectionsIllustration } from "./EmptyConnectionsIllustration";
 import {
+  getRedisClusterTopology,
   getRedisErrorMessage,
   type RedisKeyCreateInput,
 } from "../lib/redis";
@@ -62,6 +69,8 @@ interface KeyBrowserProps {
     separator: string
   ) => Promise<Array<{ oldKey: string; newKey: string }>>;
   searchQuery: string;
+  selectedClusterNodeAddress: string | null;
+  onSelectClusterNode: (nodeAddress: string | null) => Promise<void>;
   onSearchChange: (q: string) => void;
 }
 
@@ -175,6 +184,12 @@ function formatTTL(ttl: number): string {
   if (ttl < 3600) return `${Math.floor(ttl / 60)}m`;
   if (ttl < 86400) return `${Math.floor(ttl / 3600)}h`;
   return `${Math.floor(ttl / 86400)}d`;
+}
+
+function formatClusterSlotRanges(
+  slotRanges: RedisClusterTopologyNode["slotRanges"]
+) {
+  return slotRanges.map((range) => `${range.start}-${range.end}`).join(", ");
 }
 
 interface TreeGroupBuilder {
@@ -486,6 +501,8 @@ export function KeyBrowser({
   onRenameKey,
   onRenameGroup,
   searchQuery,
+  selectedClusterNodeAddress,
+  onSelectClusterNode,
   onSearchChange,
 }: KeyBrowserProps) {
   const { messages } = useI18n();
@@ -504,6 +521,13 @@ export function KeyBrowser({
   const [renderedKeyContextMenu, setRenderedKeyContextMenu] =
     useState<KeyContextMenuState | null>(null);
   const [isKeyContextMenuVisible, setIsKeyContextMenuVisible] = useState(false);
+  const [clusterTopology, setClusterTopology] = useState<RedisClusterTopologyNode[]>(
+    []
+  );
+  const [isLoadingClusterTopology, setIsLoadingClusterTopology] = useState(false);
+  const [clusterTopologyError, setClusterTopologyError] = useState<string | null>(
+    null
+  );
   const [deletingContextTargetId, setDeletingContextTargetId] = useState<
     string | null
   >(null);
@@ -530,6 +554,7 @@ export function KeyBrowser({
     newKey: string;
   } | null>(null);
   const hasConnection = Boolean(connection);
+  const isClusterConnection = connection?.mode === "cluster";
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollTop: 0,
     viewportHeight: 0,
@@ -562,6 +587,53 @@ export function KeyBrowser({
       setRenderedKeyContextMenu(null);
     }, 150);
   }, [renderedKeyContextMenu]);
+  const refreshClusterTopology = useCallback(async () => {
+    if (!connection || connection.mode !== "cluster") {
+      setClusterTopology([]);
+      setClusterTopologyError(null);
+      setIsLoadingClusterTopology(false);
+      return;
+    }
+
+    setIsLoadingClusterTopology(true);
+    setClusterTopologyError(null);
+
+    try {
+      const topology = await getRedisClusterTopology({
+        ...connection,
+        db: 0,
+      });
+
+      setClusterTopology(topology);
+    } catch (error) {
+      setClusterTopology([]);
+      setClusterTopologyError(getRedisErrorMessage(error));
+    } finally {
+      setIsLoadingClusterTopology(false);
+    }
+  }, [connection]);
+
+  useEffect(() => {
+    if (!isClusterConnection) {
+      setClusterTopology([]);
+      setClusterTopologyError(null);
+      setIsLoadingClusterTopology(false);
+      return;
+    }
+
+    void refreshClusterTopology();
+  }, [isClusterConnection, refreshClusterTopology]);
+
+  useEffect(() => {
+    if (
+      !selectedClusterNodeAddress ||
+      clusterTopology.some((node) => node.address === selectedClusterNodeAddress)
+    ) {
+      return;
+    }
+
+    void onSelectClusterNode(null);
+  }, [clusterTopology, onSelectClusterNode, selectedClusterNodeAddress]);
 
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.replace(/\*/g, "").toLowerCase();
@@ -569,8 +641,19 @@ export function KeyBrowser({
     return keys.filter((keyItem) => keyItem.key.toLowerCase().includes(q));
   }, [deferredSearchQuery, keys]);
   const availableDbIndexes = useMemo(
-    () => Array.from({ length: Math.max(256, selectedDb + 1) }, (_, index) => index),
-    [selectedDb]
+    () =>
+      connection?.mode === "cluster"
+        ? [0]
+        : Array.from({ length: Math.max(256, selectedDb + 1) }, (_, index) => index),
+    [connection?.mode, selectedDb]
+  );
+  const activeClusterTopologyNode = useMemo(
+    () =>
+      selectedClusterNodeAddress
+        ? clusterTopology.find((node) => node.address === selectedClusterNodeAddress) ??
+          null
+        : null,
+    [clusterTopology, selectedClusterNodeAddress]
   );
 
   const tree = useMemo(
@@ -1438,11 +1521,18 @@ export function KeyBrowser({
     renderedKeyContextMenu,
     showToast,
   ]);
+  const handleRefresh = useCallback(async () => {
+    await onRefresh();
+
+    if (isClusterConnection) {
+      await refreshClusterTopology();
+    }
+  }, [isClusterConnection, onRefresh, refreshClusterTopology]);
   const handleRefreshFromContextMenu = useCallback(async () => {
     closeKeyContextMenu();
 
     try {
-      await onRefresh();
+      await handleRefresh();
     } catch (error) {
       showToast({
         message: getRedisErrorMessage(error),
@@ -1450,7 +1540,7 @@ export function KeyBrowser({
         duration: 1800,
       });
     }
-  }, [closeKeyContextMenu, onRefresh, showToast]);
+  }, [closeKeyContextMenu, handleRefresh, showToast]);
   const handleCreateChildKeyFromContextMenu = useCallback(() => {
     if (renderedKeyContextMenu?.target.kind !== "group") {
       return;
@@ -1552,7 +1642,9 @@ export function KeyBrowser({
               )}
             </button>
             <button
-              onClick={onRefresh}
+              onClick={() => {
+                void handleRefresh();
+              }}
               disabled={!hasConnection || isRefreshing}
               className={`btn btn-ghost btn-xs h-6 w-6 p-0 ${
                 hasConnection && !isRefreshing
@@ -1570,9 +1662,11 @@ export function KeyBrowser({
         <select
           value={selectedDb}
           onChange={(event) => onSelectDb(Number(event.target.value))}
-          disabled={!hasConnection}
+          disabled={!hasConnection || connection?.mode === "cluster"}
           className={`select select-xs w-full bg-base-300 border-base-100/50 font-mono text-xs mb-2 ${
-            hasConnection ? "cursor-pointer" : "cursor-not-allowed opacity-60"
+            hasConnection && connection?.mode !== "cluster"
+              ? "cursor-pointer"
+              : "cursor-not-allowed opacity-60"
           }`}
         >
           {availableDbIndexes.map((index) => (
@@ -1593,6 +1687,96 @@ export function KeyBrowser({
             className="grow font-mono text-xs bg-transparent outline-none user-select-text"
           />
         </label>
+
+        {isClusterConnection ? (
+          <div className="mt-2 rounded-xl border border-base-100/60 bg-base-300/70 p-1.5">
+            <div className="mb-1 flex items-center justify-between gap-2 px-0.5">
+              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-base-content/55">
+                <Server size={10} />
+                {messages.keyBrowser.clusterView}
+              </span>
+              <span
+                className="text-[9px] font-mono text-base-content/40"
+                title={
+                  activeClusterTopologyNode
+                    ? `${activeClusterTopologyNode.address} · ${formatClusterSlotRanges(
+                        activeClusterTopologyNode.slotRanges
+                      )}`
+                    : undefined
+                }
+              >
+                {activeClusterTopologyNode
+                  ? activeClusterTopologyNode.address
+                  : String(clusterTopology.length)}
+              </span>
+            </div>
+
+            {clusterTopologyError ? (
+              <div
+                className="flex items-center gap-1 rounded-lg border border-warning/20 bg-warning/8 px-2 py-1 text-[10px] text-warning/80"
+                title={clusterTopologyError}
+              >
+                <TriangleAlert size={10} />
+                <span className="truncate">
+                  {messages.keyBrowser.clusterTopologyUnavailable}
+                </span>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  void onSelectClusterNode(null);
+                }}
+                disabled={!hasConnection || isRefreshing}
+                className={`flex h-7 items-center gap-1 rounded-lg border px-2 text-[10px] font-mono transition-colors duration-150 ${
+                  selectedClusterNodeAddress === null
+                    ? "border-primary/25 bg-primary/10 text-primary"
+                    : "border-base-content/8 bg-base-200/80 text-base-content/65 hover:bg-base-100"
+                } ${
+                  hasConnection && !isRefreshing
+                    ? "cursor-pointer"
+                    : "cursor-not-allowed opacity-50"
+                }`}
+                title={messages.keyBrowser.allNodes}
+              >
+                {isLoadingClusterTopology ? (
+                  <LoaderCircle size={10} className="animate-spin" />
+                ) : (
+                  <Server size={10} />
+                )}
+                <span>{messages.keyBrowser.allNodes}</span>
+              </button>
+
+              {clusterTopology.map((node) => (
+                <button
+                  key={node.address}
+                  type="button"
+                  onClick={() => {
+                    void onSelectClusterNode(node.address);
+                  }}
+                  disabled={!hasConnection || isRefreshing}
+                  className={`flex h-7 min-w-0 max-w-full items-center gap-1 rounded-lg border px-2 text-[10px] font-mono transition-colors duration-150 ${
+                    selectedClusterNodeAddress === node.address
+                      ? "border-primary/25 bg-primary/10 text-primary"
+                      : "border-base-content/8 bg-base-200/80 text-base-content/65 hover:bg-base-100"
+                  } ${
+                    hasConnection && !isRefreshing
+                      ? "cursor-pointer"
+                      : "cursor-not-allowed opacity-50"
+                  }`}
+                  title={`${node.address} · ${formatClusterSlotRanges(
+                    node.slotRanges
+                  )}`}
+                >
+                  <Server size={10} />
+                  <span className="max-w-[108px] truncate">{node.address}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div
@@ -2037,6 +2221,13 @@ function KeyRow({
   const cfg = typeConfig[redisKey.type];
   const ttl = formatTTL(redisKey.ttl);
   const isRowRenaming = isEditing && isRenaming;
+  const rowTitle = [
+    redisKey.key,
+    typeof redisKey.slot === "number" ? `slot ${redisKey.slot}` : "",
+    redisKey.nodeAddress ? redisKey.nodeAddress : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
   const rightSlot = isRowRenaming || showKeyType || (showTtl && ttl) ? (
     <span className="flex min-w-0 shrink-0 items-center justify-end gap-1.5">
       {isRowRenaming ? (
@@ -2109,7 +2300,7 @@ function KeyRow({
               placeInputCursorAtEnd(event.currentTarget);
             }}
             aria-invalid={Boolean(renameError)}
-            title={renameError || redisKey.key}
+            title={renameError || rowTitle}
             className={`relative translate-y-[-0.5px] block h-4 w-full min-w-0 appearance-none border-0 bg-transparent px-0 text-xs leading-4 font-mono outline-none ${
               renameError ? "text-error" : "text-current"
             }`}
@@ -2136,7 +2327,7 @@ function KeyRow({
         onStartRename();
       }}
       onContextMenu={onContextMenu}
-      title={redisKey.key}
+      title={rowTitle}
       className={`
         flex h-8 items-center gap-2 w-full px-3 py-1.5 cursor-pointer transition-colors duration-150 text-left
         ${

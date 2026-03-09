@@ -1,5 +1,5 @@
 export type RedisKeyType = "string" | "hash" | "list" | "set" | "zset" | "stream" | "json";
-export type RedisConnectionMode = "direct" | "sentinel";
+export type RedisConnectionMode = "direct" | "sentinel" | "cluster";
 
 export interface RedisSentinelNode {
   host: string;
@@ -12,6 +12,28 @@ export interface RedisSentinelConfig {
   username?: string;
   password?: string;
   tls?: boolean;
+}
+
+export interface RedisClusterNode {
+  host: string;
+  port: number;
+}
+
+export interface RedisClusterConfig {
+  nodes: RedisClusterNode[];
+}
+
+export interface RedisClusterSlotRange {
+  start: number;
+  end: number;
+}
+
+export interface RedisClusterTopologyNode {
+  host: string;
+  port: number;
+  address: string;
+  slotRanges: RedisClusterSlotRange[];
+  slotCount: number;
 }
 
 export interface RedisSshTunnel {
@@ -30,6 +52,7 @@ export interface RedisConnection {
   port: number;
   mode?: RedisConnectionMode;
   sentinel?: RedisSentinelConfig;
+  cluster?: RedisClusterConfig;
   username?: string;
   password?: string;
   db: number;
@@ -43,6 +66,8 @@ export interface RedisKey {
   key: string;
   type: RedisKeyType;
   ttl: number; // -1 = no expiry, -2 = expired
+  slot?: number;
+  nodeAddress?: string;
   size?: number;
   encoding?: string;
 }
@@ -61,6 +86,8 @@ export interface KeyValue {
   key: string;
   type: RedisKeyType;
   ttl: number;
+  slot?: number;
+  nodeAddress?: string;
   value:
     | string
     | Record<string, string>

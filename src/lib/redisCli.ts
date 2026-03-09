@@ -150,7 +150,7 @@ export function getCliAutocompleteSuggestions(
 export function getCliPromptLabel(
   connection?: Pick<
     RedisConnection,
-    "name" | "host" | "port" | "mode" | "sentinel"
+    "name" | "host" | "port" | "mode" | "sentinel" | "cluster"
   >,
   selectedDb = 0
 ) {

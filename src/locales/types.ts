@@ -100,6 +100,9 @@ export interface Messages {
     collapseAll: string;
     filterPlaceholder: string;
     activeDb: string;
+    allNodes: string;
+    clusterView: string;
+    clusterTopologyUnavailable: string;
     create: string;
     createTitle: string;
     createDescription: string;
@@ -162,8 +165,11 @@ export interface Messages {
     mode: string;
     direct: string;
     sentinel: string;
+    cluster: string;
     host: string;
     port: string;
+    clusterNodes: string;
+    clusterNodesPlaceholder: string;
     sentinelMasterName: string;
     sentinelMasterNamePlaceholder: string;
     sentinelNodes: string;
@@ -187,6 +193,7 @@ export interface Messages {
     sshPrivateKeyPathPlaceholder: string;
     sshPassphrase: string;
     sshPassphrasePlaceholder: string;
+    clusterSshUnsupported: string;
     success: string;
     failure: string;
     testConnection: string;
@@ -199,6 +206,7 @@ export interface Messages {
     persistent: string;
     copyValue: string;
     deleteKey: string;
+    browseNode: string;
     ttlInputPlaceholder: string;
     field: string;
     value: string;

@@ -1,5 +1,6 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type {
+  RedisClusterConfig,
   RedisConnection,
   RedisSentinelConfig,
   RedisSshTunnel,
@@ -123,6 +124,49 @@ function normalizePersistedSentinel(value: unknown): RedisSentinelConfig | undef
   };
 }
 
+function normalizePersistedCluster(value: unknown): RedisClusterConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const { nodes } = value;
+
+  if (!Array.isArray(nodes)) {
+    return undefined;
+  }
+
+  const normalizedNodes = nodes
+    .map((node) => {
+      if (!isRecord(node)) {
+        return null;
+      }
+
+      const { host, port } = node;
+
+      if (typeof host !== "string" || typeof port !== "number") {
+        return null;
+      }
+
+      return {
+        host,
+        port,
+      };
+    })
+    .filter((node): node is { host: string; port: number } => node !== null);
+
+  if (!normalizedNodes.length) {
+    return undefined;
+  }
+
+  return {
+    nodes: normalizedNodes,
+  };
+}
+
 function normalizePersistedConnection(
   value: unknown
 ): PersistedRedisConnection | null {
@@ -135,6 +179,7 @@ function normalizePersistedConnection(
     port,
     mode,
     sentinel,
+    cluster,
     username,
     password,
     db,
@@ -166,22 +211,28 @@ function normalizePersistedConnection(
   if (
     mode !== undefined &&
     mode !== "direct" &&
-    mode !== "sentinel"
+    mode !== "sentinel" &&
+    mode !== "cluster"
   ) {
     return null;
   }
 
   const normalizedSentinel = normalizePersistedSentinel(sentinel);
+  const normalizedCluster = normalizePersistedCluster(cluster);
 
   return {
     id,
     name,
     host,
     port,
-    mode: mode === "sentinel" || (mode === undefined && normalizedSentinel)
-      ? "sentinel"
-      : "direct",
+    mode:
+      mode === "cluster" || (mode === undefined && normalizedCluster)
+        ? "cluster"
+        : mode === "sentinel" || (mode === undefined && normalizedSentinel)
+          ? "sentinel"
+          : "direct",
     sentinel: normalizedSentinel,
+    cluster: normalizedCluster,
     username,
     password,
     db,

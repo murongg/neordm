@@ -118,7 +118,7 @@ export function buildRedisContext({
 }: {
   activeConnection?: Pick<
     RedisConnection,
-    "name" | "host" | "port" | "mode" | "sentinel"
+    "name" | "host" | "port" | "mode" | "sentinel" | "cluster"
   >;
   selectedDb: number;
   selectedKey: RedisKey | null;

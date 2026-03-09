@@ -31,10 +31,24 @@ pub(crate) struct RedisSentinelInput {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisClusterNodeInput {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisClusterInput {
+    pub(crate) nodes: Vec<RedisClusterNodeInput>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisConnectionTestInput {
     pub(crate) host: String,
     pub(crate) port: u16,
     pub(crate) sentinel: Option<RedisSentinelInput>,
+    pub(crate) cluster: Option<RedisClusterInput>,
     pub(crate) username: Option<String>,
     pub(crate) password: Option<String>,
     pub(crate) db: i64,
@@ -48,6 +62,13 @@ pub(crate) struct RedisKeysListInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) scan_count: Option<u32>,
     pub(crate) max_keys: Option<u32>,
+    pub(crate) cluster_node_address: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisClusterTopologyInput {
+    pub(crate) connection: RedisConnectionTestInput,
 }
 
 #[derive(Debug, Deserialize)]
@@ -204,6 +225,8 @@ pub(crate) struct RedisKeySummary {
     #[serde(rename = "type")]
     pub(crate) key_type: String,
     pub(crate) ttl: i64,
+    pub(crate) slot: Option<u16>,
+    pub(crate) node_address: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -212,5 +235,24 @@ pub(crate) struct RedisKeyValueResponse {
     #[serde(rename = "type")]
     pub(crate) key_type: String,
     pub(crate) ttl: i64,
+    pub(crate) slot: Option<u16>,
+    pub(crate) node_address: Option<String>,
     pub(crate) value: JsonValue,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisClusterSlotRange {
+    pub(crate) start: u16,
+    pub(crate) end: u16,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisClusterTopologyNode {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+    pub(crate) address: String,
+    pub(crate) slot_ranges: Vec<RedisClusterSlotRange>,
+    pub(crate) slot_count: u32,
 }
