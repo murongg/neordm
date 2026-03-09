@@ -209,6 +209,16 @@ export interface Messages {
       safety: string;
       confirmDelete: string;
       confirmDeleteDescription: string;
+      updates: string;
+      currentVersion: string;
+      latestVersion: string;
+      checkForUpdates: string;
+      checkingForUpdates: string;
+      upToDate: string;
+      updateAvailable: string;
+      downloadAndInstall: string;
+      downloadingUpdate: string;
+      installingUpdate: string;
     };
     appearance: {
       theme: string;

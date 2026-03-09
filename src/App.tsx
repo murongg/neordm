@@ -12,6 +12,7 @@ import { WorkspaceTopbarPanel } from "./components/WorkspaceTopbarPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "./i18n";
 import { prepareAIAgentExperience } from "./lib/aiPrefetch";
+import { useAppUpdateStore } from "./store/useAppUpdateState";
 import {
   useAppPreferencesStore,
   useInitializeAppPreferencesStore,
@@ -84,6 +85,7 @@ function App() {
     return scheduleIdleTask(() => {
       void loadConnectionModalHost();
       void loadRedisCLIPanel();
+      void useAppUpdateStore.getState().checkForUpdates({ silent: true });
     }, 1500);
   }, []);
 

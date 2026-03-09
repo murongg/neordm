@@ -20,22 +20,26 @@ jobs:
             os: macos-15
             target: aarch64-apple-darwin
             asset_arch: aarch64
+            updater_platform: darwin-aarch64
             args: --target aarch64-apple-darwin --no-sign
           - name: macOS (Intel)
             artifact_name: macOS-intel
             os: macos-15-intel
             target: x86_64-apple-darwin
             asset_arch: x64
+            updater_platform: darwin-x86_64
             args: --target x86_64-apple-darwin --no-sign
           - name: Linux (x64)
             artifact_name: Linux-x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
+            updater_platform: linux-x86_64
             args: --target x86_64-unknown-linux-gnu
           - name: Windows (x64)
             artifact_name: Windows-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
+            updater_platform: windows-x86_64
             args: --target x86_64-pc-windows-msvc --no-sign
 
     name: Build ${{ matrix.name }}
@@ -83,6 +87,9 @@ jobs:
       - name: Build and bundle app
         id: tauri_build
         uses: tauri-apps/tauri-action@v0.6.0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           args: ${{ matrix.args }}
 
@@ -122,6 +129,7 @@ jobs:
           const customDmgPath = process.env.CUSTOM_DMG_PATH || '';
           const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]')
             .filter((artifactPath) => !(customDmgPath && artifactPath.endsWith('.dmg')))
+            .filter((artifactPath) => !artifactPath.endsWith('/latest.json') && !artifactPath.endsWith('\\latest.json'))
             .filter((artifactPath) => {
               try {
                 return fs.statSync(artifactPath).isFile();
@@ -138,12 +146,73 @@ jobs:
           fs.appendFileSync(output, `paths<<__PATHS__\n${artifactPaths.join('\n')}\n__PATHS__\n`);
           EOF
 
+      - name: Create updater metadata
+        shell: bash
+        env:
+          ARTIFACT_PATHS_RAW: ${{ steps.artifact_paths.outputs.paths }}
+          UPDATER_PLATFORM: ${{ matrix.updater_platform }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t artifact_paths < <(printf '%s\n' "${ARTIFACT_PATHS_RAW}")
+          sig_path=""
+          preferred_patterns=()
+
+          case "${UPDATER_PLATFORM}" in
+            darwin-*)
+              preferred_patterns=('*.app.tar.gz.sig')
+              ;;
+            linux-*)
+              preferred_patterns=('*.AppImage.tar.gz.sig' '*.tar.gz.sig')
+              ;;
+            windows-*)
+              preferred_patterns=('*nsis*.zip.sig' '*msi*.zip.sig' '*.zip.sig')
+              ;;
+          esac
+
+          for pattern in "${preferred_patterns[@]}"; do
+            for artifact_path in "${artifact_paths[@]}"; do
+              [[ -z "${artifact_path}" ]] && continue
+
+              if [[ "${artifact_path}" == ${pattern} ]]; then
+                sig_path="${artifact_path}"
+                break 2
+              fi
+            done
+          done
+
+          for artifact_path in "${artifact_paths[@]}"; do
+            [[ -z "${artifact_path}" ]] && continue
+
+            if [[ "${artifact_path}" == *.sig ]]; then
+              sig_path="${artifact_path}"
+              break
+            fi
+          done
+
+          if [[ -z "${sig_path}" || ! -f "${sig_path%.sig}" ]]; then
+            echo "No updater signature artifact found for ${{ matrix.name }}" >&2
+            exit 1
+          fi
+
+          bundle_path="${sig_path%.sig}"
+
+          cat > release-metadata.json <<EOF
+          {
+            "updaterPlatform": "${UPDATER_PLATFORM}",
+            "bundleName": "$(basename "${bundle_path}")",
+            "signatureName": "$(basename "${sig_path}")"
+          }
+          EOF
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         if: steps.artifact_paths.outputs.paths != ''
         with:
           name: NeoRDM-${{ matrix.artifact_name }}-bundles
-          path: ${{ steps.artifact_paths.outputs.paths }}
+          path: |
+            ${{ steps.artifact_paths.outputs.paths }}
+            release-metadata.json
           if-no-files-found: error
 
   publish_release:
@@ -196,15 +265,76 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: NeoRDM-*-bundles
-          merge-multiple: true
           path: release-assets
+
+      - name: Generate updater manifest
+        shell: bash
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          node <<'EOF'
+          const fs = require('fs');
+          const path = require('path');
+
+          const root = 'release-assets';
+          const version = process.env.GITHUB_REF_NAME.replace(/^v/, '');
+          const notes = fs.readFileSync('release-notes.md', 'utf8').trim();
+          const artifactDirs = fs
+            .readdirSync(root, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => path.join(root, entry.name));
+
+          const platforms = {};
+
+          for (const artifactDir of artifactDirs) {
+            const metadataPath = path.join(artifactDir, 'release-metadata.json');
+            if (!fs.existsSync(metadataPath)) {
+              continue;
+            }
+
+            const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
+            const bundlePath = path.join(artifactDir, metadata.bundleName);
+            const signaturePath = path.join(artifactDir, metadata.signatureName);
+
+            if (!fs.existsSync(bundlePath)) {
+              throw new Error(`Missing updater bundle: ${bundlePath}`);
+            }
+
+            if (!fs.existsSync(signaturePath)) {
+              throw new Error(`Missing updater signature: ${signaturePath}`);
+            }
+
+            platforms[metadata.updaterPlatform] = {
+              signature: fs.readFileSync(signaturePath, 'utf8').trim(),
+              url: `https://github.com/${process.env.GITHUB_REPOSITORY}/releases/latest/download/${metadata.bundleName}`,
+            };
+          }
+
+          if (Object.keys(platforms).length === 0) {
+            throw new Error('No updater platforms were collected from workflow artifacts.');
+          }
+
+          const manifest = {
+            version,
+            notes,
+            pub_date: new Date().toISOString(),
+            platforms,
+          };
+
+          fs.writeFileSync(
+            path.join(root, 'latest.json'),
+            JSON.stringify(manifest, null, 2) + '\n'
+          );
+          EOF
 
       - name: Collect release files
         id: release_files
         shell: bash
         run: |
           set -euo pipefail
-          find release-assets -type f | sort > release-files.txt
+          find release-assets -type f ! -name 'release-metadata.json' | sort > release-files.txt
 
           {
             echo 'paths<<__FILES__'

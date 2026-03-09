@@ -22,6 +22,7 @@ import {
 } from "../lib/appSettings";
 import { APP_NAME, APP_VERSION } from "../lib/appMeta";
 import { clearPrivacyRuntimeData } from "../lib/privacyRuntime";
+import { useAppUpdateStore } from "../store/useAppUpdateState";
 import { useCliStore } from "../store/useCliState";
 import { useToast } from "./ToastProvider";
 
@@ -480,7 +481,123 @@ function GeneralSettings({
           />
         </Row>
       </Section>
+
+      <UpdatesSettings />
     </>
+  );
+}
+
+function formatUpdateProgress(
+  downloadedBytes: number,
+  totalBytes: number | null
+) {
+  if (!totalBytes || totalBytes <= 0) {
+    return `${Math.round(downloadedBytes / 1024)} KB`;
+  }
+
+  const progress = Math.min(
+    100,
+    Math.max(0, Math.round((downloadedBytes / totalBytes) * 100))
+  );
+  return `${progress}%`;
+}
+
+function UpdatesSettings() {
+  const { messages } = useI18n();
+  const updateState = useAppUpdateStore();
+  const general = messages.settings.general;
+  const isBusy =
+    updateState.status === "checking" ||
+    updateState.status === "downloading" ||
+    updateState.status === "installing";
+
+  const statusText =
+    updateState.status === "checking"
+      ? general.checkingForUpdates
+      : updateState.status === "latest"
+      ? general.upToDate
+      : updateState.status === "available" && updateState.availableVersion
+      ? `${general.updateAvailable} · v${updateState.availableVersion}`
+      : updateState.status === "downloading"
+      ? `${general.downloadingUpdate} ${formatUpdateProgress(
+          updateState.downloadedBytes,
+          updateState.totalBytes
+        )}`
+      : updateState.status === "installing"
+      ? general.installingUpdate
+      : updateState.availableVersion
+      ? `v${updateState.availableVersion}`
+      : "—";
+
+  const buttonLabel =
+    updateState.status === "checking"
+      ? general.checkingForUpdates
+      : updateState.status === "available"
+      ? general.downloadAndInstall
+      : updateState.status === "downloading"
+      ? general.downloadingUpdate
+      : updateState.status === "installing"
+      ? general.installingUpdate
+      : general.checkForUpdates;
+
+  return (
+    <Section title={general.updates}>
+      <Row label={general.currentVersion}>
+        <span className="text-xs font-mono text-base-content/50">
+          v{APP_VERSION}
+        </span>
+      </Row>
+      <Row
+        label={general.latestVersion}
+        description={
+          updateState.releaseDate
+            ? new Date(updateState.releaseDate).toLocaleDateString()
+            : undefined
+        }
+      >
+        <span className="text-xs font-mono text-base-content/50">
+          {statusText}
+        </span>
+      </Row>
+      <Row
+        label={general.checkForUpdates}
+        description={
+          updateState.releaseNotes
+            ? updateState.releaseNotes
+                .replace(/\r/g, "")
+                .split("\n")
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .slice(0, 2)
+                .join(" · ")
+            : undefined
+        }
+      >
+        <button
+          onClick={() => {
+            if (updateState.status === "available") {
+              void updateState.installUpdate();
+              return;
+            }
+
+            void updateState.checkForUpdates();
+          }}
+          disabled={isBusy}
+          className={`btn btn-xs gap-1.5 ${
+            updateState.status === "available"
+              ? "btn-primary"
+              : "btn-ghost text-base-content/60"
+          } ${isBusy ? "cursor-not-allowed opacity-70" : "cursor-pointer"}`}
+        >
+          {buttonLabel}
+        </button>
+      </Row>
+      {updateState.status === "error" && updateState.errorMessage ? (
+        <div className="mt-2 rounded-xl border border-error/20 bg-error/8 px-3 py-2 text-[11px] text-error/80">
+          {updateState.errorMessage}
+        </div>
+      ) : null}
+    </Section>
   );
 }
 
