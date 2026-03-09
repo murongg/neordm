@@ -511,13 +511,15 @@ function UpdatesSettings() {
     updateState.status === "downloading" ||
     updateState.status === "installing";
 
-  const statusText =
+  const latestVersionText = `v${updateState.availableVersion ?? updateState.currentVersion}`;
+
+  const latestVersionMeta = [
     updateState.status === "checking"
       ? general.checkingForUpdates
       : updateState.status === "latest"
       ? general.upToDate
-      : updateState.status === "available" && updateState.availableVersion
-      ? `${general.updateAvailable} · v${updateState.availableVersion}`
+      : updateState.status === "available"
+      ? general.updateAvailable
       : updateState.status === "downloading"
       ? `${general.downloadingUpdate} ${formatUpdateProgress(
           updateState.downloadedBytes,
@@ -525,9 +527,13 @@ function UpdatesSettings() {
         )}`
       : updateState.status === "installing"
       ? general.installingUpdate
-      : updateState.availableVersion
-      ? `v${updateState.availableVersion}`
-      : "—";
+      : null,
+    updateState.releaseDate
+      ? new Date(updateState.releaseDate).toLocaleDateString()
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const buttonLabel =
     updateState.status === "checking"
@@ -549,14 +555,10 @@ function UpdatesSettings() {
       </Row>
       <Row
         label={general.latestVersion}
-        description={
-          updateState.releaseDate
-            ? new Date(updateState.releaseDate).toLocaleDateString()
-            : undefined
-        }
+        description={latestVersionMeta || undefined}
       >
         <span className="text-xs font-mono text-base-content/50">
-          {statusText}
+          {latestVersionText}
         </span>
       </Row>
       <Row
