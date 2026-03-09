@@ -58,11 +58,20 @@ function PanelFallback() {
   return <div className="flex flex-1 min-h-0 bg-base-300" />;
 }
 
+function isMacOSPlatform() {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+
+  return /mac/i.test(navigator.platform || navigator.userAgent);
+}
+
 function App() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
   const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
+  const [isMacOS] = useState(() => isMacOSPlatform());
   useInitializeAppPreferencesStore();
   const preferences = useAppPreferencesStore(
     useShallow((state) => ({
@@ -132,12 +141,12 @@ function App() {
   return (
     <ToastProvider>
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-300 text-base-content rounded-xl">
-
-        {/* 全宽拖拽条 — 流量灯安全区 */}
-        <div
-          data-tauri-drag-region
-          className="h-9 w-full shrink-0 select-none bg-base-300 border-b border-base-100/50"
-        />
+        {isMacOS ? (
+          <div
+            data-tauri-drag-region
+            className="h-9 w-full shrink-0 select-none bg-base-300 border-b border-base-100/50"
+          />
+        ) : null}
 
         {/* 三列主体 */}
         <div className="flex w-full flex-1 min-h-0 overflow-hidden">
