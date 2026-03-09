@@ -14,9 +14,27 @@ pub(crate) struct RedisSshTunnelInput {
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSentinelNodeInput {
+    pub(crate) host: String,
+    pub(crate) port: u16,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSentinelInput {
+    pub(crate) master_name: String,
+    pub(crate) nodes: Vec<RedisSentinelNodeInput>,
+    pub(crate) username: Option<String>,
+    pub(crate) password: Option<String>,
+    pub(crate) tls: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisConnectionTestInput {
     pub(crate) host: String,
     pub(crate) port: u16,
+    pub(crate) sentinel: Option<RedisSentinelInput>,
     pub(crate) username: Option<String>,
     pub(crate) password: Option<String>,
     pub(crate) db: i64,

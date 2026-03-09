@@ -66,17 +66,38 @@ export interface ListRedisKeysOptions {
 
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
-  "host" | "port" | "username" | "db" | "tls" | "sshTunnel"
+  | "host"
+  | "port"
+  | "mode"
+  | "sentinel"
+  | "username"
+  | "db"
+  | "tls"
+  | "sshTunnel"
 > & {
   password?: string;
 };
 
 function toConnectionInput(connection: RedisConnectionInvokeInput) {
   const sshTunnel = connection.sshTunnel;
+  const sentinel = connection.mode === "sentinel" ? connection.sentinel : undefined;
 
   return {
     host: connection.host.trim(),
     port: connection.port,
+    mode: connection.mode ?? "direct",
+    sentinel: sentinel
+      ? {
+          masterName: sentinel.masterName.trim(),
+          nodes: sentinel.nodes.map((node) => ({
+            host: node.host.trim(),
+            port: node.port,
+          })),
+          username: sentinel.username?.trim() || null,
+          password: sentinel.password?.trim() || null,
+          tls: Boolean(sentinel.tls),
+        }
+      : null,
     username: connection.username?.trim() || null,
     password: connection.password?.trim() || null,
     db: connection.db,

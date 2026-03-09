@@ -1,5 +1,9 @@
 import * as redisCommands from "redis-commands";
 import type { RedisConnection } from "../types";
+import {
+  getRedisConnectionDefaultName,
+  getRedisConnectionEndpointLabel,
+} from "./redisConnection";
 
 export type CliBuiltinCommand = "CLEAR" | "HELP";
 
@@ -144,7 +148,10 @@ export function getCliAutocompleteSuggestions(
 }
 
 export function getCliPromptLabel(
-  connection?: Pick<RedisConnection, "name" | "host" | "port">,
+  connection?: Pick<
+    RedisConnection,
+    "name" | "host" | "port" | "mode" | "sentinel"
+  >,
   selectedDb = 0
 ) {
   if (!connection) {
@@ -152,11 +159,11 @@ export function getCliPromptLabel(
   }
 
   const connectionName = connection.name.trim();
-  const defaultConnectionName = `${connection.host}:${connection.port}`;
+  const defaultConnectionName = getRedisConnectionDefaultName(connection);
   const baseName =
     connectionName && connectionName !== defaultConnectionName
       ? connectionName
-      : connection.host;
+      : getRedisConnectionEndpointLabel(connection);
 
   return `${baseName}:db${selectedDb}>`;
 }

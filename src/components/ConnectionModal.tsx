@@ -7,16 +7,26 @@ import {
   Lock,
   Shield,
   User,
+  Waypoints,
   Wifi,
   X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AppSettings } from "../lib/appSettings";
-import type { RedisConnection, RedisSshTunnel } from "../types";
+import {
+  getRedisConnectionDefaultName,
+  parseRedisConnectionUrl,
+} from "../lib/redisConnection";
+import type {
+  RedisConnection,
+  RedisConnectionMode,
+  RedisSentinelConfig,
+  RedisSentinelNode,
+  RedisSshTunnel,
+} from "../types";
 import { useI18n } from "../i18n";
 import { useModalTransition } from "../hooks/useModalTransition";
 import { getRandomStableColor } from "../utils/colors";
-import { parseRedisConnectionUrl } from "../lib/redisConnection";
 import { getRedisErrorMessage, testRedisConnection } from "../lib/redis";
 import {
   recordCrashReport,
@@ -38,12 +48,19 @@ interface ConnectionModalProps {
 
 type TestStatus = "success" | "error";
 const TEST_STATUS_TRANSITION_MS = 160;
+const DEFAULT_SENTINEL_PORT = 26379;
 
 interface ConnectionFormState {
   name: string;
   url: string;
+  mode: RedisConnectionMode;
   host: string;
   port: string;
+  sentinelMasterName: string;
+  sentinelNodes: string;
+  sentinelUsername: string;
+  sentinelPassword: string;
+  sentinelTls: boolean;
   username: string;
   password: string;
   db: string;
@@ -58,12 +75,26 @@ interface ConnectionFormState {
   sshPassphrase: string;
 }
 
+function formatSentinelNodes(nodes?: RedisSentinelNode[]) {
+  if (!nodes?.length) {
+    return "";
+  }
+
+  return nodes.map((node) => `${node.host}:${node.port}`).join("\n");
+}
+
 function createInitialForm(connection?: RedisConnection): ConnectionFormState {
   return {
     name: connection?.name ?? "",
     url: "",
+    mode: connection?.mode ?? (connection?.sentinel ? "sentinel" : "direct"),
     host: connection?.host ?? "127.0.0.1",
     port: String(connection?.port ?? 6379),
+    sentinelMasterName: connection?.sentinel?.masterName ?? "",
+    sentinelNodes: formatSentinelNodes(connection?.sentinel?.nodes),
+    sentinelUsername: connection?.sentinel?.username ?? "",
+    sentinelPassword: connection?.sentinel?.password ?? "",
+    sentinelTls: connection?.sentinel?.tls ?? false,
     username: connection?.username ?? "",
     password: connection?.password ?? "",
     db: String(connection?.db ?? 0),
@@ -81,6 +112,43 @@ function createInitialForm(connection?: RedisConnection): ConnectionFormState {
     sshPrivateKeyPath: connection?.sshTunnel?.privateKeyPath ?? "",
     sshPassphrase: connection?.sshTunnel?.passphrase ?? "",
   };
+}
+
+function parseSentinelNodes(value: string): RedisSentinelNode[] {
+  return value
+    .split(/[\n,]/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      let parsedUrl: URL;
+
+      try {
+        parsedUrl = new URL(
+          segment.includes("://") ? segment : `redis://${segment}`
+        );
+      } catch {
+        throw new Error(`Invalid sentinel node: ${segment}`);
+      }
+
+      const host = parsedUrl.hostname.trim();
+
+      if (!host.length) {
+        throw new Error(`Invalid sentinel node host: ${segment}`);
+      }
+
+      const port = parsedUrl.port
+        ? Number.parseInt(parsedUrl.port, 10)
+        : DEFAULT_SENTINEL_PORT;
+
+      if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
+        throw new Error(`Invalid sentinel node port: ${segment}`);
+      }
+
+      return {
+        host,
+        port,
+      };
+    });
 }
 
 function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefined {
@@ -114,10 +182,66 @@ function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefi
   };
 }
 
+function buildSentinelInput(
+  form: ConnectionFormState
+): RedisSentinelConfig | undefined {
+  if (form.mode !== "sentinel") {
+    return undefined;
+  }
+
+  const masterName = form.sentinelMasterName.trim();
+
+  if (!masterName.length) {
+    throw new Error("Sentinel master name cannot be empty");
+  }
+
+  const nodes = parseSentinelNodes(form.sentinelNodes);
+
+  if (!nodes.length) {
+    throw new Error("Add at least one sentinel node");
+  }
+
+  return {
+    masterName,
+    nodes,
+    username: form.sentinelUsername.trim() || undefined,
+    password: form.sentinelPassword || undefined,
+    tls: form.sentinelTls,
+  };
+}
+
 function buildConnectionInput(form: ConnectionFormState) {
+  const db = Number.parseInt(form.db, 10);
+
+  if (!Number.isInteger(db) || db < 0) {
+    throw new Error("Database must be a non-negative integer");
+  }
+
+  const sentinel = buildSentinelInput(form);
+  const sshTunnel = buildSshTunnelInput(form);
+
+  if (form.mode === "sentinel") {
+    const primaryNode = sentinel?.nodes[0];
+
+    if (!primaryNode) {
+      throw new Error("Add at least one sentinel node");
+    }
+
+    return {
+      host: primaryNode.host,
+      port: primaryNode.port,
+      mode: "sentinel" as const,
+      sentinel,
+      username: form.username.trim() || undefined,
+      password: form.password || undefined,
+      db,
+      tls: form.tls,
+      sshTunnel,
+    };
+  }
+
   const host = form.host.trim();
   const port = Number.parseInt(form.port, 10);
-  const db = Number.parseInt(form.db, 10);
 
   if (!host.length) {
     throw new Error("Host cannot be empty");
@@ -127,18 +251,16 @@ function buildConnectionInput(form: ConnectionFormState) {
     throw new Error("Port must be between 1 and 65535");
   }
 
-  if (!Number.isInteger(db) || db < 0) {
-    throw new Error("Database must be a non-negative integer");
-  }
-
   return {
     host,
     port,
+    mode: "direct" as const,
+    sentinel: undefined,
     username: form.username.trim() || undefined,
     password: form.password || undefined,
     db,
     tls: form.tls,
-    sshTunnel: buildSshTunnelInput(form),
+    sshTunnel,
   };
 }
 
@@ -316,6 +438,7 @@ export function ConnectionModal({
   const [testStatus, setTestStatus] = useState<TestStatus | null>(null);
   const [testMessage, setTestMessage] = useState<string>("");
   const [form, setForm] = useState(() => createInitialForm(connection));
+  const isSentinelMode = form.mode === "sentinel";
 
   useEffect(() => {
     setForm(createInitialForm(connection));
@@ -403,9 +526,11 @@ export function ConnectionModal({
       const connectionInput = buildConnectionInput(form);
 
       await onSave({
-        name: form.name.trim() || `${connectionInput.host}:${connectionInput.port}`,
+        name: form.name.trim() || getRedisConnectionDefaultName(connectionInput),
         host: connectionInput.host,
         port: connectionInput.port,
+        mode: connectionInput.mode,
+        sentinel: connectionInput.sentinel,
         username: connectionInput.username,
         password: connectionInput.password,
         db: connectionInput.db,
@@ -491,53 +616,162 @@ export function ConnectionModal({
                   </div>
 
                   <div>
-                    <FieldLabel icon={<Link2 size={10} />}>
-                      {messages.connectionModal.url}
-                    </FieldLabel>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={form.url}
-                        onChange={(event) => update("url", event.target.value)}
-                        placeholder={messages.connectionModal.urlPlaceholder}
-                        className="input input-sm h-10 flex-1 border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleImportUrl}
-                        disabled={isTesting || isSaving || !form.url.trim().length}
-                        className="btn btn-sm h-10 min-h-10 rounded-lg border-base-content/8 bg-base-100 px-3.5 font-mono text-[11px] text-base-content/70 shadow-none hover:bg-base-200"
-                      >
-                        {messages.connectionModal.importUrl}
-                      </button>
+                    <FieldLabel>{messages.connectionModal.mode}</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2">
+                      {([
+                        {
+                          value: "direct" as const,
+                          icon: <Link2 size={12} />,
+                          label: messages.connectionModal.direct,
+                        },
+                        {
+                          value: "sentinel" as const,
+                          icon: <Waypoints size={12} />,
+                          label: messages.connectionModal.sentinel,
+                        },
+                      ] satisfies Array<{
+                        value: RedisConnectionMode;
+                        icon: ReactNode;
+                        label: string;
+                      }>).map((option) => {
+                        const isActive = form.mode === option.value;
+
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => update("mode", option.value)}
+                            className={`flex h-10 items-center justify-center gap-2 rounded-lg border font-mono text-[11px] transition-colors ${
+                              isActive
+                                ? "border-primary/35 bg-primary/10 text-primary"
+                                : "border-base-content/8 bg-base-100 text-base-content/60 hover:bg-base-200"
+                            }`}
+                          >
+                            {option.icon}
+                            <span>{option.label}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
+
+                  {isSentinelMode ? (
+                    <>
+                      <div>
+                        <FieldLabel icon={<Waypoints size={10} />}>
+                          {messages.connectionModal.sentinelMasterName}
+                        </FieldLabel>
+                        <input
+                          type="text"
+                          value={form.sentinelMasterName}
+                          onChange={(event) =>
+                            update("sentinelMasterName", event.target.value)
+                          }
+                          placeholder={
+                            messages.connectionModal.sentinelMasterNamePlaceholder
+                          }
+                          className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                      </div>
+                      <div>
+                        <FieldLabel>{messages.connectionModal.sentinelNodes}</FieldLabel>
+                        <textarea
+                          value={form.sentinelNodes}
+                          onChange={(event) =>
+                            update("sentinelNodes", event.target.value)
+                          }
+                          placeholder={
+                            messages.connectionModal.sentinelNodesPlaceholder
+                          }
+                          className="textarea textarea-sm min-h-[88px] w-full resize-none border-base-content/8 bg-base-100 font-mono text-xs leading-5 user-select-text"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div>
+                      <FieldLabel icon={<Link2 size={10} />}>
+                        {messages.connectionModal.url}
+                      </FieldLabel>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={form.url}
+                          onChange={(event) => update("url", event.target.value)}
+                          placeholder={messages.connectionModal.urlPlaceholder}
+                          className="input input-sm h-10 flex-1 border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleImportUrl}
+                          disabled={isTesting || isSaving || !form.url.trim().length}
+                          className="btn btn-sm h-10 min-h-10 rounded-lg border-base-content/8 bg-base-100 px-3.5 font-mono text-[11px] text-base-content/70 shadow-none hover:bg-base-200"
+                        >
+                          {messages.connectionModal.importUrl}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </FormCard>
 
               <FormCard>
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
-                  <div>
-                    <FieldLabel icon={<Wifi size={10} />}>
-                      {messages.connectionModal.host}
-                    </FieldLabel>
-                    <input
-                      type="text"
-                      value={form.host}
-                      onChange={(event) => update("host", event.target.value)}
-                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
-                    />
+                {!isSentinelMode && (
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_7.5rem]">
+                    <div>
+                      <FieldLabel icon={<Wifi size={10} />}>
+                        {messages.connectionModal.host}
+                      </FieldLabel>
+                      <input
+                        type="text"
+                        value={form.host}
+                        onChange={(event) => update("host", event.target.value)}
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>{messages.connectionModal.port}</FieldLabel>
+                      <input
+                        type="number"
+                        value={form.port}
+                        onChange={(event) => update("port", event.target.value)}
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <FieldLabel>{messages.connectionModal.port}</FieldLabel>
-                    <input
-                      type="number"
-                      value={form.port}
-                      onChange={(event) => update("port", event.target.value)}
-                      className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
-                    />
+                )}
+
+                {isSentinelMode && (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <FieldLabel icon={<User size={10} />}>
+                        {messages.connectionModal.sentinelUsername}
+                      </FieldLabel>
+                      <input
+                        type="text"
+                        value={form.sentinelUsername}
+                        onChange={(event) =>
+                          update("sentinelUsername", event.target.value)
+                        }
+                        placeholder={messages.connectionModal.usernamePlaceholder}
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel icon={<Lock size={10} />}>
+                        {messages.connectionModal.sentinelPassword}
+                      </FieldLabel>
+                      <input
+                        type="password"
+                        value={form.sentinelPassword}
+                        onChange={(event) =>
+                          update("sentinelPassword", event.target.value)
+                        }
+                        placeholder={messages.connectionModal.passwordPlaceholder}
+                        className="input input-sm h-10 w-full border-base-content/8 bg-base-100 font-mono text-xs user-select-text"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <div>
@@ -566,7 +800,13 @@ export function ConnectionModal({
                   </div>
                 </div>
 
-                <div className="mt-3 grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+                <div
+                  className={`mt-3 grid gap-3 ${
+                    isSentinelMode
+                      ? "sm:grid-cols-[7.5rem_minmax(0,1fr)_minmax(0,1fr)]"
+                      : "sm:grid-cols-[7.5rem_minmax(0,1fr)]"
+                  }`}
+                >
                   <div>
                     <FieldLabel icon={<Database size={10} />}>
                       {messages.connectionModal.database}
@@ -590,6 +830,18 @@ export function ConnectionModal({
                       onChange={(checked) => update("tls", checked)}
                     />
                   </div>
+                  {isSentinelMode && (
+                    <div>
+                      <FieldLabel icon={<Shield size={10} />}>
+                        {messages.connectionModal.sentinelTls}
+                      </FieldLabel>
+                      <ToggleField
+                        label={messages.connectionModal.sentinelTls}
+                        checked={form.sentinelTls}
+                        onChange={(checked) => update("sentinelTls", checked)}
+                      />
+                    </div>
+                  )}
                 </div>
               </FormCard>
             </div>

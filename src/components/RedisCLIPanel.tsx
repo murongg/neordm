@@ -1,6 +1,7 @@
 import { memo, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
+import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
 import { useAppPreferencesStore } from "../store/useAppPreferencesState";
 import { useCliState } from "../store/useCliState";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
@@ -36,7 +37,7 @@ export const RedisCLIPanel = memo(function RedisCLIPanel() {
     selectedDb: workspace.selectedDb,
   });
   const connectionName = activeConnection
-    ? `${activeConnection.host}:${activeConnection.port}`
+    ? getRedisConnectionEndpointLabel(activeConnection)
     : messages.app.status.notConnected;
 
   return (

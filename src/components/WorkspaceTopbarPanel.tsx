@@ -3,6 +3,7 @@ import { Bot, Edit3, Server, Terminal, Wifi } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
 import { prepareAIAgentExperience } from "../lib/aiPrefetch";
+import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 
 export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
@@ -82,7 +83,7 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
             <div className="flex items-center gap-1 text-base-content/30">
               <Server size={11} />
               <span className="text-[10px] font-mono">
-                {activeConnection.host}:{activeConnection.port}
+                {getRedisConnectionEndpointLabel(activeConnection)}
               </span>
             </div>
             {activeConnection.tls && (

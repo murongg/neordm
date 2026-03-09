@@ -1,4 +1,18 @@
 export type RedisKeyType = "string" | "hash" | "list" | "set" | "zset" | "stream" | "json";
+export type RedisConnectionMode = "direct" | "sentinel";
+
+export interface RedisSentinelNode {
+  host: string;
+  port: number;
+}
+
+export interface RedisSentinelConfig {
+  masterName: string;
+  nodes: RedisSentinelNode[];
+  username?: string;
+  password?: string;
+  tls?: boolean;
+}
 
 export interface RedisSshTunnel {
   host: string;
@@ -14,6 +28,8 @@ export interface RedisConnection {
   name: string;
   host: string;
   port: number;
+  mode?: RedisConnectionMode;
+  sentinel?: RedisSentinelConfig;
   username?: string;
   password?: string;
   db: number;

@@ -25,6 +25,7 @@ import {
   testRedisConnection,
   type RedisKeyCreateInput,
 } from "../lib/redis";
+import { getRedisConnectionDefaultName } from "../lib/redisConnection";
 import {
   recordAuditEvent,
   recordTelemetryEvent,
@@ -390,7 +391,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     saveConnection: async (connection) => {
       const normalizedConnection = {
         ...connection,
-        name: connection.name || `${connection.host}:${connection.port}`,
+        name: connection.name || getRedisConnectionDefaultName(connection),
+        mode: connection.mode ?? "direct",
+        sentinel: connection.mode === "sentinel" ? connection.sentinel : undefined,
         username: connection.username || undefined,
         password: connection.password || undefined,
         sshTunnel: connection.sshTunnel,
@@ -403,6 +406,8 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         password: normalizedConnection.password,
         db: normalizedConnection.db,
         tls: normalizedConnection.tls,
+        mode: normalizedConnection.mode,
+        sentinel: normalizedConnection.sentinel,
         sshTunnel: normalizedConnection.sshTunnel,
       });
       void recordTelemetryEvent("connection.save");

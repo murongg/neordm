@@ -159,8 +159,18 @@ export interface Messages {
     url: string;
     urlPlaceholder: string;
     importUrl: string;
+    mode: string;
+    direct: string;
+    sentinel: string;
     host: string;
     port: string;
+    sentinelMasterName: string;
+    sentinelMasterNamePlaceholder: string;
+    sentinelNodes: string;
+    sentinelNodesPlaceholder: string;
+    sentinelUsername: string;
+    sentinelPassword: string;
+    sentinelTls: string;
     username: string;
     usernamePlaceholder: string;
     password: string;

@@ -10,6 +10,7 @@ import type {
   RedisKey,
 } from "../../types";
 import type { AiProviderConfig } from "../aiSettings";
+import { getRedisConnectionEndpointLabel } from "../redisConnection";
 import {
   COMMAND_PREFIX_PATTERN,
   MAX_CONTEXT_MESSAGES,
@@ -115,7 +116,10 @@ export function buildRedisContext({
   keysCount,
   includeKeyContext,
 }: {
-  activeConnection?: Pick<RedisConnection, "name" | "host" | "port">;
+  activeConnection?: Pick<
+    RedisConnection,
+    "name" | "host" | "port" | "mode" | "sentinel"
+  >;
   selectedDb: number;
   selectedKey: RedisKey | null;
   keyValue: KeyValue | null;
@@ -125,7 +129,7 @@ export function buildRedisContext({
   const lines = [
     "Redis client context:",
     activeConnection
-      ? `- Active connection: ${activeConnection.name} (${activeConnection.host}:${activeConnection.port})`
+      ? `- Active connection: ${activeConnection.name} (${getRedisConnectionEndpointLabel(activeConnection)})`
       : "- Active connection: none",
     `- Active database: db${selectedDb}`,
     `- Loaded keys in browser: ${keysCount}`,

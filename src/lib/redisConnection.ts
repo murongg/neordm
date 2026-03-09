@@ -1,3 +1,5 @@
+import type { RedisConnection } from "../types";
+
 export interface ParsedRedisConnectionUrl {
   host: string;
   port: number;
@@ -9,6 +11,30 @@ export interface ParsedRedisConnectionUrl {
 
 const DEFAULT_REDIS_PORT = 6379;
 const DEFAULT_REDIS_DB = 0;
+
+export function formatRedisAddress(host: string, port: number) {
+  return `${host}:${port}`;
+}
+
+export function getRedisConnectionEndpointLabel(
+  connection: Pick<RedisConnection, "host" | "port" | "mode" | "sentinel">
+) {
+  if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
+    return `sentinel/${connection.sentinel.masterName.trim()}`;
+  }
+
+  return formatRedisAddress(connection.host, connection.port);
+}
+
+export function getRedisConnectionDefaultName(
+  connection: Pick<RedisConnection, "host" | "port" | "mode" | "sentinel">
+) {
+  if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
+    return `${connection.sentinel.masterName.trim()} (sentinel)`;
+  }
+
+  return formatRedisAddress(connection.host, connection.port);
+}
 
 export function parseRedisConnectionUrl(
   connectionUrl: string

@@ -1,5 +1,9 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
-import type { RedisConnection, RedisSshTunnel } from "../types";
+import type {
+  RedisConnection,
+  RedisSentinelConfig,
+  RedisSshTunnel,
+} from "../types";
 
 const CONNECTION_STORE_PATH = "connections.json";
 const CONNECTIONS_KEY = "connections";
@@ -60,6 +64,65 @@ function normalizePersistedSshTunnel(value: unknown): RedisSshTunnel | undefined
   };
 }
 
+function normalizePersistedSentinel(value: unknown): RedisSentinelConfig | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const { masterName, nodes, username, password, tls } = value;
+
+  if (typeof masterName !== "string" || !Array.isArray(nodes)) {
+    return undefined;
+  }
+
+  const normalizedNodes = nodes
+    .map((node) => {
+      if (!isRecord(node)) {
+        return null;
+      }
+
+      const { host, port } = node;
+
+      if (typeof host !== "string" || typeof port !== "number") {
+        return null;
+      }
+
+      return {
+        host,
+        port,
+      };
+    })
+    .filter((node): node is { host: string; port: number } => node !== null);
+
+  if (!normalizedNodes.length) {
+    return undefined;
+  }
+
+  if (username !== undefined && typeof username !== "string") {
+    return undefined;
+  }
+
+  if (password !== undefined && typeof password !== "string") {
+    return undefined;
+  }
+
+  if (tls !== undefined && typeof tls !== "boolean") {
+    return undefined;
+  }
+
+  return {
+    masterName,
+    nodes: normalizedNodes,
+    username,
+    password,
+    tls,
+  };
+}
+
 function normalizePersistedConnection(
   value: unknown
 ): PersistedRedisConnection | null {
@@ -70,6 +133,8 @@ function normalizePersistedConnection(
     name,
     host,
     port,
+    mode,
+    sentinel,
     username,
     password,
     db,
@@ -98,11 +163,25 @@ function normalizePersistedConnection(
     return null;
   }
 
+  if (
+    mode !== undefined &&
+    mode !== "direct" &&
+    mode !== "sentinel"
+  ) {
+    return null;
+  }
+
+  const normalizedSentinel = normalizePersistedSentinel(sentinel);
+
   return {
     id,
     name,
     host,
     port,
+    mode: mode === "sentinel" || (mode === undefined && normalizedSentinel)
+      ? "sentinel"
+      : "direct",
+    sentinel: normalizedSentinel,
     username,
     password,
     db,
@@ -155,6 +234,12 @@ export async function persistConnections(
 
       return {
         ...sanitizedConnection,
+        sentinel: sanitizedConnection.sentinel
+          ? {
+              ...sanitizedConnection.sentinel,
+              password: undefined,
+            }
+          : undefined,
         sshTunnel: sshTunnel
           ? {
               ...sshTunnel,
