@@ -142,6 +142,7 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
   const connectionSessionsRef = useRef<Record<string, ConnectionPubSubSession>>(
     {}
   );
+  const publishChannelDraftsRef = useRef<Record<string, string>>({});
   const sessionIdToConnectionIdRef = useRef<Record<string, string>>({});
   const localEchoRef = useRef<Map<string, number>>(new Map());
   const streamContainerRef = useRef<HTMLDivElement | null>(null);
@@ -153,6 +154,29 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
   const activeSession =
     (activeConnectionId && connectionSessions[activeConnectionId]) || EMPTY_SESSION;
   const isSessionActive = Boolean(activeSession.sessionId);
+
+  const setPublishChannelForConnection = useCallback(
+    (
+      connectionId: string | null,
+      nextValue: string | ((current: string) => string)
+    ) => {
+      setPublishChannel((current) => {
+        const currentValue =
+          (connectionId && publishChannelDraftsRef.current[connectionId]) ?? current;
+        const resolvedValue =
+          typeof nextValue === "function"
+            ? nextValue(currentValue)
+            : nextValue;
+
+        if (connectionId) {
+          publishChannelDraftsRef.current[connectionId] = resolvedValue;
+        }
+
+        return resolvedValue;
+      });
+    },
+    []
+  );
 
   const updateConnectionSession = useCallback(
     (
@@ -318,8 +342,9 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
     const nextSession =
       connectionSessionsRef.current[activeConnectionId] ?? EMPTY_SESSION;
     setSubscribeChannel(DEFAULT_SUBSCRIBE_CHANNEL);
-    setPublishChannel((current) =>
-      current || getDefaultPublishChannel(nextSession.subscribedChannels)
+    setPublishChannel(
+      publishChannelDraftsRef.current[activeConnectionId] ??
+        getDefaultPublishChannel(nextSession.subscribedChannels)
     );
     setPublishPayload("");
   }, [activeConnectionId]);
@@ -413,7 +438,9 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
       }));
       setSubscribeChannel(DEFAULT_SUBSCRIBE_CHANNEL);
       if (!shouldUsePatternSubscription) {
-        setPublishChannel((current) => current || nextChannel);
+        setPublishChannelForConnection(activeConnectionId, (current) =>
+          current || nextChannel
+        );
       }
     } catch (error) {
       showToast({
@@ -429,6 +456,7 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
     ensureSession,
     messages.app.status.notConnected,
     messages.pubsub.channelRequired,
+    setPublishChannelForConnection,
     showToast,
     subscribeChannel,
     updateConnectionSession,
@@ -468,7 +496,7 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
           ...current,
           subscribedChannels: remainingChannels,
         }));
-        setPublishChannel((current) =>
+        setPublishChannelForConnection(activeConnectionId, (current) =>
           removedChannels.includes(current)
             ? getDefaultPublishChannel(remainingChannels)
             : current
@@ -485,6 +513,7 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
     },
     [
       activeConnectionId,
+      setPublishChannelForConnection,
       showToast,
       updateConnectionSession,
     ]
@@ -753,7 +782,12 @@ export const RedisPubSubPanel = memo(function RedisPubSubPanel() {
               <input
                 type="text"
                 value={publishChannel}
-                onChange={(event) => setPublishChannel(event.target.value)}
+                onChange={(event) =>
+                  setPublishChannelForConnection(
+                    activeConnectionId,
+                    event.target.value
+                  )
+                }
                 placeholder={messages.pubsub.publishChannelPlaceholder}
                 className="w-full bg-transparent text-xs font-mono outline-none"
                 disabled={!activeConnection}
