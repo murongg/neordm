@@ -192,7 +192,6 @@ export interface Messages {
       editor: string;
       ai: string;
       cli: string;
-      shortcuts: string;
       privacy: string;
     };
     general: {
@@ -213,14 +212,9 @@ export interface Messages {
     };
     appearance: {
       theme: string;
-      font: string;
-      fontSize: string;
       layout: string;
-      compactMode: string;
-      compactModeDescription: string;
       showKeyType: string;
       showTtl: string;
-      enableAnimations: string;
       themes: {
         light: string;
         dark: string;
@@ -276,24 +270,10 @@ export interface Messages {
       clearHistory: string;
       clearHistoryDescription: string;
     };
-    shortcuts: {
-      title: string;
-      items: Array<{
-        action: string;
-        keys: string[];
-      }>;
-    };
     privacy: {
-      dataCollection: string;
-      anonymousTelemetry: string;
-      anonymousTelemetryDescription: string;
-      crashReports: string;
-      crashReportsDescription: string;
       security: string;
       savePasswords: string;
       savePasswordsDescription: string;
-      auditLog: string;
-      auditLogDescription: string;
       data: string;
       clearCachedData: string;
       clearCachedDataDescription: string;

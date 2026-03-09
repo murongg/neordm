@@ -16,11 +16,8 @@ export interface GeneralAppSettings {
 
 export interface AppearanceAppSettings {
   themeMode: ThemeModeSetting;
-  fontSize: string;
-  compactMode: boolean;
   showKeyType: boolean;
   showTtl: boolean;
-  animationsEnabled: boolean;
 }
 
 export interface EditorAppSettings {
@@ -41,10 +38,7 @@ export interface CliAppSettings {
 }
 
 export interface PrivacyAppSettings {
-  telemetry: boolean;
-  crashReports: boolean;
   savePasswords: boolean;
-  auditLog: boolean;
 }
 
 export interface UiAppSettings {
@@ -91,11 +85,8 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   },
   appearance: {
     themeMode: "dark",
-    fontSize: "15",
-    compactMode: false,
     showKeyType: true,
     showTtl: true,
-    animationsEnabled: true,
   },
   editor: {
     autoFormatJson: true,
@@ -113,10 +104,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     pipelineMode: false,
   },
   privacy: {
-    telemetry: false,
-    crashReports: false,
     savePasswords: true,
-    auditLog: false,
   },
   ui: {
     sidebarCollapsed: true,
@@ -195,14 +183,6 @@ function normalizeAppearanceSettings(value: unknown): AppearanceAppSettings {
       source.themeMode,
       DEFAULT_APP_SETTINGS.appearance.themeMode
     ),
-    fontSize: normalizeString(
-      source.fontSize,
-      DEFAULT_APP_SETTINGS.appearance.fontSize
-    ),
-    compactMode: normalizeBoolean(
-      source.compactMode,
-      DEFAULT_APP_SETTINGS.appearance.compactMode
-    ),
     showKeyType: normalizeBoolean(
       source.showKeyType,
       DEFAULT_APP_SETTINGS.appearance.showKeyType
@@ -210,10 +190,6 @@ function normalizeAppearanceSettings(value: unknown): AppearanceAppSettings {
     showTtl: normalizeBoolean(
       source.showTtl,
       DEFAULT_APP_SETTINGS.appearance.showTtl
-    ),
-    animationsEnabled: normalizeBoolean(
-      source.animationsEnabled,
-      DEFAULT_APP_SETTINGS.appearance.animationsEnabled
     ),
   };
 }
@@ -277,21 +253,9 @@ function normalizePrivacySettings(value: unknown): PrivacyAppSettings {
   const source = isRecord(value) ? value : {};
 
   return {
-    telemetry: normalizeBoolean(
-      source.telemetry,
-      DEFAULT_APP_SETTINGS.privacy.telemetry
-    ),
-    crashReports: normalizeBoolean(
-      source.crashReports,
-      DEFAULT_APP_SETTINGS.privacy.crashReports
-    ),
     savePasswords: normalizeBoolean(
       source.savePasswords,
       DEFAULT_APP_SETTINGS.privacy.savePasswords
-    ),
-    auditLog: normalizeBoolean(
-      source.auditLog,
-      DEFAULT_APP_SETTINGS.privacy.auditLog
     ),
   };
 }

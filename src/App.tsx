@@ -12,7 +12,6 @@ import { WorkspaceTopbarPanel } from "./components/WorkspaceTopbarPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "./i18n";
 import { prepareAIAgentExperience } from "./lib/aiPrefetch";
-import { installPrivacyRuntimeHandlers } from "./lib/privacyRuntime";
 import {
   useAppPreferencesStore,
   useInitializeAppPreferencesStore,
@@ -80,11 +79,6 @@ function App() {
     persistLastConnectionId: preferences.persistLastConnectionId,
   });
   const panelTab = useRedisWorkspaceStore((state) => state.panelTab);
-  const appearanceSettings = preferences.appSettings.appearance;
-
-  useEffect(() => {
-    installPrivacyRuntimeHandlers();
-  }, []);
 
   useEffect(() => {
     return scheduleIdleTask(() => {
@@ -112,31 +106,10 @@ function App() {
   }, [panelTab]);
 
   useEffect(() => {
-    const parsedFontSize = Number.parseInt(
-      appearanceSettings.fontSize,
-      10
-    );
-    const nextFontSize =
-      Number.isFinite(parsedFontSize) && parsedFontSize >= 11 && parsedFontSize <= 18
-        ? parsedFontSize
-        : 15;
-
-    document.documentElement.style.fontSize = `${nextFontSize}px`;
-  }, [appearanceSettings.fontSize]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-ui-density",
-      appearanceSettings.compactMode ? "compact" : "comfortable"
-    );
-  }, [appearanceSettings.compactMode]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute(
-      "data-ui-animations",
-      appearanceSettings.animationsEnabled ? "enabled" : "disabled"
-    );
-  }, [appearanceSettings.animationsEnabled]);
+    document.documentElement.style.fontSize = "15px";
+    document.documentElement.setAttribute("data-ui-density", "comfortable");
+    document.documentElement.setAttribute("data-ui-animations", "enabled");
+  }, []);
 
   return (
     <ToastProvider>

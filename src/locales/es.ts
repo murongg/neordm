@@ -146,7 +146,6 @@ export const es: Messages = {
       editor: "Editor",
       ai: "Agente IA",
       cli: "CLI",
-      shortcuts: "Atajos",
       privacy: "Privacidad",
     },
     general: {
@@ -167,14 +166,9 @@ export const es: Messages = {
     },
     appearance: {
       theme: "Tema",
-      font: "Fuente",
-      fontSize: "Tamaño de fuente",
       layout: "Diseño",
-      compactMode: "Modo compacto",
-      compactModeDescription: "Reduce relleno y espaciado",
       showKeyType: "Mostrar badge del tipo de clave",
       showTtl: "Mostrar TTL en la lista",
-      enableAnimations: "Habilitar animaciones",
       themes: {
         light: "Claro",
         dark: "Oscuro",
@@ -232,33 +226,10 @@ export const es: Messages = {
       clearHistory: "Limpiar historial",
       clearHistoryDescription: "Eliminar todas las entradas del historial CLI",
     },
-    shortcuts: {
-      title: "Atajos de teclado",
-      items: [
-        { action: "Nueva conexión", keys: ["⌘", "N"] },
-        { action: "Actualizar claves", keys: ["⌘", "R"] },
-        { action: "Buscar claves", keys: ["⌘", "F"] },
-        { action: "Enfocar CLI", keys: ["⌘", "`"] },
-        { action: "Abrir agente IA", keys: ["⌘", "Shift", "A"] },
-        { action: "Eliminar clave", keys: ["⌫"] },
-        { action: "Copiar valor", keys: ["⌘", "C"] },
-        { action: "Alternar barra lateral", keys: ["⌘", "B"] },
-        { action: "Cerrar panel", keys: ["Esc"] },
-      ],
-    },
     privacy: {
-      dataCollection: "Recopilación de datos",
-      anonymousTelemetry: "Telemetría anónima",
-      anonymousTelemetryDescription:
-        "Ayuda a mejorar NeoRDM enviando datos de uso",
-      crashReports: "Informes de fallos",
-      crashReportsDescription:
-        "Enviar informes de fallos automáticamente",
       security: "Seguridad",
       savePasswords: "Guardar contraseñas de conexión",
       savePasswordsDescription: "Se almacenan en el llavero del sistema",
-      auditLog: "Habilitar registro de auditoría",
-      auditLogDescription: "Registra localmente todos los comandos ejecutados",
       data: "Datos",
       clearCachedData: "Borrar todos los datos en caché",
       clearCachedDataDescription:

@@ -6,7 +6,6 @@ import {
   Palette,
   Bot,
   Terminal,
-  Keyboard,
   Shield,
   ChevronRight,
   Check,
@@ -40,7 +39,6 @@ type SettingsCategory =
   | "editor"
   | "ai"
   | "cli"
-  | "shortcuts"
   | "privacy";
 
 const CATEGORIES: {
@@ -52,7 +50,6 @@ const CATEGORIES: {
   { id: "editor", icon: <ChevronRight size={14} /> },
   { id: "ai", icon: <Bot size={14} /> },
   { id: "cli", icon: <Terminal size={14} /> },
-  { id: "shortcuts", icon: <Keyboard size={14} /> },
   { id: "privacy", icon: <Shield size={14} /> },
 ];
 
@@ -219,7 +216,6 @@ export function SettingsPanel({
               </Suspense>
             )}
             {category === "cli" && <CLISettings />}
-            {category === "shortcuts" && <ShortcutsSettings />}
             {category === "privacy" && <PrivacySettings />}
           </div>
         </div>
@@ -564,44 +560,7 @@ function AppearanceSettings({
         </div>
       </Section>
 
-      <Section title={appearance.font}>
-        <Row label={appearance.fontSize}>
-          <div className="flex items-center gap-2">
-            <input
-              type="range"
-              min="11"
-              max="16"
-              value={appearanceSettings.fontSize}
-              onChange={(e) =>
-                setAppearanceSettings((previous) => ({
-                  ...previous,
-                  fontSize: e.target.value,
-                }))
-              }
-              className="range range-xs range-primary w-24 cursor-pointer"
-            />
-            <span className="text-xs font-mono text-base-content/50 w-6">
-              {appearanceSettings.fontSize}
-            </span>
-          </div>
-        </Row>
-      </Section>
-
       <Section title={appearance.layout}>
-        <Row
-          label={appearance.compactMode}
-          description={appearance.compactModeDescription}
-        >
-          <Toggle
-            checked={appearanceSettings.compactMode}
-            onChange={(nextValue) =>
-              setAppearanceSettings((previous) => ({
-                ...previous,
-                compactMode: nextValue,
-              }))
-            }
-          />
-        </Row>
         <Row label={appearance.showKeyType}>
           <Toggle
             checked={appearanceSettings.showKeyType}
@@ -620,17 +579,6 @@ function AppearanceSettings({
               setAppearanceSettings((previous) => ({
                 ...previous,
                 showTtl: nextValue,
-              }))
-            }
-          />
-        </Row>
-        <Row label={appearance.enableAnimations}>
-          <Toggle
-            checked={appearanceSettings.animationsEnabled}
-            onChange={(nextValue) =>
-              setAppearanceSettings((previous) => ({
-                ...previous,
-                animationsEnabled: nextValue,
               }))
             }
           />
@@ -833,28 +781,6 @@ function CLISettings() {
   );
 }
 
-function ShortcutsSettings() {
-  const { messages } = useI18n();
-
-  return (
-    <>
-      <Section title={messages.settings.shortcuts.title}>
-        {messages.settings.shortcuts.items.map((shortcut) => (
-          <Row key={shortcut.action} label={shortcut.action}>
-            <div className="flex items-center gap-1">
-              {shortcut.keys.map((key) => (
-                <kbd key={key} className="kbd kbd-xs font-mono">
-                  {key}
-                </kbd>
-              ))}
-            </div>
-          </Row>
-        ))}
-      </Section>
-    </>
-  );
-}
-
 function PrivacySettings() {
   const { messages } = useI18n();
   const { showToast } = useToast();
@@ -863,37 +789,6 @@ function PrivacySettings() {
 
   return (
     <>
-      <Section title={privacy.dataCollection}>
-        <Row
-          label={privacy.anonymousTelemetry}
-          description={privacy.anonymousTelemetryDescription}
-        >
-          <Toggle
-            checked={privacySettings.telemetry}
-            onChange={(nextValue) =>
-              setPrivacySettings((previous) => ({
-                ...previous,
-                telemetry: nextValue,
-              }))
-            }
-          />
-        </Row>
-        <Row
-          label={privacy.crashReports}
-          description={privacy.crashReportsDescription}
-        >
-          <Toggle
-            checked={privacySettings.crashReports}
-            onChange={(nextValue) =>
-              setPrivacySettings((previous) => ({
-                ...previous,
-                crashReports: nextValue,
-              }))
-            }
-          />
-        </Row>
-      </Section>
-
       <Section title={privacy.security}>
         <Row
           label={privacy.savePasswords}
@@ -905,20 +800,6 @@ function PrivacySettings() {
               setPrivacySettings((previous) => ({
                 ...previous,
                 savePasswords: nextValue,
-              }))
-            }
-          />
-        </Row>
-        <Row
-          label={privacy.auditLog}
-          description={privacy.auditLogDescription}
-        >
-          <Toggle
-            checked={privacySettings.auditLog}
-            onChange={(nextValue) =>
-              setPrivacySettings((previous) => ({
-                ...previous,
-                auditLog: nextValue,
               }))
             }
           />
