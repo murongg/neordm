@@ -1,11 +1,37 @@
-# Tauri + React + Typescript
+<p align="center">
+  <img src="./src-tauri/icons/macos_icon.png" alt="NeoRDM Logo" width="128" height="128" />
+</p>
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+<h1 align="center">NeoRDM</h1>
 
-## Notes
+<p align="center">
+  AI-first Redis desktop client.<br />
+  Built for understanding data, exploring keys, and executing Redis workflows with confidence.
+</p>
 
-- `docs/ai-working-performance.md` - AI working 卡顿问题复盘与解决方案
+<p align="center">
+  English | <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-## Recommended IDE Setup
+<p align="center">
+  <img src="./screenshots/screenshot1.png" alt="NeoRDM Screenshot" width="1000" />
+</p>
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+NeoRDM is a modern Redis desktop client with AI at the center of the workflow.  
+It helps you inspect data faster, understand key structures, and turn natural language into Redis actions with safety checks built in.
+
+## AI Highlights
+
+- Context-aware AI assistant for the active connection, database, key, and value
+- Natural-language to Redis command suggestions
+- Key analysis, TTL explanation, and data-structure guidance
+- Confirmation flow before executing write or dangerous commands
+- OpenAI-compatible API support
+
+## Core Features
+
+- Multi-connection Redis management
+- Tree-style key browser with search, grouping, and DB switching
+- Value viewer/editor for `string`, `hash`, `list`, `set`, `zset`, `stream`, and `json`
+- Built-in Redis CLI with history and dangerous-command confirmation
+- Theme, language, privacy, and workspace preferences
