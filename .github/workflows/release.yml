@@ -123,23 +123,84 @@ jobs:
         env:
           ARTIFACT_PATHS_JSON: ${{ steps.tauri_build.outputs.artifactPaths }}
           CUSTOM_DMG_PATH: ${{ steps.repack_macos_dmg.outputs.dmg_path }}
+          BUNDLE_ROOT: src-tauri/target/${{ matrix.target }}/release/bundle
         run: |
           node <<'EOF'
           const fs = require('fs');
-          const customDmgPath = process.env.CUSTOM_DMG_PATH || '';
-          const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]')
-            .filter((artifactPath) => !(customDmgPath && artifactPath.endsWith('.dmg')))
-            .filter((artifactPath) => !artifactPath.endsWith('/latest.json') && !artifactPath.endsWith('\\latest.json'))
-            .filter((artifactPath) => {
-              try {
-                return fs.statSync(artifactPath).isFile();
-              } catch {
-                return false;
+          const path = require('path');
+
+          function addArtifactPath(artifactPaths, artifactPath) {
+            if (!artifactPath) {
+              return;
+            }
+
+            if (artifactPath.endsWith('/latest.json') || artifactPath.endsWith('\\latest.json')) {
+              return;
+            }
+
+            try {
+              if (!fs.statSync(artifactPath).isFile()) {
+                return;
               }
-            });
+            } catch {
+              return;
+            }
+
+            if (!artifactPaths.includes(artifactPath)) {
+              artifactPaths.push(artifactPath);
+            }
+          }
+
+          function walkFiles(rootDir) {
+            const stack = [rootDir];
+            const files = [];
+
+            while (stack.length > 0) {
+              const currentDir = stack.pop();
+              if (!currentDir || !fs.existsSync(currentDir)) {
+                continue;
+              }
+
+              for (const entry of fs.readdirSync(currentDir, { withFileTypes: true })) {
+                const fullPath = path.join(currentDir, entry.name);
+
+                if (entry.isDirectory()) {
+                  stack.push(fullPath);
+                  continue;
+                }
+
+                if (entry.isFile()) {
+                  files.push(fullPath);
+                }
+              }
+            }
+
+            return files;
+          }
+
+          const customDmgPath = process.env.CUSTOM_DMG_PATH || '';
+          const bundleRoot = process.env.BUNDLE_ROOT || '';
+          const artifactPaths = [];
+
+          for (const artifactPath of JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]')) {
+            if (customDmgPath && artifactPath.endsWith('.dmg')) {
+              continue;
+            }
+
+            addArtifactPath(artifactPaths, artifactPath);
+          }
+
+          for (const bundleFile of walkFiles(bundleRoot)) {
+            if (!bundleFile.endsWith('.sig')) {
+              continue;
+            }
+
+            addArtifactPath(artifactPaths, bundleFile);
+            addArtifactPath(artifactPaths, bundleFile.slice(0, -4));
+          }
 
           if (customDmgPath) {
-            artifactPaths.push(customDmgPath);
+            addArtifactPath(artifactPaths, customDmgPath);
           }
 
           const output = process.env.GITHUB_OUTPUT;
@@ -169,7 +230,7 @@ jobs:
               preferred_patterns=('*.AppImage.tar.gz.sig' '*.tar.gz.sig')
               ;;
             windows-*)
-              preferred_patterns=('*nsis*.zip.sig' '*msi*.zip.sig' '*.zip.sig')
+              preferred_patterns=('*setup.exe.sig' '*.msi.sig' '*nsis*.zip.sig' '*msi*.zip.sig' '*.exe.sig' '*.zip.sig')
               ;;
           esac
 
