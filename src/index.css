@@ -8,6 +8,120 @@
   :root {
     --font-heading: "Fira Code", monospace;
     --font-body: "Fira Sans", sans-serif;
+    /* NeoRDM semantic extension tokens */
+    --neordm-panel-border: color-mix(in oklab, var(--color-base-content) 10%, transparent);
+    --neordm-scrollbar-thumb: var(--color-base-300);
+    --neordm-scrollbar-thumb-hover: color-mix(
+      in oklab,
+      var(--color-base-content) 24%,
+      transparent
+    );
+    --neordm-editor-guide: color-mix(
+      in oklab,
+      var(--color-base-content) 4%,
+      transparent
+    );
+    --neordm-editor-active-line: color-mix(
+      in oklab,
+      var(--color-primary) 8%,
+      transparent
+    );
+    --neordm-editor-active-gutter: var(--color-primary);
+    --neordm-editor-selection: color-mix(
+      in oklab,
+      var(--color-primary) 18%,
+      transparent
+    );
+    --neordm-syntax-key: var(--color-primary);
+    --neordm-syntax-string: color-mix(
+      in oklab,
+      var(--color-base-content) 86%,
+      transparent
+    );
+    --neordm-syntax-number: var(--color-success);
+    --neordm-syntax-null: var(--color-error);
+  }
+
+  [data-theme="light"][data-theme="light"] {
+    color-scheme: light;
+    /* Core palette - light */
+    --color-base-100: #f8fafc;
+    --color-base-200: #f1f5f9;
+    --color-base-300: #e2e8f0;
+    --color-base-content: #0f172a;
+    --color-primary: #16a34a;
+    --color-primary-content: #f8fafc;
+    --color-secondary: #334155;
+    --color-secondary-content: #f8fafc;
+    --color-accent: #0f766e;
+    --color-accent-content: #f8fafc;
+    --color-info: #0369a1;
+    --color-info-content: #f8fafc;
+    --color-success: #15803d;
+    --color-success-content: #f8fafc;
+    --color-warning: #b45309;
+    --color-warning-content: #fff7ed;
+    --color-error: #dc2626;
+    --color-error-content: #fef2f2;
+    --neordm-panel-border: color-mix(
+      in oklab,
+      var(--color-base-content) 12%,
+      transparent
+    );
+    --neordm-scrollbar-thumb: color-mix(
+      in oklab,
+      var(--color-base-content) 14%,
+      var(--color-base-200)
+    );
+    --neordm-syntax-key: #15803d;
+    --neordm-syntax-number: #166534;
+    --neordm-syntax-null: #b91c1c;
+  }
+
+  [data-theme="night"][data-theme="night"] {
+    color-scheme: dark;
+    /* Core palette - dark */
+    --color-base-100: #0f172a;
+    --color-base-200: #111827;
+    --color-base-300: #1e293b;
+    --color-base-content: #e2e8f0;
+    --color-primary: #22c55e;
+    --color-primary-content: #052e16;
+    --color-secondary: #334155;
+    --color-secondary-content: #e2e8f0;
+    --color-accent: #14b8a6;
+    --color-accent-content: #042f2e;
+    --color-info: #38bdf8;
+    --color-info-content: #082f49;
+    --color-success: #4ade80;
+    --color-success-content: #052e16;
+    --color-warning: #f59e0b;
+    --color-warning-content: #451a03;
+    --color-error: #f87171;
+    --color-error-content: #450a0a;
+    --neordm-panel-border: color-mix(
+      in oklab,
+      var(--color-base-content) 10%,
+      transparent
+    );
+    --neordm-scrollbar-thumb: color-mix(
+      in oklab,
+      var(--color-base-content) 20%,
+      var(--color-base-300)
+    );
+    --neordm-editor-guide: color-mix(
+      in oklab,
+      var(--color-base-content) 5%,
+      transparent
+    );
+    --neordm-syntax-key: #4ade80;
+    --neordm-syntax-string: color-mix(
+      in oklab,
+      var(--color-base-content) 88%,
+      transparent
+    );
+    --neordm-syntax-number: #86efac;
+    --neordm-syntax-null: #fca5a5;
   }
 
   * {
@@ -76,22 +190,15 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: oklch(var(--b3));
+    background: var(--neordm-scrollbar-thumb);
     border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: oklch(var(--bc) / 0.3);
+    background: var(--neordm-scrollbar-thumb-hover);
   }
 }
 
 @layer utilities {
-  [data-theme="nord"] {
-    --color-primary: oklch(62% 0.145 232.661);
-    --color-primary-content: oklch(18% 0.03 232.661);
-    --color-success: oklch(58% 0.14 181.911);
-    --color-success-content: oklch(98% 0.01 181.911);
-  }
-
   .user-select-text {
     user-select: text;
     -webkit-user-select: text;
@@ -103,18 +210,39 @@
     max-width: 100%;
   }
   .panel-border {
-    border-color: #1e293b;
+    border-color: var(--neordm-panel-border);
   }
 }
 
 .neordm-json-editor .cm-content {
+  position: relative;
+}
+
+.neordm-json-editor .cm-content::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: min(18ch, 100%);
+  pointer-events: none;
   background-image: repeating-linear-gradient(
     to right,
     transparent 0,
     transparent calc(2ch - 1px),
-    oklch(var(--bc) / 0.04) calc(2ch - 1px),
-    oklch(var(--bc) / 0.04) 2ch
+    var(--neordm-editor-guide) calc(2ch - 1px),
+    var(--neordm-editor-guide) 2ch
   );
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.9) 0,
+    rgba(0, 0, 0, 0.9) 72%,
+    transparent 100%
+  );
+  opacity: 0.55;
+}
+
+.neordm-json-editor .cm-line {
+  position: relative;
+  z-index: 1;
 }
 
 .neordm-json-editor > .cm-theme,

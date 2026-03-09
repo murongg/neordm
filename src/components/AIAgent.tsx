@@ -237,8 +237,8 @@ export function AIAgent({
     <div className="flex flex-col flex-1 min-h-0">
       {/* Header */}
       <div className="px-4 py-3 border-b border-base-200/50 shrink-0 flex items-center gap-2">
-        <div className="w-7 h-7 rounded-lg bg-success/20 flex items-center justify-center">
-          <Bot size={14} className="text-success" />
+        <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
+          <Bot size={14} className="text-primary" />
         </div>
         <div>
           <h3 className="text-xs font-semibold font-mono">
@@ -353,7 +353,7 @@ export function AIAgent({
             <button
               onClick={handleSend}
               disabled={!input.trim() || isResponding}
-              className="btn btn-sm btn-success cursor-pointer disabled:cursor-not-allowed"
+              className="btn btn-sm btn-primary cursor-pointer disabled:cursor-not-allowed"
               aria-label={i18nMessages.ai.send}
             >
               <Send size={13} />
@@ -376,8 +376,8 @@ const ThinkingBubble = memo(function ThinkingBubble({
 }) {
   return (
     <div className="flex gap-2">
-      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-success/20">
-        <Bot size={11} className="text-success" />
+      <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 bg-primary/20">
+        <Bot size={11} className="text-primary" />
       </div>
       <div className="rounded-xl rounded-tl-sm bg-base-200 px-3 py-2">
         <AssistantTranscript
@@ -408,13 +408,13 @@ const MessageBubble = memo(function MessageBubble({
       {/* Avatar */}
       <div
         className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-          isUser ? "bg-primary/20" : "bg-success/20"
+          isUser ? "bg-primary/20" : "bg-primary/12"
         }`}
       >
         {isUser ? (
           <User size={11} className="text-primary" />
         ) : (
-          <Bot size={11} className="text-success" />
+          <Bot size={11} className="text-primary" />
         )}
       </div>
 
@@ -440,9 +440,9 @@ const MessageBubble = memo(function MessageBubble({
 
         {/* Suggested command */}
         {message.command && (
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300 border border-success/20">
-            <Terminal size={10} className="text-success shrink-0" />
-            <code className="text-[11px] font-mono text-success flex-1">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-base-300 border border-primary/20">
+            <Terminal size={10} className="text-primary shrink-0" />
+            <code className="text-[11px] font-mono text-primary flex-1">
               {message.command}
             </code>
             <button
@@ -632,16 +632,16 @@ const AssistantTranscript = memo(function AssistantTranscript({
     <div className="space-y-2">
       {live && (
         <div className="flex items-center gap-1.5 text-[10px] font-mono text-base-content/45">
-          <span className="h-1.5 w-1.5 rounded-full bg-success/60 animate-pulse" />
-          <span className="h-1.5 w-1.5 rounded-full bg-success/50 animate-pulse [animation-delay:120ms]" />
-          <span className="h-1.5 w-1.5 rounded-full bg-success/40 animate-pulse [animation-delay:240ms]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-pulse [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 rounded-full bg-primary/40 animate-pulse [animation-delay:240ms]" />
           <span>{hasThinkingBlock ? "Thinking" : "Working"}</span>
         </div>
       )}
 
       {activeToolName && !hasRunningToolBlock && (
         <div className="flex items-center gap-1.5 text-[10px] font-mono text-base-content/45">
-          <LoaderCircle size={10} className="animate-spin text-success/70" />
+          <LoaderCircle size={10} className="animate-spin text-primary/70" />
           <span>Using {activeToolName}</span>
         </div>
       )}
@@ -952,16 +952,16 @@ const MessageContent = memo(function MessageContent({
     : "font-semibold text-base-content";
   const quoteToneClass = subtle
     ? "my-2 border-l-2 border-base-content/10 pl-3 text-base-content/50"
-    : "my-2 border-l-2 border-success/30 pl-3 text-base-content/60";
+    : "my-2 border-l-2 border-primary/30 pl-3 text-base-content/60";
   const linkToneClass = subtle
     ? "text-info/80 underline decoration-base-content/20 underline-offset-2"
-    : "text-success underline decoration-success/50 underline-offset-2";
+    : "text-primary underline decoration-primary/50 underline-offset-2";
   const inlineCodeToneClass = subtle
     ? "rounded bg-base-300/80 px-1 py-0.5 text-[11px] text-base-content/65"
-    : "rounded bg-base-300 px-1 py-0.5 text-[11px] text-success";
+    : "rounded bg-base-300 px-1 py-0.5 text-[11px] text-primary";
   const blockCodeToneClass = subtle
     ? "block overflow-x-auto rounded-lg bg-base-300/80 px-3 py-2 text-[11px] text-base-content/65"
-    : "block overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-[11px] text-success";
+    : "block overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-[11px] text-primary";
 
   return (
     <Markdown

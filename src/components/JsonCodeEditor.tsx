@@ -54,6 +54,7 @@ const jsonEditorTheme = EditorView.theme({
     padding: "12px 12px 20px 0",
     caretColor: "oklch(var(--bc))",
     outline: "none",
+    position: "relative",
   },
   ".cm-line": {
     padding: 0,
@@ -72,26 +73,26 @@ const jsonEditorTheme = EditorView.theme({
     lineHeight: "1.7",
   },
   ".cm-activeLine": {
-    backgroundColor: "color-mix(in oklab, var(--color-primary) 8%, transparent)",
+    backgroundColor: "var(--neordm-editor-active-line)",
   },
   ".cm-activeLineGutter": {
     backgroundColor: "transparent",
-    color: "var(--color-primary)",
+    color: "var(--neordm-editor-active-gutter)",
   },
   ".cm-cursor, .cm-dropCursor": {
     borderLeftColor: "oklch(var(--bc))",
   },
   ".cm-selectionBackground, ::selection": {
-    backgroundColor: "color-mix(in oklab, var(--color-primary) 20%, transparent)",
+    backgroundColor: "var(--neordm-editor-selection)",
   },
 });
 
 const jsonSyntaxTheme = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: t.propertyName, color: "var(--color-primary)" },
-    { tag: t.string, color: "oklch(var(--bc) / 0.84)" },
-    { tag: [t.number, t.bool], color: "var(--color-success)" },
-    { tag: t.null, color: "var(--color-error)" },
+    { tag: t.propertyName, color: "var(--neordm-syntax-key)" },
+    { tag: t.string, color: "var(--neordm-syntax-string)" },
+    { tag: [t.number, t.bool], color: "var(--neordm-syntax-number)" },
+    { tag: t.null, color: "var(--neordm-syntax-null)" },
     {
       tag: [t.separator, t.brace, t.squareBracket],
       color: "oklch(var(--bc) / 0.34)",

@@ -133,7 +133,7 @@ const TYPE_CONFIG: Record<
   json: {
     icon: <Braces size={11} />,
     label: "json",
-    badge: "badge-success",
+    badge: "badge-primary",
   },
 };
 
@@ -1586,7 +1586,7 @@ function KeyRow({
           flex h-8 items-center gap-2 w-full px-3 py-1.5 text-left transition-colors duration-150
           ${
             isSelected
-              ? "bg-success/10 text-success"
+              ? "bg-primary/10 text-primary"
               : "bg-base-100/40 text-base-content/80"
           }
         `}
@@ -1594,7 +1594,7 @@ function KeyRow({
       >
         <span
           className={`shrink-0 ${
-            isSelected ? "text-success" : "text-base-content/30"
+            isSelected ? "text-primary" : "text-base-content/30"
           }`}
         >
           {cfg.icon}
@@ -1655,7 +1655,7 @@ function KeyRow({
         flex h-8 items-center gap-2 w-full px-3 py-1.5 cursor-pointer transition-colors duration-150 text-left
         ${
           isSelected
-            ? "bg-success/10 text-success"
+            ? "bg-primary/10 text-primary"
             : "hover:bg-base-100/40 text-base-content/70 hover:text-base-content"
         }
       `}
@@ -1663,7 +1663,7 @@ function KeyRow({
     >
       <span
         className={`shrink-0 ${
-          isSelected ? "text-success" : "text-base-content/30"
+          isSelected ? "text-primary" : "text-base-content/30"
         }`}
       >
         {cfg.icon}

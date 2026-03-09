@@ -253,7 +253,7 @@ export function SettingsAISection() {
           <button
             type="button"
             onClick={handleSave}
-            className="btn btn-success btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
+            className="btn btn-primary btn-xs h-8 min-h-8 gap-1.5 cursor-pointer font-mono"
           >
             <Check size={12} /> {ai.saveApiKey}
           </button>
@@ -494,7 +494,7 @@ function SettingsToggle({
       type="checkbox"
       checked={checked}
       onChange={(event) => onChange(event.target.checked)}
-      className="toggle toggle-xs toggle-success cursor-pointer"
+      className="toggle toggle-xs toggle-primary cursor-pointer"
     />
   );
 }

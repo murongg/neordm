@@ -250,7 +250,7 @@ export function RedisCLI({
                   }}
                   className={`shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-mono transition-colors ${
                     index === 0
-                      ? "border-success/40 bg-success/10 text-success"
+                      ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-base-200/70 bg-base-200/40 text-base-content/45 hover:text-base-content/70"
                   }`}
                 >
@@ -308,7 +308,7 @@ export function RedisCLI({
             </div>
           )}
           <div className="flex items-center gap-2 bg-base-200 rounded-xl px-3 py-2">
-            <span className="shrink-0 text-success">›</span>
+            <span className="shrink-0 text-primary">›</span>
             <input
               ref={inputRef}
               type="text"
@@ -321,7 +321,7 @@ export function RedisCLI({
               }}
               onKeyDown={handleKeyDown}
               placeholder={messages.cli.placeholder}
-              className="flex-1 bg-transparent outline-none font-mono text-xs text-base-content user-select-text caret-success"
+              className="flex-1 bg-transparent outline-none font-mono text-xs text-base-content user-select-text caret-primary"
               spellCheck={false}
               autoComplete="off"
               autoCorrect="off"
@@ -385,7 +385,7 @@ function CliLine({
     return (
       <div className="flex items-start gap-2 py-0.5">
         {showTimestamps ? <CliTimestamp entry={entry} /> : null}
-        <span className="shrink-0 font-mono text-success">
+        <span className="shrink-0 font-mono text-primary">
           {entry.promptLabel ?? "redis>"}
         </span>
         <CliCommandText

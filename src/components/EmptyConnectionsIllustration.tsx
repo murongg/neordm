@@ -38,19 +38,19 @@ export function EmptyConnectionsIllustration() {
         cy="72"
         r="8"
         fill="currentColor"
-        className="text-success/15"
+        className="text-primary/15"
       />
       <circle
         cx="214"
         cy="118"
         r="11"
         fill="currentColor"
-        className="text-success/10"
+        className="text-primary/10"
       />
       <path
         d="M28 72C52 72 62 72 76 72"
         stroke="currentColor"
-        className="text-success/45"
+        className="text-primary/45"
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray="5 6"
@@ -58,7 +58,7 @@ export function EmptyConnectionsIllustration() {
       <path
         d="M160 112C182 112 192 118 214 118"
         stroke="currentColor"
-        className="text-success/35"
+        className="text-primary/35"
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeDasharray="5 6"
@@ -70,19 +70,19 @@ export function EmptyConnectionsIllustration() {
         height="40"
         rx="14"
         fill="currentColor"
-        className="text-success/12"
+        className="text-primary/12"
       />
       <path
         d="M66 76H82"
         stroke="currentColor"
-        className="text-success/80"
+        className="text-primary/80"
         strokeWidth="5"
         strokeLinecap="round"
       />
       <path
         d="M74 68V84"
         stroke="currentColor"
-        className="text-success/80"
+        className="text-primary/80"
         strokeWidth="5"
         strokeLinecap="round"
       />
@@ -129,7 +129,7 @@ export function EmptyConnectionsIllustration() {
         height="10"
         rx="5"
         fill="currentColor"
-        className="text-success/15"
+        className="text-primary/15"
       />
     </svg>
   );

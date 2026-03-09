@@ -585,8 +585,8 @@ export function Sidebar({
           }`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-success/20">
-              <Database size={15} className="text-success" />
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/20">
+              <Database size={15} className="text-primary" />
             </div>
             {!isCollapsed ? (
               <span className="truncate text-[11px] font-mono uppercase tracking-[0.18em] text-base-content/50">
@@ -726,7 +726,7 @@ export function Sidebar({
             }
           }}
           onBlur={hideSidebarTooltip}
-          className={`rounded-xl border border-dashed border-base-content/20 text-base-content/30 transition-all duration-200 hover:border-success/50 hover:bg-base-100/50 hover:text-success cursor-pointer ${
+          className={`rounded-xl border border-dashed border-base-content/20 text-base-content/30 transition-all duration-200 hover:border-primary/50 hover:bg-base-100/50 hover:text-primary cursor-pointer ${
             isCollapsed
               ? "flex h-9 w-9 items-center justify-center"
               : "mt-1 flex h-10 w-full items-center gap-3 px-3"
@@ -853,7 +853,7 @@ export function Sidebar({
               : "flex h-10 w-full items-center gap-3 px-3"
           } ${
             panelTab === "cli"
-              ? "bg-success/18 text-success"
+              ? "bg-primary/18 text-primary"
               : "text-base-content/42 hover:bg-base-100/50 hover:text-base-content"
           }`}
           aria-label={messages.sidebar.cli}
@@ -888,7 +888,7 @@ export function Sidebar({
               : "flex h-10 w-full items-center gap-3 px-3"
           } ${
             panelTab === "ai"
-              ? "bg-success/18 text-success"
+              ? "bg-primary/18 text-primary"
               : "text-base-content/42 hover:bg-base-100/50 hover:text-base-content"
           }`}
           aria-label={messages.sidebar.aiAgent}

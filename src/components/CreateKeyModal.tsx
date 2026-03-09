@@ -442,7 +442,7 @@ export function CreateKeyModal({
       >
         <div className="flex items-center justify-between border-b border-base-content/10 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Database size={15} className="text-success" />
+            <Database size={15} className="text-primary" />
             <div>
               <h2 className="text-sm font-semibold font-mono">
                 {messages.keyBrowser.createTitle}
@@ -791,7 +791,7 @@ export function CreateKeyModal({
                 void handleSubmit();
               }}
               disabled={isSaving}
-              className="btn btn-success btn-sm h-9 min-h-9 px-4 font-mono"
+              className="btn btn-primary btn-sm h-9 min-h-9 px-4 font-mono"
             >
               {isSaving
                 ? messages.keyBrowser.creating

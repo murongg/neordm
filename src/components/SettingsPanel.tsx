@@ -59,8 +59,61 @@ const LazySettingsAISection = lazy(async () => ({
   default: (await import("./SettingsAISection")).SettingsAISection,
 }));
 
+type ThemePreviewTheme = "light" | "night";
+
 function AISettingsFallback() {
   return <div className="h-24 rounded-xl bg-base-300/40" />;
+}
+
+function ThemePreviewCanvas() {
+  return (
+    <>
+      <div className="absolute inset-y-0 left-0 w-[18px] bg-base-200" />
+      <div className="absolute left-1 top-2 h-2.5 w-2.5 rounded-[2px] bg-primary/20" />
+      <div className="absolute left-[5px] top-[9px] h-1.5 w-1.5 rounded-full bg-primary" />
+      <div className="absolute left-1 top-[22px] h-0.5 w-2.5 rounded-full bg-base-300" />
+      <div className="absolute left-1 top-[26px] h-0.5 w-2 rounded-full bg-base-200" />
+      <div className="absolute left-1 top-[30px] h-0.5 w-2.5 rounded-full bg-base-300" />
+      <div className="absolute left-1 top-[34px] h-0.5 w-1.75 rounded-full bg-base-200" />
+      <div className="absolute left-[22px] top-[6px] h-1.5 w-[34px] rounded-[2px] bg-base-200" />
+      <div className="absolute left-[22px] top-[16px] h-[3px] w-[50px] rounded-full bg-base-200" />
+      <div className="absolute left-[22px] top-[21px] h-[3px] w-[44px] rounded-full bg-base-200" />
+      <div className="absolute left-[22px] top-[26px] h-[3px] w-[48px] rounded-full bg-base-200" />
+      <div className="absolute left-[22px] top-[6px] h-1.5 w-2.5 rounded-[2px] bg-primary" />
+    </>
+  );
+}
+
+function ThemePreviewSurface({ theme }: { theme: ThemePreviewTheme }) {
+  return (
+    <div
+      data-theme={theme}
+      className="relative h-full w-full overflow-hidden bg-base-100"
+    >
+      <ThemePreviewCanvas />
+    </div>
+  );
+}
+
+function ThemePreview({
+  mode,
+}: {
+  mode: ThemeMode;
+}) {
+  if (mode === "system") {
+    return (
+      <div className="relative h-full w-full overflow-hidden">
+        <div className="absolute inset-y-0 left-0 w-1/2 border-r border-base-content/8">
+          <ThemePreviewSurface theme="light" />
+        </div>
+        <div className="absolute inset-y-0 right-0 w-1/2">
+          <ThemePreviewSurface theme="night" />
+        </div>
+      </div>
+    );
+  }
+
+  return <ThemePreviewSurface theme={mode === "dark" ? "night" : "light"} />;
 }
 
 export function SettingsPanel({
@@ -111,17 +164,17 @@ export function SettingsPanel({
                     transition-colors duration-150 text-left
                     ${
                       category === c.id
-                        ? "bg-success/10 text-success"
+                        ? "bg-primary/10 text-primary"
                         : "text-base-content/50 hover:bg-base-content/5 hover:text-base-content"
                     }
                   `}
                 >
-                  <span className={category === c.id ? "text-success" : "text-base-content/30"}>
+                  <span className={category === c.id ? "text-primary" : "text-base-content/30"}>
                     {c.icon}
                   </span>
                   {c.label}
                   {category === c.id && (
-                    <span className="ml-auto w-1 h-4 rounded-full bg-success" />
+                    <span className="ml-auto w-1 h-4 rounded-full bg-primary" />
                   )}
                 </button>
               </li>
@@ -227,7 +280,7 @@ function Toggle({
       type="checkbox"
       checked={checked}
       onChange={(e) => onChange(e.target.checked)}
-      className="toggle toggle-xs toggle-success cursor-pointer"
+      className="toggle toggle-xs toggle-primary cursor-pointer"
     />
   );
 }
@@ -438,85 +491,24 @@ function GeneralSettings({
 
 function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: ThemeMode) => void }) {
   const { messages } = useI18n();
-  const options: { mode: ThemeMode; label: string; preview: React.ReactNode }[] = [
+  const options: { mode: ThemeMode; label: string }[] = [
     {
       mode: "light",
       label: messages.settings.appearance.themes.light,
-      preview: (
-        <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          <rect width="80" height="52" rx="4" fill="#f0f4f8" />
-          <rect width="18" height="52" fill="#e2e8f0" />
-          <rect x="4" y="8" width="10" height="10" rx="2" fill="#059669" fillOpacity="0.2" />
-          <circle cx="9" cy="13" r="3" fill="#059669" />
-          <rect x="4" y="22" width="10" height="2" rx="1" fill="#cbd5e1" />
-          <rect x="4" y="26" width="8" height="2" rx="1" fill="#e2e8f0" />
-          <rect x="4" y="30" width="10" height="2" rx="1" fill="#cbd5e1" />
-          <rect x="4" y="34" width="7" height="2" rx="1" fill="#e2e8f0" />
-          <rect x="22" y="6" width="34" height="6" rx="2" fill="#e2e8f0" />
-          <rect x="22" y="16" width="50" height="3" rx="1" fill="#e2e8f0" />
-          <rect x="22" y="21" width="44" height="3" rx="1" fill="#e2e8f0" />
-          <rect x="22" y="26" width="48" height="3" rx="1" fill="#e2e8f0" />
-          <rect x="22" y="6" width="10" height="6" rx="2" fill="#059669" />
-        </svg>
-      ),
     },
     {
       mode: "dark",
       label: messages.settings.appearance.themes.dark,
-      preview: (
-        <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          <rect width="80" height="52" rx="4" fill="#0f172a" />
-          <rect width="18" height="52" fill="#1e293b" />
-          <rect x="4" y="8" width="10" height="10" rx="2" fill="#22c55e" fillOpacity="0.2" />
-          <circle cx="9" cy="13" r="3" fill="#22c55e" />
-          <rect x="4" y="22" width="10" height="2" rx="1" fill="#334155" />
-          <rect x="4" y="26" width="8" height="2" rx="1" fill="#1e293b" />
-          <rect x="4" y="30" width="10" height="2" rx="1" fill="#334155" />
-          <rect x="4" y="34" width="7" height="2" rx="1" fill="#1e293b" />
-          <rect x="22" y="6" width="34" height="6" rx="2" fill="#1e293b" />
-          <rect x="22" y="16" width="50" height="3" rx="1" fill="#1e293b" />
-          <rect x="22" y="21" width="44" height="3" rx="1" fill="#1e293b" />
-          <rect x="22" y="26" width="48" height="3" rx="1" fill="#1e293b" />
-          <rect x="22" y="6" width="10" height="6" rx="2" fill="#22c55e" />
-        </svg>
-      ),
     },
     {
       mode: "system",
       label: messages.settings.appearance.themes.system,
-      preview: (
-        <svg viewBox="0 0 80 52" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          <defs>
-            <clipPath id="cp-light"><polygon points="0,0 80,0 0,52" /></clipPath>
-            <clipPath id="cp-dark"><polygon points="80,0 80,52 0,52" /></clipPath>
-          </defs>
-          <g clipPath="url(#cp-light)">
-            <rect width="80" height="52" rx="4" fill="#f0f4f8" />
-            <rect width="18" height="52" fill="#e2e8f0" />
-            <rect x="4" y="8" width="10" height="10" rx="2" fill="#4f8ef7" fillOpacity="0.2" />
-            <circle cx="9" cy="13" r="3" fill="#4f8ef7" />
-            <rect x="22" y="6" width="34" height="6" rx="2" fill="#e2e8f0" />
-            <rect x="22" y="16" width="50" height="3" rx="1" fill="#e2e8f0" />
-            <rect x="22" y="21" width="44" height="3" rx="1" fill="#e2e8f0" />
-          </g>
-          <g clipPath="url(#cp-dark)">
-            <rect width="80" height="52" rx="4" fill="#0f172a" />
-            <rect width="18" height="52" fill="#1e293b" />
-            <rect x="4" y="8" width="10" height="10" rx="2" fill="#22c55e" fillOpacity="0.2" />
-            <circle cx="9" cy="13" r="3" fill="#22c55e" />
-            <rect x="22" y="6" width="34" height="6" rx="2" fill="#1e293b" />
-            <rect x="22" y="16" width="50" height="3" rx="1" fill="#1e293b" />
-            <rect x="22" y="21" width="44" height="3" rx="1" fill="#1e293b" />
-          </g>
-          <line x1="80" y1="0" x2="0" y2="52" stroke="#475569" strokeWidth="0.75" />
-        </svg>
-      ),
     },
   ];
 
   return (
     <div className="flex gap-3">
-      {options.map(({ mode, label, preview }) => {
+      {options.map(({ mode, label }) => {
         const active = value === mode;
         return (
           <button
@@ -525,13 +517,13 @@ function ThemePicker({ value, onChange }: { value: ThemeMode; onChange: (m: Them
             className={`
               flex-1 flex flex-col cursor-pointer rounded-xl overflow-hidden
               border-2 transition-all duration-200
-              ${active ? "border-success shadow-lg shadow-success/10" : "border-base-content/10 hover:border-base-content/25"}
+              ${active ? "border-primary shadow-lg shadow-primary/10" : "border-base-content/10 hover:border-base-content/25"}
             `}
           >
             <div className="w-full aspect-[80/52] overflow-hidden bg-base-300">
-              {preview}
+              <ThemePreview mode={mode} />
             </div>
-            <div className={`flex items-center justify-between px-2.5 py-1.5 ${active ? "text-success" : "text-base-content/50"}`}>
+            <div className={`flex items-center justify-between px-2.5 py-1.5 ${active ? "text-primary" : "text-base-content/50"}`}>
               <span className="text-xs font-mono">{label}</span>
               {active && <Check size={11} />}
             </div>
@@ -585,7 +577,7 @@ function AppearanceSettings({
                   fontSize: e.target.value,
                 }))
               }
-              className="range range-xs range-success w-24 cursor-pointer"
+              className="range range-xs range-primary w-24 cursor-pointer"
             />
             <span className="text-xs font-mono text-base-content/50 w-6">
               {appearanceSettings.fontSize}

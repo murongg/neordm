@@ -289,7 +289,7 @@ export function ValueEditor({
                 autoFocus
               />
               <button
-                className="btn btn-ghost btn-xs text-success cursor-pointer"
+                className="btn btn-ghost btn-xs text-primary cursor-pointer"
                 onClick={() => void handleSaveTtl()}
                 disabled={isUpdatingTTL}
               >
@@ -519,7 +519,7 @@ function StringViewer({
           <button
             onClick={() => void handleSave()}
             disabled={isSaving}
-            className="btn btn-success btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+            className="btn btn-primary btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
           >
             {isSaving ? (
               <LoaderCircle size={13} className="animate-spin" />
@@ -632,7 +632,7 @@ function JsonEditorViewer({
           type="button"
           onClick={() => void handleSave()}
           disabled={!onSave || !!error || isSaving}
-          className="btn btn-success btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+          className="btn btn-primary btn-sm gap-1.5 cursor-pointer disabled:cursor-not-allowed"
         >
           {isSaving ? (
             <LoaderCircle size={13} className="animate-spin" />
@@ -997,7 +997,7 @@ function HashViewer({
                 <td className="max-w-0 align-top">
                   <CopyableCellValue
                     displayValue={field}
-                    className="text-success"
+                    className="text-primary"
                     onCopy={onCopy}
                   />
                 </td>
@@ -1235,7 +1235,7 @@ function ZSetViewer({
                   <CopyableCellValue
                     displayValue={item.score.toLocaleString()}
                     copyValue={String(item.score)}
-                    className="text-right whitespace-nowrap text-success"
+                    className="text-right whitespace-nowrap text-primary"
                     onCopy={onCopy}
                   />
                 </td>
@@ -1369,17 +1369,17 @@ function JsonHighlight({ code }: { code: string }) {
     (match: string) => {
       if (/^"/.test(match)) {
         if (/:$/.test(match)) {
-          return `<span style="color:var(--color-primary)">${match}</span>`;
+          return `<span style="color:var(--neordm-syntax-key)">${match}</span>`;
         }
-        return `<span style="color:oklch(var(--bc) / 0.84)">${match}</span>`;
+        return `<span style="color:var(--neordm-syntax-string)">${match}</span>`;
       }
       if (/true|false/.test(match)) {
-        return `<span style="color:var(--color-success)">${match}</span>`;
+        return `<span style="color:var(--neordm-syntax-number)">${match}</span>`;
       }
       if (/null/.test(match)) {
-        return `<span style="color:var(--color-error)">${match}</span>`;
+        return `<span style="color:var(--neordm-syntax-null)">${match}</span>`;
       }
-      return `<span style="color:var(--color-success)">${match}</span>`;
+      return `<span style="color:var(--neordm-syntax-number)">${match}</span>`;
     }
   );
 
@@ -1398,7 +1398,7 @@ const TYPE_BADGE: Record<string, string> = {
   set: "badge-warning",
   zset: "badge-error",
   stream: "badge-primary",
-  json: "badge-success",
+  json: "badge-primary",
 };
 
 function formatTTL(ttl: number, units: TtlUnits): string {
@@ -1557,7 +1557,7 @@ function RowEditDrawerShell({
                 });
               }}
               disabled={isSaving}
-              className="btn btn-success btn-sm gap-1.5 cursor-pointer font-mono"
+              className="btn btn-primary btn-sm gap-1.5 cursor-pointer font-mono"
             >
               {isSaving ? <LoaderCircle size={13} className="animate-spin" /> : <Save size={13} />}
               {messages.common.save}

@@ -345,7 +345,7 @@ export function ConnectionModal({
                   type="checkbox"
                   checked={form.tls}
                   onChange={(e) => update("tls", e.target.checked)}
-                  className="toggle toggle-sm toggle-success cursor-pointer"
+                  className="toggle toggle-sm toggle-primary cursor-pointer"
                 />
                 <span className="text-xs font-mono text-base-content/70">
                   {messages.connectionModal.tls}
@@ -386,7 +386,7 @@ export function ConnectionModal({
           <button
             onClick={handleSave}
             disabled={isTesting || isSaving}
-            className="btn btn-success btn-sm cursor-pointer font-mono"
+            className="btn btn-primary btn-sm cursor-pointer font-mono"
           >
             {isSaving ? (
               <span className="flex items-center gap-1.5">
