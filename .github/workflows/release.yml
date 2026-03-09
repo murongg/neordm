@@ -1,4 +1,4 @@
-name: Build Tauri Apps
+name: Release
 
 on:
   workflow_dispatch:
@@ -153,6 +153,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Determine changelog range
+        id: changelog_range
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREVIOUS_TAG="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
+
+          if [[ -n "${PREVIOUS_TAG}" ]]; then
+            echo "from_ref=${PREVIOUS_TAG}" >> "${GITHUB_OUTPUT}"
+          else
+            FIRST_COMMIT="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+            echo "from_ref=${FIRST_COMMIT}" >> "${GITHUB_OUTPUT}"
+          fi
+
+          echo "to_ref=${CURRENT_TAG}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate release changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npx changelogen@latest \
+            --from "${{ steps.changelog_range.outputs.from_ref }}" \
+            --to "${{ steps.changelog_range.outputs.to_ref }}" \
+            --no-output \
+            > release-notes.md
+
       - name: Download bundled artifacts
         uses: actions/download-artifact@v4
         with:
@@ -178,7 +217,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: NeoRDM ${{ github.ref_name }}
-          body: Automated build from GitHub Actions.
+          body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
           overwrite_files: true
