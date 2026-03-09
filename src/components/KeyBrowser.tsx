@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   Search,
+  Copy,
   RefreshCw,
   Plus,
   ChevronDown,
@@ -121,6 +122,10 @@ interface KeyContextMenuState {
 
 function getChildKeyPrefix(groupId: string, separator: string) {
   return separator ? `${groupId}${separator}` : `${groupId}`;
+}
+
+function getContextMenuCopyValue(target: ContextMenuTarget) {
+  return target.kind === "group" ? target.group.id : target.redisKey.key;
 }
 
 const TYPE_CONFIG: Record<
@@ -1455,6 +1460,29 @@ export function KeyBrowser({
     closeKeyContextMenu();
     openCreateForm(initialKeyName);
   }, [closeKeyContextMenu, keySeparator, openCreateForm, renderedKeyContextMenu]);
+  const handleCopyFromContextMenu = useCallback(async () => {
+    if (!renderedKeyContextMenu) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        getContextMenuCopyValue(renderedKeyContextMenu.target)
+      );
+      closeKeyContextMenu();
+      showToast({
+        message: messages.common.copied,
+        tone: "success",
+      });
+    } catch (error) {
+      showToast({
+        message:
+          error instanceof Error ? error.message : getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    }
+  }, [closeKeyContextMenu, messages.common.copied, renderedKeyContextMenu, showToast]);
 
   const activeSelectedKeyName =
     editingKeyName ?? pendingSelectedKeyName ?? selectedKey?.key ?? null;
@@ -1655,7 +1683,12 @@ export function KeyBrowser({
             left: renderedKeyContextMenu.x,
             top: renderedKeyContextMenu.y,
           }}
-          className={`fixed z-[70] w-44 max-w-[calc(100vw-1rem)] rounded-xl border border-base-content/10 bg-base-200/95 p-1 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] backdrop-blur-xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+          className={`fixed z-[70] max-w-[calc(100vw-1rem)] rounded-xl border border-base-content/10 bg-base-200/95 p-1 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] backdrop-blur-xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+            confirmingContextTargetId ===
+            getContextMenuTargetId(renderedKeyContextMenu.target)
+              ? "w-44"
+              : "w-11"
+          } ${
             isKeyContextMenuVisible
               ? "translate-y-0 scale-100 opacity-100"
               : "-translate-y-1 scale-95 opacity-0 pointer-events-none"
@@ -1712,47 +1745,58 @@ export function KeyBrowser({
               </div>
             </div>
           ) : (
-            <div className="flex flex-col gap-0.5">
+            <div className="flex flex-col items-center gap-0.5">
               {renderedKeyContextMenu.target.kind === "group" ? (
                 <>
+                  <button
+                    role="menuitem"
+                    onClick={handleCreateChildKeyFromContextMenu}
+                    aria-label={messages.keyBrowser.create}
+                    title={`${messages.keyBrowser.create} · ${getChildKeyPrefix(
+                      renderedKeyContextMenu.target.group.id,
+                      keySeparator
+                    )}`}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Plus size={12} />
+                    </span>
+                  </button>
                   <button
                     role="menuitem"
                     onClick={() => {
                       void handleRefreshFromContextMenu();
                     }}
                     disabled={isRefreshing}
-                    title={`DB ${selectedDb}`}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100/80 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-label={messages.common.refresh}
+                    title={`${messages.common.refresh} · DB ${selectedDb}`}
+                    className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
                       <RefreshCw
-                        size={11}
+                        size={12}
                         className={isRefreshing ? "animate-spin" : ""}
                       />
                     </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{messages.common.refresh}</span>
-                    </span>
                   </button>
-                  <button
-                    role="menuitem"
-                    onClick={handleCreateChildKeyFromContextMenu}
-                    title={getChildKeyPrefix(
-                      renderedKeyContextMenu.target.group.id,
-                      keySeparator
-                    )}
-                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
-                  >
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Plus size={11} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate">{messages.keyBrowser.create}</span>
-                    </span>
-                  </button>
-                  <div className="mx-0.5 h-px bg-base-content/6" />
                 </>
               ) : null}
+              <button
+                role="menuitem"
+                onClick={() => {
+                  void handleCopyFromContextMenu();
+                }}
+                aria-label={messages.common.copy}
+                title={`${messages.common.copy} · ${getContextMenuCopyValue(
+                  renderedKeyContextMenu.target
+                )}`}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                  <Copy size={12} />
+                </span>
+              </button>
+              <div className="my-0.5 h-px w-7 bg-base-content/6" />
               <button
                 role="menuitem"
                 onClick={() => {
@@ -1763,21 +1807,25 @@ export function KeyBrowser({
                   getContextMenuTargetId(renderedKeyContextMenu.target)
                 }
                 title={
-                  renderedKeyContextMenu.target.kind === "group"
-                    ? renderedKeyContextMenu.target.group.id
-                    : renderedKeyContextMenu.target.redisKey.key
-                }
-                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-error transition-colors duration-150 hover:bg-error/8 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-error/10">
-                  <Trash2 size={11} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">
-                    {renderedKeyContextMenu.target.kind === "group"
+                  `${
+                    renderedKeyContextMenu.target.kind === "group"
                       ? messages.common.delete
-                      : messages.valueEditor.deleteKey}
-                  </span>
+                      : messages.valueEditor.deleteKey
+                  } · ${
+                    renderedKeyContextMenu.target.kind === "group"
+                      ? renderedKeyContextMenu.target.group.id
+                      : renderedKeyContextMenu.target.redisKey.key
+                  }`
+                }
+                aria-label={
+                  renderedKeyContextMenu.target.kind === "group"
+                    ? messages.common.delete
+                    : messages.valueEditor.deleteKey
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/8 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-error/10">
+                  <Trash2 size={12} />
                 </span>
               </button>
             </div>

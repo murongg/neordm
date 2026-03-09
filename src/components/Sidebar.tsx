@@ -744,7 +744,9 @@ export function Sidebar({
           ref={contextMenuRef}
           role="menu"
           style={{ left: renderedContextMenu.x, top: renderedContextMenu.y }}
-          className={`fixed z-[70] min-w-36 rounded-xl border border-base-content/10 bg-base-200 p-1.5 shadow-2xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+          className={`fixed z-[70] rounded-xl border border-base-content/10 bg-base-200 p-1 shadow-2xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+            isConfirmingDelete ? "w-40" : "w-11"
+          } ${
             isContextMenuVisible
               ? "translate-y-0 scale-100 opacity-100"
               : "-translate-y-1 scale-95 opacity-0 pointer-events-none"
@@ -757,10 +759,11 @@ export function Sidebar({
               onEditConnection(contextConnection.id);
               closeContextMenu();
             }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
+            aria-label={messages.common.edit}
+            title={`${messages.common.edit} · ${contextConnection.name}`}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
           >
             <Pencil size={12} />
-            {messages.common.edit}
           </button>
 
           {!isConfirmingDelete ? (
@@ -775,10 +778,11 @@ export function Sidebar({
 
                 setConfirmingDeleteId(contextConnection.id);
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono text-error transition-colors duration-150 hover:bg-error/10 cursor-pointer"
+              aria-label={messages.common.delete}
+              title={`${messages.common.delete} · ${contextConnection.name}`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/10 cursor-pointer"
             >
               <Trash2 size={12} />
-              {messages.common.delete}
             </button>
           ) : (
             <div className="mt-1 rounded-lg bg-error/8 px-2.5 py-2">
@@ -814,10 +818,11 @@ export function Sidebar({
                 onDisconnectConnection(contextConnection.id);
                 closeContextMenu();
               }}
-              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
+              aria-label={messages.common.disconnect}
+              title={`${messages.common.disconnect} · ${contextConnection.name}`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
             >
               <WifiOff size={12} />
-              {messages.common.disconnect}
             </button>
           ) : null}
         </div>

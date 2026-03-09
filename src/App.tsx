@@ -113,6 +113,22 @@ function App() {
     document.documentElement.setAttribute("data-ui-animations", "enabled");
   }, []);
 
+  useEffect(() => {
+    if (!import.meta.env.PROD) {
+      return;
+    }
+
+    const handleContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    document.addEventListener("contextmenu", handleContextMenu, true);
+
+    return () => {
+      document.removeEventListener("contextmenu", handleContextMenu, true);
+    };
+  }, []);
+
   return (
     <ToastProvider>
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-300 text-base-content rounded-xl">
