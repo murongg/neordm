@@ -21,14 +21,14 @@ jobs:
             target: aarch64-apple-darwin
             asset_arch: aarch64
             updater_platform: darwin-aarch64
-            args: --target aarch64-apple-darwin --no-sign
+            args: --target aarch64-apple-darwin
           - name: macOS (Intel)
             artifact_name: macOS-intel
             os: macos-15-intel
             target: x86_64-apple-darwin
             asset_arch: x64
             updater_platform: darwin-x86_64
-            args: --target x86_64-apple-darwin --no-sign
+            args: --target x86_64-apple-darwin
           - name: Linux (x64)
             artifact_name: Linux-x64
             os: ubuntu-22.04
@@ -40,7 +40,7 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             updater_platform: windows-x86_64
-            args: --target x86_64-pc-windows-msvc --no-sign
+            args: --target x86_64-pc-windows-msvc
 
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
