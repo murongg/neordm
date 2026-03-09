@@ -81,6 +81,10 @@ function toConnectionInput(connection: RedisConnectionInvokeInput) {
   };
 }
 
+export function escapeRedisCommandArgument(value: string) {
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
 export function getRedisErrorMessage(error: unknown) {
   if (typeof error === "string") return error;
 
@@ -157,6 +161,37 @@ export async function runRedisCommand(
       command,
     },
   });
+}
+
+export async function deleteRedisKeys(
+  connection: RedisConnectionInvokeInput,
+  keys: string[]
+) {
+  const uniqueKeys = Array.from(
+    new Set(keys.map((key) => key.trim()).filter(Boolean))
+  );
+
+  if (!uniqueKeys.length) {
+    return;
+  }
+
+  const chunkSize = 256;
+
+  for (let index = 0; index < uniqueKeys.length; index += chunkSize) {
+    const chunk = uniqueKeys
+      .slice(index, index + chunkSize)
+      .map(escapeRedisCommandArgument)
+      .join(" ");
+
+    await runRedisCommand(connection, `DEL ${chunk}`);
+  }
+}
+
+export async function deleteRedisKey(
+  connection: RedisConnectionInvokeInput,
+  key: string
+) {
+  await deleteRedisKeys(connection, [key]);
 }
 
 export async function renameRedisKey(

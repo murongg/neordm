@@ -1,7 +1,9 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import {
+  deleteRedisKey,
   deleteRedisHashEntry,
   deleteRedisZSetEntry,
+  escapeRedisCommandArgument,
   runRedisCommand,
   updateRedisHashEntry,
   updateRedisJsonValue,
@@ -14,10 +16,6 @@ import {
   recordTelemetryEvent,
 } from "../lib/privacyRuntime";
 import type { KeyValue, RedisConnection } from "../types";
-
-function escapeRedisCommandArgument(value: string) {
-  return `'${value.replace(/'/g, "'\"'\"'")}'`;
-}
 
 interface UseRedisValueEditorStateOptions {
   activeConnection?: RedisConnection;
@@ -250,10 +248,7 @@ export function useRedisValueEditorState({
         throw new Error("Key name cannot be empty");
       }
 
-      await runRedisCommand(
-        { ...activeConnection, db: selectedDb },
-        `DEL ${escapeRedisCommandArgument(key)}`
-      );
+      await deleteRedisKey({ ...activeConnection, db: selectedDb }, key);
       void recordTelemetryEvent("editor.key.delete");
       void recordAuditEvent("editor.key.delete", {
         key,

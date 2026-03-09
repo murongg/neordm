@@ -199,7 +199,6 @@ export function Sidebar({
   onToggleCollapsed,
   onOpenSettings,
 }: SidebarProps) {
-  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [renderedContextMenu, setRenderedContextMenu] =
     useState<ContextMenuState | null>(null);
   const [isContextMenuVisible, setIsContextMenuVisible] = useState(false);
@@ -287,7 +286,6 @@ export function Sidebar({
 
   const closeContextMenu = useCallback(() => {
     setConfirmingDeleteId(null);
-    setContextMenu(null);
 
     if (!renderedContextMenu) return;
     if (contextMenuCloseTimerRef.current !== null) return;
@@ -464,10 +462,10 @@ export function Sidebar({
     };
   }, [activeConnectionId, isCollapsed, updateActiveIndicatorPosition]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
+  useLayoutEffect(() => {
+    if (!renderedContextMenu) return;
 
-    const handlePointerDown = (event: PointerEvent) => {
+    const handleMouseDown = (event: globalThis.MouseEvent) => {
       if (contextMenuRef.current?.contains(event.target as Node)) return;
       closeContextMenu();
     };
@@ -478,14 +476,14 @@ export function Sidebar({
       }
     };
 
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("keydown", handleKeyDown, true);
 
     return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleMouseDown, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [closeContextMenu, contextMenu]);
+  }, [closeContextMenu, renderedContextMenu]);
 
   useEffect(() => {
     return () => {
@@ -535,7 +533,6 @@ export function Sidebar({
     };
 
     setConfirmingDeleteId(null);
-    setContextMenu(nextContextMenu);
     setRenderedContextMenu(nextContextMenu);
 
     if (contextMenuCloseTimerRef.current !== null) {
@@ -660,7 +657,7 @@ export function Sidebar({
                   }}
                   onBlur={hideSidebarTooltip}
                   aria-haspopup="menu"
-                  aria-expanded={contextMenu?.connectionId === conn.id}
+                  aria-expanded={renderedContextMenu?.connectionId === conn.id}
                   className={`
                     relative flex items-center rounded-xl cursor-pointer
                     transition-[background-color,color,transform,box-shadow] duration-150

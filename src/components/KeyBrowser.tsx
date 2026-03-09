@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import {
   Search,
@@ -14,6 +15,7 @@ import {
   Plus,
   ChevronDown,
   LoaderCircle,
+  TriangleAlert,
   Hash,
   List,
   ListChevronsDownUp,
@@ -23,6 +25,7 @@ import {
   BarChart2,
   Radio,
   Braces,
+  Trash2,
 } from "lucide-react";
 import type { RedisConnection, RedisKey, RedisKeyType } from "../types";
 import { useI18n } from "../i18n";
@@ -32,6 +35,7 @@ import {
   type RedisKeyCreateInput,
 } from "../lib/redis";
 import { CreateKeyModal } from "./CreateKeyModal";
+import { useToast } from "./ToastProvider";
 
 interface KeyBrowserProps {
   connection?: RedisConnection;
@@ -40,6 +44,7 @@ interface KeyBrowserProps {
   isRefreshing: boolean;
   onRefresh: () => void;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
+  confirmBeforeDelete: boolean;
   defaultTtl: string;
   keySeparator: string;
   showKeyType: boolean;
@@ -47,6 +52,8 @@ interface KeyBrowserProps {
   keys: RedisKey[];
   selectedKey: RedisKey | null;
   onSelectKey: (key: RedisKey) => void;
+  onDeleteKey: (key: RedisKey) => Promise<void>;
+  onDeleteGroup: (groupId: string, separator: string) => Promise<number>;
   onRenameKey: (key: RedisKey, nextKeyName: string) => Promise<RedisKey | void>;
   onRenameGroup: (
     groupId: string,
@@ -95,6 +102,26 @@ type VisibleTreeRow =
 const KEY_BROWSER_REORDER_ANIMATION_LIMIT = 240;
 const KEY_BROWSER_ROW_HEIGHT = 32;
 const KEY_BROWSER_VIRTUAL_OVERSCAN = 10;
+
+type ContextMenuTarget =
+  | {
+      kind: "key";
+      redisKey: RedisKey;
+    }
+  | {
+      kind: "group";
+      group: KeyTreeGroupNode;
+    };
+
+interface KeyContextMenuState {
+  target: ContextMenuTarget;
+  x: number;
+  y: number;
+}
+
+function getChildKeyPrefix(groupId: string, separator: string) {
+  return separator ? `${groupId}${separator}` : `${groupId}`;
+}
 
 const TYPE_CONFIG: Record<
   RedisKeyType,
@@ -428,6 +455,12 @@ function getAncestorGroupIds(key: string, separator: string) {
   return groupIds;
 }
 
+function getContextMenuTargetId(target: ContextMenuTarget) {
+  return target.kind === "key"
+    ? `key:${target.redisKey.key}`
+    : `group:${target.group.id}`;
+}
+
 export function KeyBrowser({
   connection,
   selectedDb,
@@ -435,6 +468,7 @@ export function KeyBrowser({
   isRefreshing,
   onRefresh,
   onCreateKey,
+  confirmBeforeDelete,
   defaultTtl,
   keySeparator,
   showKeyType,
@@ -442,12 +476,15 @@ export function KeyBrowser({
   keys,
   selectedKey,
   onSelectKey,
+  onDeleteKey,
+  onDeleteGroup,
   onRenameKey,
   onRenameGroup,
   searchQuery,
   onSearchChange,
 }: KeyBrowserProps) {
   const { messages } = useI18n();
+  const { showToast } = useToast();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingKeyName, setEditingKeyName] = useState<string | null>(null);
@@ -458,6 +495,16 @@ export function KeyBrowser({
   const [renameError, setRenameError] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [createInitialKeyName, setCreateInitialKeyName] = useState("");
+  const [renderedKeyContextMenu, setRenderedKeyContextMenu] =
+    useState<KeyContextMenuState | null>(null);
+  const [isKeyContextMenuVisible, setIsKeyContextMenuVisible] = useState(false);
+  const [deletingContextTargetId, setDeletingContextTargetId] = useState<
+    string | null
+  >(null);
+  const [confirmingContextTargetId, setConfirmingContextTargetId] = useState<
+    string | null
+  >(null);
   const [groupMotionIds, setGroupMotionIds] = useState<Record<string, string>>(
     {}
   );
@@ -469,6 +516,9 @@ export function KeyBrowser({
   const pendingKeySelectTimerRef = useRef<number | null>(null);
   const scrollMetricsFrameRef = useRef<number | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const keyContextMenuRef = useRef<HTMLDivElement | null>(null);
+  const keyContextMenuEnterFrameRef = useRef<number | null>(null);
+  const keyContextMenuCloseTimerRef = useRef<number | null>(null);
   const pendingReorderAnimationRef = useRef(false);
   const pendingRenameKeysRef = useRef<{
     oldKey: string;
@@ -482,12 +532,31 @@ export function KeyBrowser({
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const closeCreateForm = useCallback(() => {
     setIsCreateOpen(false);
+    setCreateInitialKeyName("");
   }, []);
-  const openCreateForm = useCallback(() => {
+  const openCreateForm = useCallback((initialKeyName = "") => {
+    setCreateInitialKeyName(initialKeyName);
     setIsCreateOpen(true);
     setEditingGroupId(null);
     setEditingKeyName(null);
   }, []);
+  const closeKeyContextMenu = useCallback(() => {
+    setConfirmingContextTargetId(null);
+
+    if (!renderedKeyContextMenu) {
+      return;
+    }
+
+    if (keyContextMenuCloseTimerRef.current !== null) {
+      return;
+    }
+
+    setIsKeyContextMenuVisible(false);
+    keyContextMenuCloseTimerRef.current = window.setTimeout(() => {
+      keyContextMenuCloseTimerRef.current = null;
+      setRenderedKeyContextMenu(null);
+    }, 150);
+  }, [renderedKeyContextMenu]);
 
   const filtered = useMemo(() => {
     const q = deferredSearchQuery.replace(/\*/g, "").toLowerCase();
@@ -1125,6 +1194,34 @@ export function KeyBrowser({
     updateScrollMetrics();
   }, [totalRows, updateScrollMetrics]);
 
+  useLayoutEffect(() => {
+    if (!renderedKeyContextMenu) {
+      return;
+    }
+
+    const handleMouseDown = (event: MouseEvent) => {
+      if (keyContextMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      closeKeyContextMenu();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeKeyContextMenu();
+      }
+    };
+
+    document.addEventListener("mousedown", handleMouseDown, true);
+    window.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown, true);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeKeyContextMenu, renderedKeyContextMenu]);
+
   useEffect(() => {
     return () => {
       if (pendingKeySelectTimerRef.current) {
@@ -1139,8 +1236,37 @@ export function KeyBrowser({
         window.clearTimeout(timer);
       });
       motionCleanupTimersRef.current.clear();
+
+      if (keyContextMenuEnterFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyContextMenuEnterFrameRef.current);
+      }
+
+      if (keyContextMenuCloseTimerRef.current !== null) {
+        window.clearTimeout(keyContextMenuCloseTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!renderedKeyContextMenu) {
+      return;
+    }
+
+    const contextMenuTarget = renderedKeyContextMenu.target;
+
+    if (
+      contextMenuTarget.kind === "key" &&
+      keys.some((item) => item.key === contextMenuTarget.redisKey.key)
+    ) {
+      return;
+    }
+
+    if (contextMenuTarget.kind === "group" && hasGroupId(tree, contextMenuTarget.group.id)) {
+      return;
+    }
+
+    closeKeyContextMenu();
+  }, [closeKeyContextMenu, keys, renderedKeyContextMenu, tree]);
 
   useLayoutEffect(() => {
     if (!editingKeyName && !editingGroupId) return;
@@ -1171,6 +1297,164 @@ export function KeyBrowser({
     },
     [clearPendingKeySelection, editingKeyName, onSelectKey, selectedKey?.key]
   );
+  const openKeyContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLElement>, key: RedisKey) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const menuWidth = 176;
+      const menuHeight = 52;
+      const padding = 8;
+      const nextContextMenu = {
+        target: {
+          kind: "key" as const,
+          redisKey: key,
+        },
+        x: Math.max(
+          padding,
+          Math.min(event.clientX, window.innerWidth - menuWidth - padding)
+        ),
+        y: Math.max(
+          padding,
+          Math.min(event.clientY, window.innerHeight - menuHeight - padding)
+        ),
+      };
+
+      setEditingGroupId(null);
+      setEditingKeyName(null);
+      setConfirmingContextTargetId(null);
+      setRenderedKeyContextMenu(nextContextMenu);
+
+      if (keyContextMenuCloseTimerRef.current !== null) {
+        window.clearTimeout(keyContextMenuCloseTimerRef.current);
+        keyContextMenuCloseTimerRef.current = null;
+      }
+
+      if (keyContextMenuEnterFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyContextMenuEnterFrameRef.current);
+      }
+
+      setIsKeyContextMenuVisible(false);
+      keyContextMenuEnterFrameRef.current = window.requestAnimationFrame(() => {
+        keyContextMenuEnterFrameRef.current = null;
+        setIsKeyContextMenuVisible(true);
+      });
+    },
+    []
+  );
+  const openGroupContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLElement>, group: KeyTreeGroupNode) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const menuWidth = 200;
+      const menuHeight = 52;
+      const padding = 8;
+      const nextContextMenu = {
+        target: {
+          kind: "group" as const,
+          group,
+        },
+        x: Math.max(
+          padding,
+          Math.min(event.clientX, window.innerWidth - menuWidth - padding)
+        ),
+        y: Math.max(
+          padding,
+          Math.min(event.clientY, window.innerHeight - menuHeight - padding)
+        ),
+      };
+
+      setEditingGroupId(null);
+      setEditingKeyName(null);
+      setConfirmingContextTargetId(null);
+      setRenderedKeyContextMenu(nextContextMenu);
+
+      if (keyContextMenuCloseTimerRef.current !== null) {
+        window.clearTimeout(keyContextMenuCloseTimerRef.current);
+        keyContextMenuCloseTimerRef.current = null;
+      }
+
+      if (keyContextMenuEnterFrameRef.current !== null) {
+        window.cancelAnimationFrame(keyContextMenuEnterFrameRef.current);
+      }
+
+      setIsKeyContextMenuVisible(false);
+      keyContextMenuEnterFrameRef.current = window.requestAnimationFrame(() => {
+        keyContextMenuEnterFrameRef.current = null;
+        setIsKeyContextMenuVisible(true);
+      });
+    },
+    []
+  );
+  const handleDeleteFromContextMenu = useCallback(async () => {
+    const target = renderedKeyContextMenu?.target;
+    const targetId = target ? getContextMenuTargetId(target) : null;
+
+    if (!target || (targetId && deletingContextTargetId === targetId)) {
+      return;
+    }
+
+    if (confirmBeforeDelete && confirmingContextTargetId !== targetId) {
+      setConfirmingContextTargetId(targetId);
+      return;
+    }
+
+    setDeletingContextTargetId(targetId);
+
+    try {
+      if (target.kind === "key") {
+        await onDeleteKey(target.redisKey);
+      } else {
+        await onDeleteGroup(target.group.id, keySeparator);
+      }
+      closeKeyContextMenu();
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    } finally {
+      setDeletingContextTargetId(null);
+    }
+  }, [
+    closeKeyContextMenu,
+    confirmBeforeDelete,
+    confirmingContextTargetId,
+    deletingContextTargetId,
+    keySeparator,
+    onDeleteGroup,
+    onDeleteKey,
+    renderedKeyContextMenu,
+    showToast,
+  ]);
+  const handleRefreshFromContextMenu = useCallback(async () => {
+    closeKeyContextMenu();
+
+    try {
+      await onRefresh();
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    }
+  }, [closeKeyContextMenu, onRefresh, showToast]);
+  const handleCreateChildKeyFromContextMenu = useCallback(() => {
+    if (renderedKeyContextMenu?.target.kind !== "group") {
+      return;
+    }
+
+    const initialKeyName = getChildKeyPrefix(
+      renderedKeyContextMenu.target.group.id,
+      keySeparator
+    );
+
+    closeKeyContextMenu();
+    openCreateForm(initialKeyName);
+  }, [closeKeyContextMenu, keySeparator, openCreateForm, renderedKeyContextMenu]);
 
   const activeSelectedKeyName =
     editingKeyName ?? pendingSelectedKeyName ?? selectedKey?.key ?? null;
@@ -1197,7 +1481,7 @@ export function KeyBrowser({
           <div className="flex items-center gap-0.5">
             <button
               type="button"
-              onClick={openCreateForm}
+              onClick={() => openCreateForm()}
               disabled={!hasConnection}
               className={`btn btn-ghost btn-xs h-6 w-6 p-0 text-base-content/60 hover:bg-base-100/60 hover:text-base-content/90 ${
                 hasConnection
@@ -1315,6 +1599,9 @@ export function KeyBrowser({
                   onRenameDraftChange={handleRenameDraftChange}
                   onCancelRename={cancelRename}
                   onSubmitRename={() => submitGroupRename(row.group)}
+                  onContextMenu={(event) =>
+                    openGroupContextMenu(event, row.group)
+                  }
                 />
               ) : (
                 <MemoKeyRow
@@ -1335,6 +1622,9 @@ export function KeyBrowser({
                   onCancelRename={cancelRename}
                   onSubmitRename={() => submitRename(row.redisKey)}
                   onClick={() => handleKeyClick(row.redisKey)}
+                  onContextMenu={(event) =>
+                    openKeyContextMenu(event, row.redisKey)
+                  }
                   showKeyType={showKeyType}
                   showTtl={showTtl}
                   typeConfig={typeConfig}
@@ -1351,10 +1641,148 @@ export function KeyBrowser({
       {isCreateOpen ? (
         <CreateKeyModal
           defaultTtl={defaultTtl}
+          initialKeyName={createInitialKeyName}
           onClose={closeCreateForm}
           onCreateKey={onCreateKey}
           onCreated={handleCreatedKey}
         />
+      ) : null}
+      {renderedKeyContextMenu ? (
+        <div
+          ref={keyContextMenuRef}
+          role="menu"
+          style={{
+            left: renderedKeyContextMenu.x,
+            top: renderedKeyContextMenu.y,
+          }}
+          className={`fixed z-[70] w-44 max-w-[calc(100vw-1rem)] rounded-xl border border-base-content/10 bg-base-200/95 p-1 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] backdrop-blur-xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
+            isKeyContextMenuVisible
+              ? "translate-y-0 scale-100 opacity-100"
+              : "-translate-y-1 scale-95 opacity-0 pointer-events-none"
+          }`}
+        >
+          {confirmingContextTargetId ===
+          getContextMenuTargetId(renderedKeyContextMenu.target) ? (
+            <div className="rounded-lg border border-error/12 bg-base-100/70 px-2.5 py-2.5 shadow-sm">
+              <div className="flex items-center gap-1.5 text-[10px] font-mono text-error/80">
+                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-error/10">
+                  <TriangleAlert size={10} />
+                </span>
+                <span>
+                  {renderedKeyContextMenu.target.kind === "group"
+                    ? messages.common.delete
+                    : messages.valueEditor.deleteKey}
+                </span>
+              </div>
+              <p className="mt-1.5 truncate text-[11px] font-mono text-base-content/78">
+                {renderedKeyContextMenu.target.kind === "group"
+                  ? renderedKeyContextMenu.target.group.id
+                  : renderedKeyContextMenu.target.redisKey.key}
+              </p>
+              <p className="mt-0.5 text-[9px] font-mono leading-4 text-base-content/45">
+                {renderedKeyContextMenu.target.kind === "group"
+                  ? messages.app.status.keysCount.replace(
+                      "{count}",
+                      String(renderedKeyContextMenu.target.group.keyCount)
+                    )
+                  : messages.valueEditor.deleteKey}
+              </p>
+              <div className="mt-2 flex gap-1">
+                <button
+                  role="menuitem"
+                  onClick={() => setConfirmingContextTargetId(null)}
+                  className="flex h-7 flex-1 items-center justify-center rounded-lg border border-base-content/8 bg-base-200/80 px-2 text-[10px] font-mono text-base-content/70 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
+                >
+                  {messages.common.cancel}
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    void handleDeleteFromContextMenu();
+                  }}
+                  disabled={
+                    deletingContextTargetId ===
+                    getContextMenuTargetId(renderedKeyContextMenu.target)
+                  }
+                  className="flex h-7 flex-1 items-center justify-center gap-1 rounded-lg bg-error/12 px-2 text-[10px] font-mono text-error transition-colors duration-150 hover:bg-error/18 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Trash2 size={10} />
+                  {messages.common.delete}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-0.5">
+              {renderedKeyContextMenu.target.kind === "group" ? (
+                <>
+                  <button
+                    role="menuitem"
+                    onClick={() => {
+                      void handleRefreshFromContextMenu();
+                    }}
+                    disabled={isRefreshing}
+                    title={`DB ${selectedDb}`}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100/80 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                      <RefreshCw
+                        size={11}
+                        className={isRefreshing ? "animate-spin" : ""}
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{messages.common.refresh}</span>
+                    </span>
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={handleCreateChildKeyFromContextMenu}
+                    title={getChildKeyPrefix(
+                      renderedKeyContextMenu.target.group.id,
+                      keySeparator
+                    )}
+                    className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
+                  >
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <Plus size={11} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate">{messages.keyBrowser.create}</span>
+                    </span>
+                  </button>
+                  <div className="mx-0.5 h-px bg-base-content/6" />
+                </>
+              ) : null}
+              <button
+                role="menuitem"
+                onClick={() => {
+                  void handleDeleteFromContextMenu();
+                }}
+                disabled={
+                  deletingContextTargetId ===
+                  getContextMenuTargetId(renderedKeyContextMenu.target)
+                }
+                title={
+                  renderedKeyContextMenu.target.kind === "group"
+                    ? renderedKeyContextMenu.target.group.id
+                    : renderedKeyContextMenu.target.redisKey.key
+                }
+                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[11px] font-mono text-error transition-colors duration-150 hover:bg-error/8 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-error/10">
+                  <Trash2 size={11} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    {renderedKeyContextMenu.target.kind === "group"
+                      ? messages.common.delete
+                      : messages.valueEditor.deleteKey}
+                  </span>
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
       ) : null}
     </>
   );
@@ -1375,6 +1803,7 @@ function GroupRow({
   onRenameDraftChange,
   onCancelRename,
   onSubmitRename,
+  onContextMenu,
 }: {
   motionId: string;
   setMotionElement: (id: string, element: HTMLElement | null) => void;
@@ -1390,6 +1819,7 @@ function GroupRow({
   onRenameDraftChange: (value: string) => void;
   onCancelRename: () => void;
   onSubmitRename: () => Promise<void>;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
 }) {
   const isRowRenaming = isEditing && isRenaming;
   const countSlot = (
@@ -1494,6 +1924,7 @@ function GroupRow({
           event.stopPropagation();
           onStartRename();
         }}
+        onContextMenu={onContextMenu}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left cursor-pointer"
         title={group.id}
       >
@@ -1525,6 +1956,7 @@ function KeyRow({
   onCancelRename,
   onSubmitRename,
   onClick,
+  onContextMenu,
   showKeyType,
   showTtl,
   typeConfig,
@@ -1545,6 +1977,7 @@ function KeyRow({
   onCancelRename: () => void;
   onSubmitRename: () => Promise<void>;
   onClick: () => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   showKeyType: boolean;
   showTtl: boolean;
   typeConfig: typeof TYPE_CONFIG;
@@ -1650,6 +2083,7 @@ function KeyRow({
         event.stopPropagation();
         onStartRename();
       }}
+      onContextMenu={onContextMenu}
       title={redisKey.key}
       className={`
         flex h-8 items-center gap-2 w-full px-3 py-1.5 cursor-pointer transition-colors duration-150 text-left

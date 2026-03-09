@@ -27,6 +27,7 @@ const LazyJsonCodeEditor = lazy(() => import("./JsonCodeEditor"));
 
 interface CreateKeyModalProps {
   defaultTtl: string;
+  initialKeyName?: string;
   onClose: () => void;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
   onCreated: (key: RedisKey) => void;
@@ -81,6 +82,7 @@ const MODAL_TEXTAREA_CLASS =
 
 export function CreateKeyModal({
   defaultTtl,
+  initialKeyName = "",
   onClose,
   onCreateKey,
   onCreated,
@@ -94,7 +96,7 @@ export function CreateKeyModal({
   const keyInputRef = useRef<HTMLInputElement | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
-  const [keyName, setKeyName] = useState("");
+  const [keyName, setKeyName] = useState(initialKeyName);
   const [keyType, setKeyType] = useState<RedisKeyType>("string");
   const [ttl, setTtl] = useState(defaultTtl);
   const [stringValue, setStringValue] = useState("");

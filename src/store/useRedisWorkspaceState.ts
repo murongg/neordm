@@ -15,6 +15,8 @@ import {
 } from "../lib/connectionStore";
 import {
   createRedisKey,
+  deleteRedisKey,
+  deleteRedisKeys,
   getRedisErrorMessage,
   getRedisKeyValue,
   listRedisKeys,
@@ -122,6 +124,8 @@ interface RedisWorkspaceStoreState {
   refreshKeyValue: () => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
   createKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
+  deleteKey: (key: RedisKey) => Promise<void>;
+  deleteGroup: (groupId: string, separator: string) => Promise<number>;
   renameKey: (key: RedisKey, nextKeyName: string) => Promise<RedisKey>;
   renameGroup: (
     groupId: string,
@@ -678,6 +682,80 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       return createdKey;
     },
+    deleteKey: async (key) => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+
+      if (!activeConnection) {
+        throw new Error(getWorkspaceRuntime().notConnectedMessage);
+      }
+
+      if (!key.key.length) {
+        throw new Error("Key name cannot be empty");
+      }
+
+      await deleteRedisKey(
+        { ...activeConnection, db: state.selectedDb },
+        key.key
+      );
+
+      void recordTelemetryEvent("workspace.key.delete");
+      void recordAuditEvent("workspace.key.delete", {
+        key: key.key,
+      });
+
+      get().removeKeyFromState(key.key);
+    },
+    deleteGroup: async (groupId, separator) => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+
+      if (!activeConnection) {
+        throw new Error(getWorkspaceRuntime().notConnectedMessage);
+      }
+
+      if (!groupId.length || !separator.length) {
+        throw new Error("Group name cannot be empty");
+      }
+
+      const groupPrefix = `${groupId}${separator}`;
+      const keysToDelete = state.keys
+        .filter((item) => item.key.startsWith(groupPrefix))
+        .map((item) => item.key);
+
+      if (!keysToDelete.length) {
+        return 0;
+      }
+
+      await deleteRedisKeys(
+        { ...activeConnection, db: state.selectedDb },
+        keysToDelete
+      );
+
+      const deletedKeys = new Set(keysToDelete);
+      keyValueRequestId += 1;
+
+      set((currentState) => ({
+        keys: currentState.keys.filter((item) => !deletedKeys.has(item.key)),
+        selectedKey:
+          currentState.selectedKey &&
+          deletedKeys.has(currentState.selectedKey.key)
+            ? null
+            : currentState.selectedKey,
+        keyValue:
+          currentState.keyValue && deletedKeys.has(currentState.keyValue.key)
+            ? null
+            : currentState.keyValue,
+      }));
+
+      void recordTelemetryEvent("workspace.group.delete");
+      void recordAuditEvent("workspace.group.delete", {
+        groupId,
+        keyCount: keysToDelete.length,
+      });
+
+      return keysToDelete.length;
+    },
     renameKey: async (key, nextKeyName) => {
       const state = get();
       const activeConnection = getActiveConnectionFromState(state);
@@ -918,6 +996,8 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       openNewConnectionModal: state.openNewConnectionModal,
       panelTab: state.panelTab,
       createKey: state.createKey,
+      deleteKey: state.deleteKey,
+      deleteGroup: state.deleteGroup,
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
       removeKeyFromState: state.removeKeyFromState,
