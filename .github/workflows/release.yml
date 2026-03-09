@@ -154,7 +154,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          mapfile -t artifact_paths < <(printf '%s\n' "${ARTIFACT_PATHS_RAW}")
+          artifact_paths=()
+          while IFS= read -r artifact_path; do
+            artifact_paths+=("${artifact_path}")
+          done <<< "${ARTIFACT_PATHS_RAW}"
           sig_path=""
           preferred_patterns=()
 
