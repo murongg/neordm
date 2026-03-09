@@ -91,15 +91,46 @@ jobs:
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
 
+      - name: Repack macOS DMG with repair helper
+        if: startsWith(matrix.os, 'macos-')
+        id: repack_macos_dmg
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH="$(find "src-tauri/target/${{ matrix.target }}/release/bundle" -type d -name 'NeoRDM.app' | head -n 1)"
+
+          if [[ -z "${APP_PATH}" ]]; then
+            echo "NeoRDM.app not found in bundle output" >&2
+            exit 1
+          fi
+
+          OUTPUT_DMG="src-tauri/target/${{ matrix.target }}/release/bundle/dmg/NeoRDM-${{ matrix.target }}-with-fix.dmg"
+
+          bash scripts/macos/repack-dmg-with-fix.sh \
+            "${APP_PATH}" \
+            "${OUTPUT_DMG}" \
+            "NeoRDM"
+
+          echo "dmg_path=${OUTPUT_DMG}" >> "${GITHUB_OUTPUT}"
+
       - name: Normalize artifact paths
         id: artifact_paths
         shell: bash
         env:
           ARTIFACT_PATHS_JSON: ${{ steps.tauri_build.outputs.artifactPaths }}
+          CUSTOM_DMG_PATH: ${{ steps.repack_macos_dmg.outputs.dmg_path }}
         run: |
           node <<'EOF'
           const fs = require('fs');
-          const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]');
+          const customDmgPath = process.env.CUSTOM_DMG_PATH || '';
+          const artifactPaths = JSON.parse(process.env.ARTIFACT_PATHS_JSON || '[]')
+            .filter((artifactPath) => !(customDmgPath && artifactPath.endsWith('.dmg')));
+
+          if (customDmgPath) {
+            artifactPaths.push(customDmgPath);
+          }
+
           const output = process.env.GITHUB_OUTPUT;
           fs.appendFileSync(output, `paths<<__PATHS__\n${artifactPaths.join('\n')}\n__PATHS__\n`);
           EOF
