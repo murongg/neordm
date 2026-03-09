@@ -96,7 +96,30 @@ export interface KeyValue {
     | null;
 }
 
-export type PanelTab = "editor" | "ai" | "cli";
+export interface RedisPubSubMessage {
+  id: string;
+  channel: string;
+  payload: string;
+  pattern?: string;
+  timestamp: number;
+}
+
+export type RedisPubSubEvent =
+  | {
+      kind: "message";
+      sessionId: string;
+      channel: string;
+      payload: string;
+      pattern?: string | null;
+      timestamp: number;
+    }
+  | {
+      kind: "closed";
+      sessionId: string;
+      reason?: string | null;
+    };
+
+export type PanelTab = "editor" | "ai" | "cli" | "pubsub";
 
 export interface ChatMessage {
   id: string;

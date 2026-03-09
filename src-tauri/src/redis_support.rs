@@ -4,7 +4,7 @@ use crate::models::{
 };
 use async_ssh2_lite::{AsyncSession, SessionConfiguration, TokioTcpStream};
 use redis::{
-    aio::{ConnectionLike, MultiplexedConnection},
+    aio::{ConnectionLike, MultiplexedConnection, PubSub},
     cluster::ClusterClientBuilder,
     cluster_async::ClusterConnection,
     ConnectionInfo, IntoConnectionInfo, RedisFuture, Value,
@@ -120,7 +120,10 @@ fn build_redis_connection_info(input: &RedisConnectionTestInput) -> Result<Conne
     )
 }
 
-fn build_cluster_node_urls(input: &RedisConnectionTestInput, cluster: &RedisClusterInput) -> Result<Vec<String>, String> {
+fn build_cluster_node_urls(
+    input: &RedisConnectionTestInput,
+    cluster: &RedisClusterInput,
+) -> Result<Vec<String>, String> {
     cluster
         .nodes
         .iter()
@@ -159,10 +162,7 @@ fn expand_home_path(path: &str) -> PathBuf {
         }
     }
 
-    if let Some(stripped) = path
-        .strip_prefix("~/")
-        .or_else(|| path.strip_prefix("~\\"))
-    {
+    if let Some(stripped) = path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\")) {
         if let Some(home_dir) = env::var_os("HOME").or_else(|| env::var_os("USERPROFILE")) {
             return PathBuf::from(home_dir).join(stripped);
         }
@@ -293,12 +293,24 @@ async fn open_direct_connection(
     connection_info: &ConnectionInfo,
     target_name: &str,
 ) -> Result<MultiplexedConnection, String> {
-    let client = redis::Client::open(connection_info.clone()).map_err(|error| {
-        format!("Failed to create {target_name} client: {error}")
-    })?;
+    let client = redis::Client::open(connection_info.clone())
+        .map_err(|error| format!("Failed to create {target_name} client: {error}"))?;
 
     client
         .get_multiplexed_async_connection()
+        .await
+        .map_err(|error| format!("Failed to connect to {target_name}: {error}"))
+}
+
+async fn open_direct_pubsub(
+    connection_info: &ConnectionInfo,
+    target_name: &str,
+) -> Result<PubSub, String> {
+    let client = redis::Client::open(connection_info.clone())
+        .map_err(|error| format!("Failed to create {target_name} client: {error}"))?;
+
+    client
+        .get_async_pubsub()
         .await
         .map_err(|error| format!("Failed to connect to {target_name}: {error}"))
 }
@@ -353,6 +365,21 @@ async fn open_ssh_connection_to_target(
 ) -> Result<MultiplexedConnection, String> {
     let stream = open_ssh_stream(session, host, port, tls).await?;
     open_stream_connection(connection_info, stream, target_name).await
+}
+
+async fn open_ssh_pubsub_to_target(
+    session: &AsyncSession<TokioTcpStream>,
+    connection_info: &ConnectionInfo,
+    host: &str,
+    port: u16,
+    tls: bool,
+    target_name: &str,
+) -> Result<PubSub, String> {
+    let stream = open_ssh_stream(session, host, port, tls).await?;
+
+    PubSub::new(&connection_info.redis, stream)
+        .await
+        .map_err(|error| format!("Failed to connect to {target_name}: {error}"))
 }
 
 fn redis_value_to_string(value: Value) -> Result<String, String> {
@@ -412,19 +439,16 @@ async fn discover_master_address_direct(
         let connection_info = build_sentinel_connection_info(node, sentinel)?;
 
         match open_direct_connection(&connection_info, "Sentinel").await {
-            Ok(mut connection) => match query_sentinel_master_address(
-                &mut connection,
-                &sentinel.master_name,
-            )
-            .await
-            {
-                Ok(Some(address)) => return Ok(address),
-                Ok(None) => errors.push(format!(
-                    "{}:{} did not resolve master `{}`",
-                    node.host, node.port, sentinel.master_name
-                )),
-                Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
-            },
+            Ok(mut connection) => {
+                match query_sentinel_master_address(&mut connection, &sentinel.master_name).await {
+                    Ok(Some(address)) => return Ok(address),
+                    Ok(None) => errors.push(format!(
+                        "{}:{} did not resolve master `{}`",
+                        node.host, node.port, sentinel.master_name
+                    )),
+                    Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
+                }
+            }
             Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
         }
     }
@@ -455,19 +479,16 @@ async fn discover_master_address_over_ssh(
         )
         .await
         {
-            Ok(mut connection) => match query_sentinel_master_address(
-                &mut connection,
-                &sentinel.master_name,
-            )
-            .await
-            {
-                Ok(Some(address)) => return Ok(address),
-                Ok(None) => errors.push(format!(
-                    "{}:{} did not resolve master `{}`",
-                    node.host, node.port, sentinel.master_name
-                )),
-                Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
-            },
+            Ok(mut connection) => {
+                match query_sentinel_master_address(&mut connection, &sentinel.master_name).await {
+                    Ok(Some(address)) => return Ok(address),
+                    Ok(None) => errors.push(format!(
+                        "{}:{} did not resolve master `{}`",
+                        node.host, node.port, sentinel.master_name
+                    )),
+                    Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
+                }
+            }
             Err(error) => errors.push(format!("{}:{} {error}", node.host, node.port)),
         }
     }
@@ -728,6 +749,116 @@ pub(crate) async fn open_connection(
     open_direct_connection(&connection_info, "Redis")
         .await
         .map(RedisConnectionHandle::Single)
+}
+
+pub(crate) async fn open_pubsub(input: &RedisConnectionTestInput) -> Result<PubSub, String> {
+    if let Some(cluster) = &input.cluster {
+        let node = cluster
+            .nodes
+            .first()
+            .ok_or_else(|| "Cluster configuration is missing seed nodes".to_string())?;
+        let connection_info = build_connection_info(
+            &node.host,
+            node.port,
+            0,
+            input.username.as_deref(),
+            input.password.as_deref(),
+            input.tls,
+        )?;
+
+        return open_direct_pubsub(&connection_info, "Redis Cluster Pub/Sub").await;
+    }
+
+    if let Some(sentinel) = &input.sentinel {
+        if let Some(ssh_tunnel) = &input.ssh_tunnel {
+            let session = open_ssh_session(ssh_tunnel).await?;
+            let (host, port) = discover_master_address_over_ssh(&session, sentinel).await?;
+            let connection_info = build_connection_info(
+                &host,
+                port,
+                input.db,
+                input.username.as_deref(),
+                input.password.as_deref(),
+                input.tls,
+            )?;
+
+            return open_ssh_pubsub_to_target(
+                &session,
+                &connection_info,
+                &host,
+                port,
+                input.tls,
+                "Redis Pub/Sub via Sentinel",
+            )
+            .await;
+        }
+
+        let (host, port) = discover_master_address_direct(sentinel).await?;
+        let connection_info = build_connection_info(
+            &host,
+            port,
+            input.db,
+            input.username.as_deref(),
+            input.password.as_deref(),
+            input.tls,
+        )?;
+
+        return open_direct_pubsub(&connection_info, "Redis Pub/Sub via Sentinel").await;
+    }
+
+    if let Some(ssh_tunnel) = &input.ssh_tunnel {
+        let connection_info = build_redis_connection_info(input)?;
+        let session = open_ssh_session(ssh_tunnel).await?;
+
+        return open_ssh_pubsub_to_target(
+            &session,
+            &connection_info,
+            &input.host,
+            input.port,
+            input.tls,
+            "Redis Pub/Sub",
+        )
+        .await;
+    }
+
+    let connection_info = build_redis_connection_info(input)?;
+    open_direct_pubsub(&connection_info, "Redis Pub/Sub").await
+}
+
+pub(crate) async fn open_pubsub_command_connection(
+    input: &RedisConnectionTestInput,
+) -> Result<MultiplexedConnection, String> {
+    if let Some(cluster) = &input.cluster {
+        let node = cluster
+            .nodes
+            .first()
+            .ok_or_else(|| "Cluster configuration is missing seed nodes".to_string())?;
+        let connection_info = build_connection_info(
+            &node.host,
+            node.port,
+            0,
+            input.username.as_deref(),
+            input.password.as_deref(),
+            input.tls,
+        )?;
+
+        return open_direct_connection(&connection_info, "Redis Cluster Pub/Sub").await;
+    }
+
+    if let Some(sentinel) = &input.sentinel {
+        if let Some(ssh_tunnel) = &input.ssh_tunnel {
+            return open_sentinel_connection_over_ssh(input, sentinel, ssh_tunnel).await;
+        }
+
+        return open_sentinel_connection(input, sentinel).await;
+    }
+
+    if let Some(ssh_tunnel) = &input.ssh_tunnel {
+        return open_ssh_connection(input, ssh_tunnel).await;
+    }
+
+    let connection_info = build_redis_connection_info(input)?;
+    open_direct_connection(&connection_info, "Redis Pub/Sub").await
 }
 
 pub(crate) fn normalize_key_type(raw: &str) -> String {

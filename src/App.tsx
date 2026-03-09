@@ -25,6 +25,7 @@ import {
 const loadAIAgentPanel = () => import("./components/AIAgentPanel");
 const loadConnectionModalHost = () => import("./components/ConnectionModalHost");
 const loadRedisCLIPanel = () => import("./components/RedisCLIPanel");
+const loadRedisPubSubPanel = () => import("./components/RedisPubSubPanel");
 const loadSettingsPanel = () => import("./components/SettingsPanel");
 
 const LazyAIAgentPanel = lazy(async () => ({
@@ -35,6 +36,9 @@ const LazyConnectionModalHost = lazy(async () => ({
 }));
 const LazyRedisCLIPanel = lazy(async () => ({
   default: (await loadRedisCLIPanel()).RedisCLIPanel,
+}));
+const LazyRedisPubSubPanel = lazy(async () => ({
+  default: (await loadRedisPubSubPanel()).RedisPubSubPanel,
 }));
 const LazySettingsPanel = lazy(async () => ({
   default: (await loadSettingsPanel()).SettingsPanel,
@@ -71,6 +75,7 @@ function App() {
   const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
   const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
+  const [hasMountedPubSubPanel, setHasMountedPubSubPanel] = useState(false);
   const [isMacOS] = useState(() => isMacOSPlatform());
   useInitializeAppPreferencesStore();
   const preferences = useAppPreferencesStore(
@@ -92,6 +97,7 @@ function App() {
     return scheduleIdleTask(() => {
       void loadConnectionModalHost();
       void loadRedisCLIPanel();
+      void loadRedisPubSubPanel();
       void useAppUpdateStore.getState().checkForUpdates({ silent: true });
     }, 1500);
   }, []);
@@ -112,6 +118,14 @@ function App() {
     return () => {
       window.cancelAnimationFrame(frame);
     };
+  }, [panelTab]);
+
+  useEffect(() => {
+    if (panelTab !== "pubsub") {
+      return;
+    }
+
+    setHasMountedPubSubPanel(true);
   }, [panelTab]);
 
   useEffect(() => {
@@ -179,6 +193,22 @@ function App() {
                   <LazyRedisCLIPanel />
                 </Suspense>
               )}
+              {hasMountedPubSubPanel ? (
+                <Suspense
+                  fallback={panelTab === "pubsub" ? <PanelFallback /> : null}
+                >
+                  <div
+                    className={
+                      panelTab === "pubsub"
+                        ? "flex flex-1 flex-col min-h-0"
+                        : "hidden"
+                    }
+                    aria-hidden={panelTab !== "pubsub"}
+                  >
+                    <LazyRedisPubSubPanel />
+                  </div>
+                </Suspense>
+              ) : null}
             </div>
 
             <StatusBarPanel />

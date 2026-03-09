@@ -1,6 +1,7 @@
 mod core;
 mod http;
 mod keys;
+mod pubsub;
 mod values;
 
 pub(crate) use core::{greet, run_redis_command, test_redis_connection};
@@ -9,8 +10,12 @@ pub(crate) use keys::{
     get_redis_cluster_topology, get_redis_key_value, list_redis_keys, rename_redis_key,
     rename_redis_keys,
 };
+pub(crate) use pubsub::{
+    publish_redis_pubsub_message, start_redis_pubsub_session, stop_redis_pubsub_session,
+    subscribe_redis_pubsub_channels, subscribe_redis_pubsub_patterns,
+    unsubscribe_redis_pubsub_channels, unsubscribe_redis_pubsub_patterns, RedisPubSubState,
+};
 pub(crate) use values::{
-    create_redis_key, delete_redis_hash_entry, delete_redis_zset_entry,
-    update_redis_hash_entry, update_redis_json_value, update_redis_string_value,
-    update_redis_zset_entry,
+    create_redis_key, delete_redis_hash_entry, delete_redis_zset_entry, update_redis_hash_entry,
+    update_redis_json_value, update_redis_string_value, update_redis_zset_entry,
 };

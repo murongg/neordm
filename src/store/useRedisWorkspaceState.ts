@@ -10,6 +10,7 @@ import {
   type AppSettings,
 } from "../lib/appSettings";
 import {
+  createRedisConnectionId,
   loadStoredConnections,
   persistConnections,
 } from "../lib/connectionStore";
@@ -444,7 +445,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       if (!editingConnectionId) {
         const newConnection: RedisConnection = {
           ...normalizedConnection,
-          id: Date.now().toString(),
+          id: createRedisConnectionId(),
           status: "connecting",
           color: connection.color,
         };

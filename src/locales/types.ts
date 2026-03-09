@@ -71,6 +71,7 @@ export interface Messages {
       editor: string;
       ai: string;
       cli: string;
+      pubsub: string;
     };
     status: {
       notConnected: string;
@@ -153,6 +154,26 @@ export interface Messages {
     confirmDangerousCommand: string;
     confirmDangerousDescription: string;
     confirmDangerousApprove: string;
+  };
+  pubsub: {
+    title: string;
+    idle: string;
+    connecting: string;
+    listening: string;
+    channelPlaceholder: string;
+    channelRequired: string;
+    subscribe: string;
+    unsubscribe: string;
+    publish: string;
+    publishChannelPlaceholder: string;
+    payloadPlaceholder: string;
+    stream: string;
+    shortcuts: string;
+    noSubscriptions: string;
+    subscriptions: string;
+    noMessages: string;
+    noMessagesHint: string;
+    publishResult: string;
   };
   connectionModal: {
     title: string;

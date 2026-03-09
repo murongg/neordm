@@ -2199,6 +2199,7 @@ name = "neordm"
 version = "0.1.0"
 dependencies = [
  "async-ssh2-lite",
+ "futures-util",
  "native-tls",
  "redis",
  "reqwest 0.12.28",

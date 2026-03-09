@@ -115,6 +115,33 @@ pub(crate) struct RedisCommandInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisPubSubStartInput {
+    pub(crate) connection: RedisConnectionTestInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisPubSubSessionInput {
+    pub(crate) session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisPubSubChannelsInput {
+    pub(crate) session_id: String,
+    pub(crate) channels: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisPubSubPublishInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) channel: String,
+    pub(crate) payload: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisKeyRenameInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) old_key: String,
@@ -255,4 +282,22 @@ pub(crate) struct RedisClusterTopologyNode {
     pub(crate) address: String,
     pub(crate) slot_ranges: Vec<RedisClusterSlotRange>,
     pub(crate) slot_count: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub(crate) enum RedisPubSubEvent {
+    Message {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        channel: String,
+        payload: String,
+        pattern: Option<String>,
+        timestamp: u64,
+    },
+    Closed {
+        #[serde(rename = "sessionId")]
+        session_id: String,
+        reason: Option<String>,
+    },
 }

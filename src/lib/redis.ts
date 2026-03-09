@@ -3,6 +3,7 @@ import type {
   KeyValue,
   RedisConnection,
   RedisClusterTopologyNode,
+  RedisPubSubEvent,
   RedisKey,
   RedisKeyType,
 } from "../types";
@@ -65,6 +66,8 @@ export interface ListRedisKeysOptions {
   maxKeys?: number;
   clusterNodeAddress?: string | null;
 }
+
+export const REDIS_PUBSUB_EVENT = "redis://pubsub";
 
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
@@ -219,6 +222,88 @@ export async function runRedisCommand(
     },
   });
 }
+
+export async function startRedisPubSubSession(
+  connection: RedisConnectionInvokeInput
+): Promise<string> {
+  return invoke("start_redis_pubsub_session", {
+    input: {
+      connection: toConnectionInput(connection),
+    },
+  });
+}
+
+export async function stopRedisPubSubSession(sessionId: string) {
+  await invoke("stop_redis_pubsub_session", {
+    input: {
+      sessionId,
+    },
+  });
+}
+
+export async function subscribeRedisPubSubChannels(
+  sessionId: string,
+  channels: string[]
+): Promise<string[]> {
+  return invoke("subscribe_redis_pubsub_channels", {
+    input: {
+      sessionId,
+      channels,
+    },
+  });
+}
+
+export async function subscribeRedisPubSubPatterns(
+  sessionId: string,
+  patterns: string[]
+): Promise<string[]> {
+  return invoke("subscribe_redis_pubsub_patterns", {
+    input: {
+      sessionId,
+      channels: patterns,
+    },
+  });
+}
+
+export async function unsubscribeRedisPubSubChannels(
+  sessionId: string,
+  channels: string[]
+): Promise<string[]> {
+  return invoke("unsubscribe_redis_pubsub_channels", {
+    input: {
+      sessionId,
+      channels,
+    },
+  });
+}
+
+export async function unsubscribeRedisPubSubPatterns(
+  sessionId: string,
+  patterns: string[]
+): Promise<string[]> {
+  return invoke("unsubscribe_redis_pubsub_patterns", {
+    input: {
+      sessionId,
+      channels: patterns,
+    },
+  });
+}
+
+export async function publishRedisPubSubMessage(
+  connection: RedisConnectionInvokeInput,
+  channel: string,
+  payload: string
+): Promise<number> {
+  return invoke("publish_redis_pubsub_message", {
+    input: {
+      connection: toConnectionInput(connection),
+      channel,
+      payload,
+    },
+  });
+}
+
+export type { RedisPubSubEvent };
 
 export async function deleteRedisKeys(
   connection: RedisConnectionInvokeInput,

@@ -249,6 +249,17 @@ function toPersistedConnection(
   return persistedConnection;
 }
 
+export function createRedisConnectionId() {
+  if (
+    typeof globalThis.crypto !== "undefined" &&
+    typeof globalThis.crypto.randomUUID === "function"
+  ) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 export async function loadStoredConnections(): Promise<RedisConnection[]> {
   const storedConnections = await connectionStore.get<unknown>(CONNECTIONS_KEY);
 
@@ -256,13 +267,25 @@ export async function loadStoredConnections(): Promise<RedisConnection[]> {
     return [];
   }
 
+  const seenIds = new Set<string>();
+
   return storedConnections
     .map(normalizePersistedConnection)
     .filter((connection): connection is PersistedRedisConnection => connection !== null)
-    .map((connection) => ({
-      ...connection,
-      status: "disconnected" as const,
-    }));
+    .map((connection) => {
+      const normalizedId =
+        connection.id && !seenIds.has(connection.id)
+          ? connection.id
+          : createRedisConnectionId();
+
+      seenIds.add(normalizedId);
+
+      return {
+        ...connection,
+        id: normalizedId,
+        status: "disconnected" as const,
+      };
+    });
 }
 
 export async function persistConnections(

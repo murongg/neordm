@@ -1,5 +1,5 @@
 import { memo, useMemo } from "react";
-import { Bot, Edit3, Server, Terminal, Wifi } from "lucide-react";
+import { Bot, Edit3, Rss, Server, Terminal, Wifi } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
 import { prepareAIAgentExperience } from "../lib/aiPrefetch";
@@ -57,6 +57,12 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
           className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "cli" ? "tab-active" : ""}`}
         >
           <Terminal size={11} /> {messages.app.tabs.cli}
+        </button>
+        <button
+          onClick={() => workspace.setPanelTab("pubsub")}
+          className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "pubsub" ? "tab-active" : ""}`}
+        >
+          <Rss size={11} /> {messages.app.tabs.pubsub}
         </button>
       </div>
 
