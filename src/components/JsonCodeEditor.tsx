@@ -23,20 +23,37 @@ const jsonEditorTheme = EditorView.theme({
     color: "oklch(var(--bc) / 0.88)",
     fontFamily: "var(--font-heading)",
     fontSize: "12px",
+    outline: "none",
+    boxShadow: "none",
+    border: "0",
   },
   "&.cm-focused": {
     outline: "none",
+    boxShadow: "none",
+    borderColor: "transparent",
+  },
+  ".cm-editor": {
+    outline: "none",
+    boxShadow: "none",
+    border: "0",
+  },
+  ".cm-editor.cm-focused": {
+    outline: "none",
+    boxShadow: "none",
+    border: "0",
   },
   ".cm-scroller": {
     overflow: "auto",
     fontFamily: "inherit",
     lineHeight: "1.7",
     scrollbarGutter: "stable both-edges",
+    outline: "none",
   },
   ".cm-content": {
     minHeight: "100%",
     padding: "12px 12px 20px 0",
     caretColor: "oklch(var(--bc))",
+    outline: "none",
   },
   ".cm-line": {
     padding: 0,
@@ -115,32 +132,36 @@ export default function JsonCodeEditor({
 
   return (
     <div
-      className={`neordm-json-editor relative w-full overflow-hidden rounded-xl border border-base-content/10 focus-within:border-primary/35 ${surfaceClassName} ${className}`}
+      className={`neordm-json-editor relative w-full overflow-visible rounded-xl ${className}`}
     >
-      <CodeMirror
-        className="h-full"
-        value={value}
-        height="100%"
-        theme="none"
-        extensions={extensions}
-        basicSetup={{
-          lineNumbers: true,
-          highlightActiveLine: true,
-          highlightActiveLineGutter: true,
-          foldGutter: false,
-          dropCursor: false,
-          allowMultipleSelections: false,
-          autocompletion: false,
-          highlightSelectionMatches: false,
-          searchKeymap: false,
-          completionKeymap: false,
-          lintKeymap: false,
-          tabSize: 2,
-        }}
-        indentWithTab
-        autoFocus={autoFocus}
-        onChange={(nextValue) => onChange(nextValue)}
-      />
+      <div
+        className={`h-full overflow-hidden rounded-xl border border-base-content/10 ${surfaceClassName}`}
+      >
+        <CodeMirror
+          className="h-full [&_.cm-editor]:!outline-none [&_.cm-editor]:!shadow-none [&_.cm-editor.cm-focused]:!outline-none [&_.cm-editor.cm-focused]:!shadow-none"
+          value={value}
+          height="100%"
+          theme="none"
+          extensions={extensions}
+          basicSetup={{
+            lineNumbers: true,
+            highlightActiveLine: true,
+            highlightActiveLineGutter: true,
+            foldGutter: false,
+            dropCursor: false,
+            allowMultipleSelections: false,
+            autocompletion: false,
+            highlightSelectionMatches: false,
+            searchKeymap: false,
+            completionKeymap: false,
+            lintKeymap: false,
+            tabSize: 2,
+          }}
+          indentWithTab
+          autoFocus={autoFocus}
+          onChange={(nextValue) => onChange(nextValue)}
+        />
+      </div>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import {
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useMemo,
@@ -9,6 +11,7 @@ import {
 } from "react";
 import { Database, Plus, Trash2, X } from "lucide-react";
 import { useI18n } from "../i18n";
+import { useAppSettings } from "../hooks/useAppSettings";
 import { useModalTransition } from "../hooks/useModalTransition";
 import {
   getRedisErrorMessage,
@@ -17,7 +20,10 @@ import {
   type RedisKeyCreateMemberInput,
 } from "../lib/redis";
 import type { RedisKey, RedisKeyType } from "../types";
+import type { JsonCodeEditorProps } from "./JsonCodeEditor";
 import { useToast } from "./ToastProvider";
+
+const LazyJsonCodeEditor = lazy(() => import("./JsonCodeEditor"));
 
 interface CreateKeyModalProps {
   defaultTtl: string;
@@ -67,6 +73,12 @@ function isValidTtl(value: number) {
   return Number.isInteger(value) && (value === -1 || value > 0);
 }
 
+const MODAL_INPUT_CLASS =
+  "input input-sm bg-base-300 font-mono text-sm user-select-text";
+const MODAL_SELECT_CLASS = "select select-sm bg-base-300 font-mono text-sm";
+const MODAL_TEXTAREA_CLASS =
+  "textarea textarea-sm bg-base-300 font-mono text-sm user-select-text";
+
 export function CreateKeyModal({
   defaultTtl,
   onClose,
@@ -74,6 +86,7 @@ export function CreateKeyModal({
   onCreated,
 }: CreateKeyModalProps) {
   const { messages } = useI18n();
+  const appSettings = useAppSettings();
   const { showToast } = useToast();
   const { isVisible, requestClose, handleBackdropClick } =
     useModalTransition(onClose);
@@ -405,6 +418,14 @@ export function CreateKeyModal({
     [resetError]
   );
 
+  const activeTextValues = keyType === "list" ? listValues : setValues;
+  const activeTextValueSetter = keyType === "list" ? setListValues : setSetValues;
+  const activeEntries = keyType === "hash" ? hashEntries : streamEntries;
+  const activeEntrySetter =
+    keyType === "hash" ? setHashEntries : setStreamEntries;
+  const supportsBatchValues = keyType === "list" || keyType === "set";
+  const supportsEntryPairs = keyType === "hash" || keyType === "stream";
+
   return (
     <div
       onClick={handleBackdropClick}
@@ -413,15 +434,15 @@ export function CreateKeyModal({
       }`}
     >
       <div
-        className={`mx-4 w-full max-w-2xl overflow-hidden rounded-2xl border border-base-content/10 bg-base-200 shadow-2xl transition-all duration-200 ease-out motion-reduce:transition-none ${
+        className={`mx-4 w-full max-w-215 overflow-visible rounded-2xl border border-base-content/10 bg-base-200 shadow-2xl transition-all duration-200 ease-out motion-reduce:transition-none ${
           isVisible
             ? "translate-y-0 scale-100 opacity-100"
             : "translate-y-3 scale-[0.98] opacity-0"
         }`}
       >
-        <div className="flex items-center justify-between border-b border-base-content/10 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-base-content/10 px-4 py-3.5">
           <div className="flex items-center gap-2">
-            <Database size={15} className="text-primary" />
+            <Database size={15} className="text-success" />
             <div>
               <h2 className="text-sm font-semibold font-mono">
                 {messages.keyBrowser.createTitle}
@@ -440,299 +461,327 @@ export function CreateKeyModal({
           </button>
         </div>
 
-        <div className="grid gap-4 px-5 py-4">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label className="md:col-span-2">
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                {messages.keyBrowser.keyName}
-              </span>
-              <input
-                ref={keyInputRef}
-                type="text"
-                value={keyName}
-                onChange={(event) => {
-                  resetError();
-                  setKeyName(event.target.value);
-                }}
-                placeholder={messages.keyBrowser.keyNamePlaceholder}
-                className="input input-sm w-full bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-                spellCheck={false}
-              />
-            </label>
-            <label>
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                {messages.keyBrowser.ttl}
-              </span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={ttl}
-                onChange={(event) => {
-                  resetError();
-                  setTtl(event.target.value);
-                }}
-                placeholder={messages.keyBrowser.ttlPlaceholder}
-                className="input input-sm w-full bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-              />
-            </label>
-          </div>
-
-          <label>
-            <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-              {messages.keyBrowser.type}
-            </span>
-            <select
-              value={keyType}
-              onChange={(event) => {
-                resetError();
-                setKeyType(event.target.value as RedisKeyType);
-              }}
-              className="select select-sm w-full bg-base-300 border-base-100/50 font-mono text-sm"
-            >
-              <option value="string">string</option>
-              <option value="json">json</option>
-              <option value="hash">hash</option>
-              <option value="list">list</option>
-              <option value="set">set</option>
-              <option value="zset">zset</option>
-              <option value="stream">stream</option>
-            </select>
-          </label>
-
-          {keyType === "string" ? (
-            <label>
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                {messages.valueEditor.value}
-              </span>
-              <textarea
-                rows={4}
-                value={stringValue}
-                onChange={(event) => {
-                  resetError();
-                  setStringValue(event.target.value);
-                }}
-                placeholder={messages.keyBrowser.valuePlaceholder}
-                className="textarea textarea-sm min-h-28 w-full resize-y bg-base-300 border-base-100/50 font-mono text-sm leading-6 user-select-text"
-                spellCheck={false}
-              />
-            </label>
-          ) : null}
-
-          {keyType === "json" ? (
-            <label>
-              <span className="mb-1.5 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                {messages.valueEditor.value}
-              </span>
-              <textarea
-                rows={8}
-                value={jsonValue}
-                onChange={(event) => {
-                  resetError();
-                  setJsonValue(event.target.value);
-                }}
-                placeholder={messages.keyBrowser.jsonPlaceholder}
-                className="textarea textarea-sm min-h-44 w-full resize-y bg-base-300 border-base-100/50 font-mono text-sm leading-6 user-select-text"
-                spellCheck={false}
-              />
-            </label>
-          ) : null}
-
-          {keyType === "list" || keyType === "set" ? (
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                  {messages.keyBrowser.values}
+        <div className="max-h-[76vh] overflow-y-auto px-1 py-1">
+          <div className="grid grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)]">
+            <div className="grid content-start gap-3 border-b border-base-content/10 px-4 py-4 lg:border-b-0 lg:border-r">
+              <label>
+                <span className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                  {messages.keyBrowser.keyName}
                 </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    (keyType === "list" ? setListValues : setSetValues)((previous) => [
-                      ...previous,
-                      createTextValueDraft(nextDraftId()),
-                    ])
-                  }
-                  className="btn btn-ghost btn-xs gap-1 px-2"
+                <input
+                  ref={keyInputRef}
+                  type="text"
+                  value={keyName}
+                  onChange={(event) => {
+                    resetError();
+                    setKeyName(event.target.value);
+                  }}
+                  placeholder={messages.keyBrowser.keyNamePlaceholder}
+                  className={`${MODAL_INPUT_CLASS} h-10 w-full`}
+                  spellCheck={false}
+                />
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                  {messages.keyBrowser.type}
+                </span>
+                <select
+                  value={keyType}
+                  onChange={(event) => {
+                    resetError();
+                    setKeyType(event.target.value as RedisKeyType);
+                  }}
+                  className={`${MODAL_SELECT_CLASS} h-10 w-full`}
                 >
-                  <Plus size={12} />
-                  {messages.keyBrowser.addValue}
-                </button>
-              </div>
-              {(keyType === "list" ? listValues : setValues).map((item, index) => (
-                <div key={item.id} className="flex items-center gap-2">
-                  <span className="w-7 shrink-0 text-center text-[11px] font-mono text-base-content/45">
-                    {index + 1}
+                  <option value="string">string</option>
+                  <option value="json">json</option>
+                  <option value="hash">hash</option>
+                  <option value="list">list</option>
+                  <option value="set">set</option>
+                  <option value="zset">zset</option>
+                  <option value="stream">stream</option>
+                </select>
+              </label>
+
+              <label>
+                <span className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                  {messages.keyBrowser.ttl}
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={ttl}
+                  onChange={(event) => {
+                    resetError();
+                    setTtl(event.target.value);
+                  }}
+                  placeholder={messages.keyBrowser.ttlPlaceholder}
+                  className={`${MODAL_INPUT_CLASS} h-10 w-full`}
+                />
+              </label>
+
+              <p className="text-[11px] leading-5 text-base-content/45">
+                {messages.keyBrowser.ttlHint}
+              </p>
+            </div>
+
+            <div className="grid content-start gap-3 px-4 py-4">
+              {keyType === "string" ? (
+                <label>
+                  <span className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                    {messages.valueEditor.value}
                   </span>
-                  <input
-                    type="text"
-                    value={item.value}
-                    onChange={(event) =>
-                      updateTextValue(
-                        keyType === "list" ? setListValues : setSetValues,
-                        item.id,
-                        event.target.value
-                      )
-                    }
+                  <textarea
+                    rows={4}
+                    value={stringValue}
+                    onChange={(event) => {
+                      resetError();
+                      setStringValue(event.target.value);
+                    }}
                     placeholder={messages.keyBrowser.valuePlaceholder}
-                    className="input input-sm flex-1 bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
+                    className={`${MODAL_TEXTAREA_CLASS} min-h-24 w-full resize-y leading-6`}
                     spellCheck={false}
                   />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removeTextValue(
-                        keyType === "list" ? setListValues : setSetValues,
-                        item.id
-                      )
-                    }
-                    className="btn btn-ghost btn-sm btn-square text-base-content/50"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
+                </label>
+              ) : null}
 
-          {keyType === "hash" || keyType === "stream" ? (
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                  {messages.keyBrowser.entries}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    (keyType === "hash" ? setHashEntries : setStreamEntries)(
-                      (previous) => [
-                        ...previous,
-                        createFieldValueDraft(nextDraftId()),
-                      ]
-                    )
-                  }
-                  className="btn btn-ghost btn-xs gap-1 px-2"
-                >
-                  <Plus size={12} />
-                  {messages.keyBrowser.addEntry}
-                </button>
-              </div>
-              {(keyType === "hash" ? hashEntries : streamEntries).map((entry) => (
-                <div key={entry.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto] gap-2">
-                  <input
-                    type="text"
-                    value={entry.field}
-                    onChange={(event) =>
-                      updateFieldValue(
-                        keyType === "hash" ? setHashEntries : setStreamEntries,
-                        entry.id,
-                        "field",
-                        event.target.value
-                      )
+              {keyType === "json" ? (
+                <label>
+                  <span className="mb-1 block text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                    {messages.valueEditor.value}
+                  </span>
+                  <JsonCodeEditor
+                    value={jsonValue}
+                    onChange={(event) => {
+                      resetError();
+                      setJsonValue(event);
+                    }}
+                    className="h-72"
+                    surfaceClassName="bg-base-300/65"
+                    autoFocus={false}
+                    mode="json"
+                    wordWrap={appSettings.editor.wordWrap}
+                    syntaxHighlightingEnabled={
+                      appSettings.editor.syntaxHighlighting
                     }
-                    placeholder={messages.keyBrowser.fieldPlaceholder}
-                    className="input input-sm bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-                    spellCheck={false}
                   />
-                  <input
-                    type="text"
-                    value={entry.value}
-                    onChange={(event) =>
-                      updateFieldValue(
-                        keyType === "hash" ? setHashEntries : setStreamEntries,
-                        entry.id,
-                        "value",
-                        event.target.value
-                      )
-                    }
-                    placeholder={messages.keyBrowser.valuePlaceholder}
-                    className="input input-sm bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-                    spellCheck={false}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      removeFieldValue(
-                        keyType === "hash" ? setHashEntries : setStreamEntries,
-                        entry.id
-                      )
-                    }
-                    className="btn btn-ghost btn-sm btn-square text-base-content/50"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
+                </label>
+              ) : null}
 
-          {keyType === "zset" ? (
-            <div className="grid gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
-                  {messages.keyBrowser.members}
-                </span>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setZsetMembers((previous) => [
-                      ...previous,
-                      createMemberScoreDraft(nextDraftId()),
-                    ])
-                  }
-                  className="btn btn-ghost btn-xs gap-1 px-2"
-                >
-                  <Plus size={12} />
-                  {messages.keyBrowser.addMember}
-                </button>
-              </div>
-              {zsetMembers.map((member) => (
-                <div key={member.id} className="grid grid-cols-[minmax(0,1.4fr)_minmax(120px,0.8fr)_auto] gap-2">
-                  <input
-                    type="text"
-                    value={member.member}
-                    onChange={(event) =>
-                      updateMemberValue(member.id, "member", event.target.value)
-                    }
-                    placeholder={messages.keyBrowser.memberPlaceholder}
-                    className="input input-sm bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-                    spellCheck={false}
-                  />
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={member.score}
-                    onChange={(event) =>
-                      updateMemberValue(member.id, "score", event.target.value)
-                    }
-                    placeholder="0"
-                    className="input input-sm bg-base-300 border-base-100/50 font-mono text-sm user-select-text"
-                    spellCheck={false}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeMemberValue(member.id)}
-                    className="btn btn-ghost btn-sm btn-square text-base-content/50"
-                  >
-                    <Trash2 size={14} />
-                  </button>
+              {supportsBatchValues ? (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                      {messages.keyBrowser.values}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        activeTextValueSetter((previous) => [
+                          ...previous,
+                          createTextValueDraft(nextDraftId()),
+                        ])
+                      }
+                      className="btn btn-ghost btn-xs h-7 min-h-7 gap-1 px-2"
+                    >
+                      <Plus size={11} />
+                      {messages.keyBrowser.addValue}
+                    </button>
+                  </div>
+                  <div className="grid max-h-80 gap-1.5 overflow-y-auto px-1 py-1">
+                    {activeTextValues.map((item, index) => (
+                      <div
+                        key={item.id}
+                        className="grid grid-cols-[24px_minmax(0,1fr)_30px] items-center gap-1.5"
+                      >
+                        <span className="text-center text-[11px] font-mono text-base-content/40">
+                          {index + 1}
+                        </span>
+                        <input
+                          type="text"
+                          value={item.value}
+                          onChange={(event) =>
+                            updateTextValue(
+                              activeTextValueSetter,
+                              item.id,
+                              event.target.value
+                            )
+                          }
+                          placeholder={messages.keyBrowser.valuePlaceholder}
+                          className={`${MODAL_INPUT_CLASS} h-9 w-full`}
+                          spellCheck={false}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeTextValue(activeTextValueSetter, item.id)
+                          }
+                          className="btn btn-ghost btn-sm btn-square h-9 min-h-9 text-base-content/45"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
+              ) : null}
+
+              {supportsEntryPairs ? (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                      {messages.keyBrowser.entries}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        activeEntrySetter((previous) => [
+                          ...previous,
+                          createFieldValueDraft(nextDraftId()),
+                        ])
+                      }
+                      className="btn btn-ghost btn-xs h-7 min-h-7 gap-1 px-2"
+                    >
+                      <Plus size={11} />
+                      {messages.keyBrowser.addEntry}
+                    </button>
+                  </div>
+                  <div className="grid max-h-80 gap-1.5 overflow-y-auto px-1 py-1">
+                    {activeEntries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="grid grid-cols-[minmax(0,0.95fr)_minmax(0,1.3fr)_30px] items-center gap-1.5"
+                      >
+                        <input
+                          type="text"
+                          value={entry.field}
+                          onChange={(event) =>
+                            updateFieldValue(
+                              activeEntrySetter,
+                              entry.id,
+                              "field",
+                              event.target.value
+                            )
+                          }
+                          placeholder={messages.keyBrowser.fieldPlaceholder}
+                          className={`${MODAL_INPUT_CLASS} h-9`}
+                          spellCheck={false}
+                        />
+                        <input
+                          type="text"
+                          value={entry.value}
+                          onChange={(event) =>
+                            updateFieldValue(
+                              activeEntrySetter,
+                              entry.id,
+                              "value",
+                              event.target.value
+                            )
+                          }
+                          placeholder={messages.keyBrowser.valuePlaceholder}
+                          className={`${MODAL_INPUT_CLASS} h-9`}
+                          spellCheck={false}
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeFieldValue(activeEntrySetter, entry.id)
+                          }
+                          className="btn btn-ghost btn-sm btn-square h-9 min-h-9 text-base-content/45"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {keyType === "zset" ? (
+                <div className="grid gap-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-base-content/50">
+                      {messages.keyBrowser.members}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setZsetMembers((previous) => [
+                          ...previous,
+                          createMemberScoreDraft(nextDraftId()),
+                        ])
+                      }
+                      className="btn btn-ghost btn-xs h-7 min-h-7 gap-1 px-2"
+                    >
+                      <Plus size={11} />
+                      {messages.keyBrowser.addMember}
+                    </button>
+                  </div>
+                  <div className="grid max-h-80 gap-1.5 overflow-y-auto px-1 py-1">
+                    {zsetMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="grid grid-cols-[minmax(0,1.2fr)_110px_30px] items-center gap-1.5"
+                      >
+                        <input
+                          type="text"
+                          value={member.member}
+                          onChange={(event) =>
+                            updateMemberValue(
+                              member.id,
+                              "member",
+                              event.target.value
+                            )
+                          }
+                          placeholder={messages.keyBrowser.memberPlaceholder}
+                          className={`${MODAL_INPUT_CLASS} h-9`}
+                          spellCheck={false}
+                        />
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={member.score}
+                          onChange={(event) =>
+                            updateMemberValue(
+                              member.id,
+                              "score",
+                              event.target.value
+                            )
+                          }
+                          placeholder="0"
+                          className={`${MODAL_INPUT_CLASS} h-9`}
+                          spellCheck={false}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeMemberValue(member.id)}
+                          className="btn btn-ghost btn-sm btn-square h-9 min-h-9 text-base-content/45"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-base-content/10 px-5 py-4">
+        <div className="flex items-center justify-between border-t border-base-content/10 px-4 py-3">
           <span
-            className={`min-h-4 text-[11px] ${
+            className={`min-h-4 pr-3 text-[11px] ${
               error ? "text-error" : "text-base-content/40"
             }`}
           >
-            {error || messages.keyBrowser.ttlHint}
+            {error || "\u00A0"}
           </span>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={requestClose}
-              className="btn btn-ghost btn-sm"
+              className="btn btn-ghost btn-sm h-9 min-h-9"
             >
               {messages.common.cancel}
             </button>
@@ -742,7 +791,7 @@ export function CreateKeyModal({
                 void handleSubmit();
               }}
               disabled={isSaving}
-              className="btn btn-primary btn-sm font-mono"
+              className="btn btn-success btn-sm h-9 min-h-9 px-4 font-mono"
             >
               {isSaving
                 ? messages.keyBrowser.creating
@@ -750,6 +799,73 @@ export function CreateKeyModal({
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function JsonCodeEditor({
+  value,
+  onChange,
+  className = "h-72",
+  surfaceClassName = "bg-base-200",
+  autoFocus = false,
+  mode = "json",
+  wordWrap = true,
+  syntaxHighlightingEnabled = true,
+}: JsonCodeEditorProps) {
+  return (
+    <Suspense
+      fallback={
+        <JsonCodeEditorFallback
+          value={value}
+          onChange={onChange}
+          className={className}
+          surfaceClassName={surfaceClassName}
+          autoFocus={autoFocus}
+          mode={mode}
+          wordWrap={wordWrap}
+        />
+      }
+    >
+      <LazyJsonCodeEditor
+        value={value}
+        onChange={onChange}
+        className={className}
+        surfaceClassName={surfaceClassName}
+        autoFocus={autoFocus}
+        mode={mode}
+        wordWrap={wordWrap}
+        syntaxHighlightingEnabled={syntaxHighlightingEnabled}
+      />
+    </Suspense>
+  );
+}
+
+function JsonCodeEditorFallback({
+  value,
+  onChange,
+  className = "h-72",
+  surfaceClassName = "bg-base-200",
+  autoFocus = false,
+  wordWrap = true,
+}: JsonCodeEditorProps) {
+  return (
+    <div
+      className={`relative w-full overflow-visible rounded-xl ${className}`}
+    >
+      <div
+        className={`h-full overflow-hidden rounded-xl border border-base-content/10 ${surfaceClassName}`}
+      >
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`textarea h-full w-full resize-none overflow-auto border-0 bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none user-select-text ${
+            wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+          }`}
+          spellCheck={false}
+          autoFocus={autoFocus}
+        />
       </div>
     </div>
   );

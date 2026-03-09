@@ -1337,17 +1337,21 @@ function JsonCodeEditorFallback({
 }: JsonCodeEditorProps) {
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border border-base-content/10 focus-within:border-primary/35 ${surfaceClassName} ${className}`}
+      className={`relative w-full overflow-visible rounded-xl ${className}`}
     >
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`textarea h-full w-full resize-none overflow-auto border-0 bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none user-select-text ${
-          wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
-        }`}
-        spellCheck={false}
-        autoFocus={autoFocus}
-      />
+      <div
+        className={`h-full overflow-hidden rounded-xl border border-base-content/10 ${surfaceClassName}`}
+      >
+        <textarea
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          className={`textarea h-full w-full resize-none overflow-auto border-0 bg-transparent px-3 py-3 font-mono text-xs leading-relaxed outline-none user-select-text ${
+            wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+          }`}
+          spellCheck={false}
+          autoFocus={autoFocus}
+        />
+      </div>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import {
 export type ThemeMode = "light" | "dark" | "system";
 
 // DaisyUI theme names
-const LIGHT_THEME = "nord";
+const LIGHT_THEME = "light";
 const DARK_THEME = "night";
 
 function getSystemTheme(): "light" | "dark" {
