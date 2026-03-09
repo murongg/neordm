@@ -1,7 +1,7 @@
 [package]
 name = "neordm"
 version = "0.1.0"
-description = "A Tauri App"
+description = "AI-first Redis desktop client for browsing data, managing keys, and executing Redis workflows."
 authors = ["you"]
 edition = "2021"
 

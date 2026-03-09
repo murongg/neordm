@@ -21,6 +21,7 @@ import {
   updateAppSettings,
   type AppSettings,
 } from "../lib/appSettings";
+import { APP_NAME, APP_VERSION } from "../lib/appMeta";
 import { clearPrivacyRuntimeData } from "../lib/privacyRuntime";
 import { useCliStore } from "../store/useCliState";
 import { useToast } from "./ToastProvider";
@@ -182,7 +183,7 @@ export function SettingsPanel({
           </ul>
           <div className="p-3 border-t border-base-content/10">
             <p className="text-[10px] font-mono text-base-content/20 text-center">
-              NeoRDM v0.1.0
+              {APP_NAME} v{APP_VERSION}
             </p>
           </div>
         </nav>

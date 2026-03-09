@@ -64,7 +64,7 @@ jobs:
         with:
           args: ${{ matrix.args }}
           tagName: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || '' }}
-          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('neordm {0}', github.ref_name) || '' }}
+          releaseName: ${{ startsWith(github.ref, 'refs/tags/v') && format('NeoRDM {0}', github.ref_name) || '' }}
           releaseBody: ${{ startsWith(github.ref, 'refs/tags/v') && 'Automated build from GitHub Actions.' || '' }}
           releaseDraft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
@@ -86,6 +86,6 @@ jobs:
         uses: actions/upload-artifact@v4
         if: steps.artifact_paths.outputs.paths != ''
         with:
-          name: neordm-${{ matrix.name }}-bundles
+          name: NeoRDM-${{ matrix.name }}-bundles
           path: ${{ steps.artifact_paths.outputs.paths }}
           if-no-files-found: error
