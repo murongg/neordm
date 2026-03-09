@@ -117,6 +117,31 @@ jobs:
 
           echo "dmg_path=${OUTPUT_DMG}" >> "${GITHUB_OUTPUT}"
 
+      - name: Rename macOS updater bundle
+        if: startsWith(matrix.os, 'macos-')
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="$(node -p "require('./package.json').version")"
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle/macos"
+          SOURCE_BUNDLE="$(find "${BUNDLE_DIR}" -maxdepth 1 -type f -name '*.app.tar.gz' | head -n 1)"
+
+          if [[ -z "${SOURCE_BUNDLE}" ]]; then
+            echo "macOS updater bundle not found" >&2
+            exit 1
+          fi
+
+          TARGET_BUNDLE="${BUNDLE_DIR}/NeoRDM_${VERSION}_${{ matrix.asset_arch }}.app.tar.gz"
+
+          if [[ "${SOURCE_BUNDLE}" != "${TARGET_BUNDLE}" ]]; then
+            mv "${SOURCE_BUNDLE}" "${TARGET_BUNDLE}"
+          fi
+
+          if [[ -f "${SOURCE_BUNDLE}.sig" && "${SOURCE_BUNDLE}.sig" != "${TARGET_BUNDLE}.sig" ]]; then
+            mv "${SOURCE_BUNDLE}.sig" "${TARGET_BUNDLE}.sig"
+          fi
+
       - name: Normalize artifact paths
         id: artifact_paths
         shell: bash
