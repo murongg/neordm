@@ -1261,7 +1261,7 @@ export function KeyBrowser({
         >
           {Array.from({ length: 16 }, (_, index) => (
             <option key={index} value={index}>
-              db{index} {index === 0 ? messages.keyBrowser.activeDb : ""}
+              db{index} {index === selectedDb ? messages.keyBrowser.activeDb : ""}
             </option>
           ))}
         </select>
