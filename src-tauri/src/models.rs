@@ -78,6 +78,78 @@ pub(crate) struct RedisKeyLookupInput {
     pub(crate) key: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamGroupLookupInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamGroupCreateInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+    pub(crate) start_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamConsumerDeleteInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+    pub(crate) consumer: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntryAppendInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) entries: Vec<RedisKeyCreateEntryInput>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamPendingEntriesInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+    pub(crate) count: Option<u32>,
+    pub(crate) consumer: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamAckInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+    pub(crate) ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntryDeleteInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamClaimInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) group: String,
+    pub(crate) consumer: String,
+    pub(crate) min_idle_time: u64,
+    pub(crate) ids: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RedisKeyCreateEntryInput {
@@ -265,6 +337,49 @@ pub(crate) struct RedisKeyValueResponse {
     pub(crate) slot: Option<u16>,
     pub(crate) node_address: Option<String>,
     pub(crate) value: JsonValue,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamConsumerGroup {
+    pub(crate) name: String,
+    pub(crate) consumers: u64,
+    pub(crate) pending: u64,
+    pub(crate) last_delivered_id: String,
+    pub(crate) entries_read: Option<u64>,
+    pub(crate) lag: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntryField {
+    pub(crate) field: String,
+    pub(crate) value: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntry {
+    pub(crate) id: String,
+    pub(crate) fields: Vec<RedisStreamEntryField>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamConsumer {
+    pub(crate) name: String,
+    pub(crate) pending: u64,
+    pub(crate) idle: u64,
+    pub(crate) inactive: Option<u64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamPendingEntry {
+    pub(crate) id: String,
+    pub(crate) consumer: String,
+    pub(crate) idle: u64,
+    pub(crate) deliveries: u64,
 }
 
 #[derive(Clone, Debug, Serialize)]

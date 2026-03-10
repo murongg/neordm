@@ -18,17 +18,20 @@ import {
   LoaderCircle,
   RotateCw,
 } from "lucide-react";
-import type { KeyValue, ZSetMember } from "../types";
+import type { KeyValue, RedisConnection, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
 import { getRedisErrorMessage } from "../lib/redis";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { useModalTransition } from "../hooks/useModalTransition";
 import type { JsonCodeEditorProps } from "./JsonCodeEditor";
+import { RedisStreamViewer } from "./RedisStreamViewer";
 import { useToast } from "./ToastProvider";
 
 const LazyJsonCodeEditor = lazy(() => import("./JsonCodeEditor"));
 
 interface ValueEditorProps {
+  activeConnection?: RedisConnection;
+  selectedDb: number;
   keyValue: KeyValue | null;
   onRefreshKeyValue: () => Promise<void>;
   onDeleteKey: (key: string) => Promise<void>;
@@ -69,6 +72,8 @@ interface EditorRuntimeSettings {
 }
 
 export function ValueEditor({
+  activeConnection,
+  selectedDb,
   keyValue,
   onRefreshKeyValue,
   onDeleteKey,
@@ -372,7 +377,14 @@ export function ValueEditor({
           />
         )}
         {keyValue.type === "stream" && (
-          <StringViewer value={keyValue.value as string} settings={editorSettings} />
+          <RedisStreamViewer
+            activeConnection={activeConnection}
+            selectedDb={selectedDb}
+            keyName={keyValue.key}
+            rawValue={keyValue.value as string}
+            onCopy={copyText}
+            onRefreshStream={onRefreshKeyValue}
+          />
         )}
         {keyValue.type === "hash" && (
           <HashViewer

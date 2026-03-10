@@ -382,7 +382,7 @@ async fn open_ssh_pubsub_to_target(
         .map_err(|error| format!("Failed to connect to {target_name}: {error}"))
 }
 
-fn redis_value_to_string(value: Value) -> Result<String, String> {
+pub(crate) fn redis_value_to_string(value: Value) -> Result<String, String> {
     match value {
         Value::BulkString(bytes) => Ok(String::from_utf8_lossy(&bytes).into_owned()),
         Value::SimpleString(value) => Ok(value),

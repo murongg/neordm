@@ -6,6 +6,10 @@ import type {
   RedisPubSubEvent,
   RedisKey,
   RedisKeyType,
+  RedisStreamConsumer,
+  RedisStreamConsumerGroup,
+  RedisStreamEntry,
+  RedisStreamPendingEntry,
 } from "../types";
 
 export interface RedisKeyRenamePair {
@@ -304,6 +308,178 @@ export async function publishRedisPubSubMessage(
 }
 
 export type { RedisPubSubEvent };
+
+export async function getRedisStreamEntries(
+  connection: RedisConnectionInvokeInput,
+  key: string
+): Promise<RedisStreamEntry[]> {
+  return invoke("get_redis_stream_entries", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+    },
+  });
+}
+
+export async function appendRedisStreamEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  entries: RedisKeyCreateEntryInput[]
+): Promise<string> {
+  return invoke("append_redis_stream_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      entries,
+    },
+  });
+}
+
+export async function getRedisStreamGroups(
+  connection: RedisConnectionInvokeInput,
+  key: string
+): Promise<RedisStreamConsumerGroup[]> {
+  return invoke("get_redis_stream_groups", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+    },
+  });
+}
+
+export async function getRedisStreamConsumers(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  group: string
+): Promise<RedisStreamConsumer[]> {
+  return invoke("get_redis_stream_consumers", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      group,
+    },
+  });
+}
+
+export async function getRedisStreamPendingEntries(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  group: string,
+  options: {
+    count?: number;
+    consumer?: string | null;
+  } = {}
+): Promise<RedisStreamPendingEntry[]> {
+  return invoke("get_redis_stream_pending_entries", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      group,
+      count: options.count,
+      consumer: options.consumer ?? null,
+    },
+  });
+}
+
+export async function createRedisStreamConsumerGroup(
+  connection: RedisConnectionInvokeInput,
+  input: {
+    key: string;
+    group: string;
+    startId: string;
+  }
+) {
+  await invoke("create_redis_stream_consumer_group", {
+    input: {
+      connection: toConnectionInput(connection),
+      key: input.key,
+      group: input.group,
+      startId: input.startId,
+    },
+  });
+}
+
+export async function destroyRedisStreamConsumerGroup(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  group: string
+): Promise<number> {
+  return invoke("destroy_redis_stream_consumer_group", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      group,
+    },
+  });
+}
+
+export async function deleteRedisStreamConsumer(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  group: string,
+  consumer: string
+): Promise<number> {
+  return invoke("delete_redis_stream_consumer", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      group,
+      consumer,
+    },
+  });
+}
+
+export async function deleteRedisStreamEntries(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  ids: string[]
+): Promise<number> {
+  return invoke("delete_redis_stream_entries", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      ids,
+    },
+  });
+}
+
+export async function ackRedisStreamEntries(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  group: string,
+  ids: string[]
+): Promise<number> {
+  return invoke("ack_redis_stream_entries", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      group,
+      ids,
+    },
+  });
+}
+
+export async function claimRedisStreamEntries(
+  connection: RedisConnectionInvokeInput,
+  input: {
+    key: string;
+    group: string;
+    consumer: string;
+    minIdleTime: number;
+    ids: string[];
+  }
+): Promise<string[]> {
+  return invoke("claim_redis_stream_entries", {
+    input: {
+      connection: toConnectionInput(connection),
+      key: input.key,
+      group: input.group,
+      consumer: input.consumer,
+      minIdleTime: input.minIdleTime,
+      ids: input.ids,
+    },
+  });
+}
 
 export async function deleteRedisKeys(
   connection: RedisConnectionInvokeInput,

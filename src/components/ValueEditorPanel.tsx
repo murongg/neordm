@@ -39,6 +39,8 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
 
   return (
     <ValueEditor
+      activeConnection={activeConnection}
+      selectedDb={workspace.selectedDb}
       keyValue={workspace.keyValue}
       onRefreshKeyValue={workspace.refreshKeyValue}
       onDeleteKey={editor.deleteKey}

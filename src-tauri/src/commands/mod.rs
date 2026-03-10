@@ -2,6 +2,7 @@ mod core;
 mod http;
 mod keys;
 mod pubsub;
+mod stream;
 mod values;
 
 pub(crate) use core::{greet, run_redis_command, test_redis_connection};
@@ -14,6 +15,13 @@ pub(crate) use pubsub::{
     publish_redis_pubsub_message, start_redis_pubsub_session, stop_redis_pubsub_session,
     subscribe_redis_pubsub_channels, subscribe_redis_pubsub_patterns,
     unsubscribe_redis_pubsub_channels, unsubscribe_redis_pubsub_patterns, RedisPubSubState,
+};
+pub(crate) use stream::{
+    ack_redis_stream_entries, append_redis_stream_entry, claim_redis_stream_entries,
+    create_redis_stream_consumer_group, delete_redis_stream_consumer, delete_redis_stream_entries,
+    destroy_redis_stream_consumer_group,
+    get_redis_stream_consumers, get_redis_stream_entries, get_redis_stream_groups,
+    get_redis_stream_pending_entries,
 };
 pub(crate) use values::{
     create_redis_key, delete_redis_hash_entry, delete_redis_zset_entry, update_redis_hash_entry,

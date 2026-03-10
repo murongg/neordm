@@ -82,6 +82,39 @@ export interface ZSetMember {
   member: string;
 }
 
+export interface RedisStreamConsumerGroup {
+  name: string;
+  consumers: number;
+  pending: number;
+  lastDeliveredId: string;
+  entriesRead?: number | null;
+  lag?: number | null;
+}
+
+export interface RedisStreamEntryField {
+  field: string;
+  value: string;
+}
+
+export interface RedisStreamEntry {
+  id: string;
+  fields: RedisStreamEntryField[];
+}
+
+export interface RedisStreamConsumer {
+  name: string;
+  pending: number;
+  idle: number;
+  inactive?: number | null;
+}
+
+export interface RedisStreamPendingEntry {
+  id: string;
+  consumer: string;
+  idle: number;
+  deliveries: number;
+}
+
 export interface KeyValue {
   key: string;
   type: RedisKeyType;
