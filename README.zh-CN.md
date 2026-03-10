@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./src-tauri/icons/macos_icon.png" alt="NeoRDM Logo" width="128" height="128" />
+  <img src="./src-tauri/icons/neordm_logo.png" alt="NeoRDM Logo" width="128" height="128" />
 </p>
 
 <h1 align="center">NeoRDM</h1>
