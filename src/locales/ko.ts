@@ -182,6 +182,7 @@ export const ko: Messages = {
     deleteKey: "키 삭제",
     confirmDeleteKey: "Delete key `{key}`?",
     confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteListItem: "Delete list item #{index}?",
     confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "초",

@@ -23,9 +23,19 @@ export interface RedisHashEntryUpdate {
   value: string;
 }
 
+export interface RedisHashEntryAdd {
+  field: string;
+  value: string;
+}
+
 export interface RedisZSetEntryUpdate {
   oldMember: string;
   newMember: string;
+  score: number;
+}
+
+export interface RedisZSetEntryAdd {
+  member: string;
   score: number;
 }
 
@@ -43,6 +53,26 @@ export interface RedisStringValueUpdate {
 
 export interface RedisJsonValueUpdate {
   value: string;
+}
+
+export type RedisListInsertPosition = "head" | "tail";
+
+export interface RedisListValueAppend {
+  value: string;
+  position?: RedisListInsertPosition;
+}
+
+export interface RedisListValueUpdate {
+  index: number;
+  value: string;
+}
+
+export interface RedisListValueDelete {
+  index: number;
+}
+
+export interface RedisSetMemberAdd {
+  member: string;
 }
 
 export interface RedisKeyCreateEntryInput {
@@ -562,6 +592,79 @@ export async function updateRedisHashEntry(
   });
 }
 
+export async function addRedisHashEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisHashEntryAdd
+) {
+  await invoke("add_redis_hash_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      field: input.field,
+      value: input.value,
+    },
+  });
+}
+
+export async function appendRedisListValue(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisListValueAppend
+) {
+  await invoke("append_redis_list_value", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      value: input.value,
+      position: input.position ?? "tail",
+    },
+  });
+}
+
+export async function updateRedisListValue(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisListValueUpdate
+) {
+  await invoke("update_redis_list_value", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      index: input.index,
+      value: input.value,
+    },
+  });
+}
+
+export async function deleteRedisListValue(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisListValueDelete
+) {
+  await invoke("delete_redis_list_value", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      index: input.index,
+    },
+  });
+}
+
+export async function addRedisSetMember(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisSetMemberAdd
+) {
+  await invoke("add_redis_set_member", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      member: input.member,
+    },
+  });
+}
+
 export async function updateRedisZSetEntry(
   connection: RedisConnectionInvokeInput,
   key: string,
@@ -574,6 +677,21 @@ export async function updateRedisZSetEntry(
       oldMember: update.oldMember,
       newMember: update.newMember,
       score: update.score,
+    },
+  });
+}
+
+export async function addRedisZSetEntry(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  input: RedisZSetEntryAdd
+) {
+  await invoke("add_redis_zset_entry", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      member: input.member,
+      score: input.score,
     },
   });
 }

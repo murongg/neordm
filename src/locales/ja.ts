@@ -185,6 +185,7 @@ export const ja: Messages = {
     deleteKey: "キーを削除",
     confirmDeleteKey: "Delete key `{key}`?",
     confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteListItem: "Delete list item #{index}?",
     confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "秒",
@@ -193,6 +194,9 @@ export const ja: Messages = {
     rank: "順位",
     member: "メンバー",
     score: "スコア",
+    insertPosition: "Insert position",
+    insertHead: "Head",
+    insertTail: "Tail",
     ttlBadge: "TTL",
     headers: {
       index: "#",

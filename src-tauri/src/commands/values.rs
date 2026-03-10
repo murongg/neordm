@@ -1,7 +1,10 @@
 use crate::models::{
-    RedisHashEntryDeleteInput, RedisHashEntryUpdateInput, RedisJsonValueUpdateInput,
-    RedisKeyCreateEntryInput, RedisKeyCreateInput, RedisKeyCreateMemberInput, RedisKeySummary,
-    RedisStringValueUpdateInput, RedisZSetEntryDeleteInput, RedisZSetEntryUpdateInput,
+    RedisHashEntryAddInput, RedisHashEntryDeleteInput, RedisHashEntryUpdateInput,
+    RedisJsonValueUpdateInput, RedisKeyCreateEntryInput, RedisKeyCreateInput,
+    RedisKeyCreateMemberInput, RedisKeySummary, RedisListValueAppendInput,
+    RedisListValueDeleteInput, RedisListValueUpdateInput, RedisSetMemberAddInput,
+    RedisStringValueUpdateInput, RedisZSetEntryAddInput, RedisZSetEntryDeleteInput,
+    RedisZSetEntryUpdateInput,
 };
 use crate::redis_support::{normalize_key_type, open_connection};
 use serde_json::Value as JsonValue;
@@ -298,6 +301,52 @@ return 1
 }
 
 #[tauri::command]
+pub async fn add_redis_hash_entry(input: RedisHashEntryAddInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.field.is_empty() {
+        return Err("Field cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local field = ARGV[1]
+local value = ARGV[2]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "hash" then
+  return redis.error_reply("Key is not a hash")
+end
+
+if redis.call("HEXISTS", key, field) == 1 then
+  return redis.error_reply("Field already exists")
+end
+
+redis.call("HSET", key, field, value)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.field)
+        .arg(&input.value)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to add hash field: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_redis_string_value(input: RedisStringValueUpdateInput) -> Result<(), String> {
     if input.key.is_empty() {
         return Err("Key cannot be empty".to_string());
@@ -400,6 +449,205 @@ pub async fn delete_redis_hash_entry(input: RedisHashEntryDeleteInput) -> Result
 }
 
 #[tauri::command]
+pub async fn append_redis_list_value(input: RedisListValueAppendInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.value.is_empty() {
+        return Err("Value cannot be empty".to_string());
+    }
+
+    let position = input.position.as_deref().unwrap_or("tail");
+    if position != "head" && position != "tail" {
+        return Err("Position must be `head` or `tail`".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local value = ARGV[1]
+local position = ARGV[2]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "list" then
+  return redis.error_reply("Key is not a list")
+end
+
+if position == "head" then
+  redis.call("LPUSH", key, value)
+else
+  redis.call("RPUSH", key, value)
+end
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.value)
+        .arg(position)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to append list value: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_redis_list_value(input: RedisListValueUpdateInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.index < 0 {
+        return Err("Index must be a non-negative integer".to_string());
+    }
+
+    if input.value.is_empty() {
+        return Err("Value cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local index = tonumber(ARGV[1])
+local value = ARGV[2]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "list" then
+  return redis.error_reply("Key is not a list")
+end
+
+local length = redis.call("LLEN", key)
+if index < 0 or index >= length then
+  return redis.error_reply("Index out of range")
+end
+
+redis.call("LSET", key, index, value)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(input.index)
+        .arg(&input.value)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to update list value: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_redis_list_value(input: RedisListValueDeleteInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.index < 0 {
+        return Err("Index must be a non-negative integer".to_string());
+    }
+
+    let marker = format!("__neordm_list_delete__{}__{}__", input.key, input.index);
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local index = tonumber(ARGV[1])
+local marker = ARGV[2]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "list" then
+  return redis.error_reply("Key is not a list")
+end
+
+local length = redis.call("LLEN", key)
+if index < 0 or index >= length then
+  return redis.error_reply("Index out of range")
+end
+
+while redis.call("LPOS", key, marker) ~= false do
+  marker = marker .. ":x"
+end
+
+redis.call("LSET", key, index, marker)
+redis.call("LREM", key, 1, marker)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(input.index)
+        .arg(marker)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to delete list value: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_redis_set_member(input: RedisSetMemberAddInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.member.is_empty() {
+        return Err("Member cannot be empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local member = ARGV[1]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "set" then
+  return redis.error_reply("Key is not a set")
+end
+
+if redis.call("SISMEMBER", key, member) == 1 then
+  return redis.error_reply("Member already exists")
+end
+
+redis.call("SADD", key, member)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.member)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to add set member: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn update_redis_zset_entry(input: RedisZSetEntryUpdateInput) -> Result<(), String> {
     if input.key.is_empty() {
         return Err("Key cannot be empty".to_string());
@@ -448,6 +696,56 @@ return 1
         .invoke_async::<i32>(&mut connection)
         .await
         .map_err(|error| format!("Failed to update sorted set member: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_redis_zset_entry(input: RedisZSetEntryAddInput) -> Result<(), String> {
+    if input.key.is_empty() {
+        return Err("Key cannot be empty".to_string());
+    }
+
+    if input.member.is_empty() {
+        return Err("Member cannot be empty".to_string());
+    }
+
+    if !input.score.is_finite() {
+        return Err("Score must be a finite number".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let script = redis::Script::new(
+        r#"
+local key = KEYS[1]
+local member = ARGV[1]
+local score = ARGV[2]
+
+if redis.call("EXISTS", key) == 0 then
+  return redis.error_reply("Key does not exist")
+end
+
+local key_type = redis.call("TYPE", key).ok
+if key_type ~= "zset" then
+  return redis.error_reply("Key is not a sorted set")
+end
+
+if redis.call("ZSCORE", key, member) ~= false then
+  return redis.error_reply("Member already exists")
+end
+
+redis.call("ZADD", key, score, member)
+return 1
+"#,
+    );
+
+    script
+        .key(&input.key)
+        .arg(&input.member)
+        .arg(input.score)
+        .invoke_async::<i32>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to add sorted set member: {error}"))?;
 
     Ok(())
 }

@@ -185,6 +185,7 @@ export const es: Messages = {
     deleteKey: "Eliminar clave",
     confirmDeleteKey: "Delete key `{key}`?",
     confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteListItem: "Delete list item #{index}?",
     confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "segundos",
@@ -193,6 +194,9 @@ export const es: Messages = {
     rank: "Rango",
     member: "Miembro",
     score: "Puntuación",
+    insertPosition: "Insert position",
+    insertHead: "Head",
+    insertTail: "Tail",
     ttlBadge: "TTL",
     headers: {
       index: "#",

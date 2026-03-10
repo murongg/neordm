@@ -48,8 +48,14 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       onUpdateStringValue={editor.updateStringValue}
       onUpdateKeyTtl={editor.updateKeyTtl}
       onUpdateJsonValue={editor.updateJsonValue}
+      onAppendListValue={editor.appendListValue}
+      onUpdateListValue={editor.updateListValue}
+      onDeleteListValue={editor.deleteListValue}
+      onAddSetMember={editor.addSetMember}
+      onAddHashEntry={editor.addHashEntry}
       onUpdateHashEntry={editor.updateHashEntry}
       onDeleteHashEntry={editor.deleteHashEntry}
+      onAddZSetEntry={editor.addZSetEntry}
       onUpdateZSetEntry={editor.updateZSetEntry}
       onDeleteZSetEntry={editor.deleteZSetEntry}
     />

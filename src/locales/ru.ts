@@ -182,6 +182,7 @@ export const ru: Messages = {
     deleteKey: "Удалить ключ",
     confirmDeleteKey: "Delete key `{key}`?",
     confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteListItem: "Delete list item #{index}?",
     confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "секунды",

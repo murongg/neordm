@@ -254,6 +254,15 @@ pub(crate) struct RedisHashEntryDeleteInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisHashEntryAddInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) field: String,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisStringValueUpdateInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
@@ -281,6 +290,49 @@ pub(crate) struct RedisZSetEntryUpdateInput {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RedisZSetEntryDeleteInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) member: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisZSetEntryAddInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) member: String,
+    pub(crate) score: f64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisListValueAppendInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) value: String,
+    pub(crate) position: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisListValueUpdateInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) index: i64,
+    pub(crate) value: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisListValueDeleteInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) index: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSetMemberAddInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
     pub(crate) member: String,

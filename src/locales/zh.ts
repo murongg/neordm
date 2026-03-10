@@ -184,6 +184,7 @@ export const zh: Messages = {
     deleteKey: "删除键",
     confirmDeleteKey: "确定删除键 `{key}` 吗？",
     confirmDeleteField: "确定删除字段 `{field}` 吗？",
+    confirmDeleteListItem: "确定删除第 {index} 项吗？",
     confirmDeleteMember: "确定删除成员 `{member}` 吗？",
     browseNode: "浏览此节点",
     ttlInputPlaceholder: "秒",
@@ -192,6 +193,9 @@ export const zh: Messages = {
     rank: "排名",
     member: "成员",
     score: "分数",
+    insertPosition: "插入位置",
+    insertHead: "头部",
+    insertTail: "尾部",
     ttlBadge: "TTL",
     headers: {
       index: "#",

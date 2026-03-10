@@ -1,12 +1,19 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import {
+  addRedisHashEntry,
+  addRedisSetMember,
+  addRedisZSetEntry,
+  appendRedisListValue,
   deleteRedisKey,
   deleteRedisHashEntry,
+  deleteRedisListValue,
   deleteRedisZSetEntry,
   escapeRedisCommandArgument,
   runRedisCommand,
+  type RedisListInsertPosition,
   updateRedisHashEntry,
   updateRedisJsonValue,
+  updateRedisListValue,
   updateRedisStringValue,
   updateRedisZSetEntry,
 } from "../lib/redis";
@@ -15,7 +22,7 @@ import {
   recordCrashReport,
   recordTelemetryEvent,
 } from "../lib/privacyRuntime";
-import type { KeyValue, RedisConnection } from "../types";
+import type { KeyValue, RedisConnection, ZSetMember } from "../types";
 
 interface UseRedisValueEditorStateOptions {
   activeConnection?: RedisConnection;
@@ -36,6 +43,238 @@ export function useRedisValueEditorState({
   selectedDb,
   setKeyValue,
 }: UseRedisValueEditorStateOptions) {
+  const addHashEntry = useCallback(
+    async (key: string, field: string, value: string) => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!field.length) {
+        throw new Error("Field cannot be empty");
+      }
+
+      await addRedisHashEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        {
+          field,
+          value,
+        }
+      );
+      void recordTelemetryEvent("editor.hash.add");
+      void recordAuditEvent("editor.hash.add", { key, field });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "hash" ||
+          !previous.value ||
+          typeof previous.value !== "object" ||
+          Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        return {
+          ...previous,
+          value: {
+            ...(previous.value as Record<string, string>),
+            [field]: value,
+          },
+        };
+      });
+    },
+    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+  );
+
+  const appendListValue = useCallback(
+    async (key: string, value: string, position: RedisListInsertPosition = "tail") => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!value.length) {
+        throw new Error("Value cannot be empty");
+      }
+
+      await appendRedisListValue(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { value, position }
+      );
+      void recordTelemetryEvent("editor.list.add");
+      void recordAuditEvent("editor.list.add", { key, position });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "list" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const currentValues = previous.value as string[];
+
+        return {
+          ...previous,
+          value:
+            position === "head"
+              ? [value, ...currentValues]
+              : [...currentValues, value],
+        };
+      });
+    },
+    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+  );
+
+  const updateListValue = useCallback(
+    async (key: string, index: number, value: string) => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error("Index must be a non-negative integer");
+      }
+
+      if (!value.length) {
+        throw new Error("Value cannot be empty");
+      }
+
+      await updateRedisListValue(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { index, value }
+      );
+      void recordTelemetryEvent("editor.list.update");
+      void recordAuditEvent("editor.list.update", { key, index });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "list" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const currentValues = previous.value as string[];
+        const nextValues = currentValues.map((item, itemIndex) =>
+          itemIndex === index ? value : item
+        );
+
+        return {
+          ...previous,
+          value: nextValues,
+        };
+      });
+    },
+    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+  );
+
+  const deleteListValue = useCallback(
+    async (key: string, index: number) => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!Number.isInteger(index) || index < 0) {
+        throw new Error("Index must be a non-negative integer");
+      }
+
+      await deleteRedisListValue(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { index }
+      );
+      void recordTelemetryEvent("editor.list.delete");
+      void recordAuditEvent("editor.list.delete", { key, index });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "list" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const currentValues = previous.value as string[];
+        const nextValues = currentValues.filter((_, itemIndex) => itemIndex !== index);
+
+        if (!nextValues.length) {
+          return null;
+        }
+
+        return {
+          ...previous,
+          value: nextValues,
+        };
+      });
+
+      const currentValues =
+        keyValue?.key === key && keyValue.type === "list" && Array.isArray(keyValue.value)
+          ? (keyValue.value as string[])
+          : null;
+
+      if (currentValues && currentValues.length <= 1) {
+        removeKeyFromState(key);
+      }
+    },
+    [
+      activeConnection,
+      keyValue,
+      notConnectedMessage,
+      removeKeyFromState,
+      selectedDb,
+      setKeyValue,
+    ]
+  );
+
+  const addSetMember = useCallback(
+    async (key: string, member: string) => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!member.length) {
+        throw new Error("Member cannot be empty");
+      }
+
+      await addRedisSetMember(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { member }
+      );
+      void recordTelemetryEvent("editor.set.add");
+      void recordAuditEvent("editor.set.add", { key });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "set" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const currentMembers = previous.value as string[];
+
+        return {
+          ...previous,
+          value: [...currentMembers, member],
+        };
+      });
+    },
+    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+  );
+
   const updateKeyTtl = useCallback(
     async (key: string, nextTtl: number) => {
       if (!activeConnection) {
@@ -482,13 +721,69 @@ export function useRedisValueEditorState({
     ]
   );
 
+  const addZSetEntry = useCallback(
+    async (key: string, member: string, score: number) => {
+      if (!activeConnection) {
+        throw new Error(notConnectedMessage);
+      }
+
+      if (!member.length) {
+        throw new Error("Member cannot be empty");
+      }
+
+      if (!Number.isFinite(score)) {
+        throw new Error("Score must be a finite number");
+      }
+
+      await addRedisZSetEntry(
+        { ...activeConnection, db: selectedDb },
+        key,
+        { member, score }
+      );
+      void recordTelemetryEvent("editor.zset.add");
+      void recordAuditEvent("editor.zset.add", { key, member });
+
+      setKeyValue((previous) => {
+        if (
+          !previous ||
+          previous.key !== key ||
+          previous.type !== "zset" ||
+          !Array.isArray(previous.value)
+        ) {
+          return previous;
+        }
+
+        const currentMembers = previous.value as ZSetMember[];
+        const nextValue = [...currentMembers, { member, score }].sort((left, right) => {
+          if (left.score === right.score) {
+            return left.member.localeCompare(right.member);
+          }
+
+          return left.score - right.score;
+        });
+
+        return {
+          ...previous,
+          value: nextValue,
+        };
+      });
+    },
+    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+  );
+
   return {
+    addHashEntry,
+    addSetMember,
+    addZSetEntry,
+    appendListValue,
     deleteHashEntry,
     deleteKey,
+    deleteListValue,
     deleteZSetEntry,
     updateHashEntry,
     updateJsonValue,
     updateKeyTtl,
+    updateListValue,
     updateStringValue,
     updateZSetEntry,
   };

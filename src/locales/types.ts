@@ -231,6 +231,7 @@ export interface Messages {
     deleteKey: string;
     confirmDeleteKey: string;
     confirmDeleteField: string;
+    confirmDeleteListItem: string;
     confirmDeleteMember: string;
     browseNode: string;
     ttlInputPlaceholder: string;
@@ -239,6 +240,9 @@ export interface Messages {
     rank: string;
     member: string;
     score: string;
+    insertPosition: string;
+    insertHead: string;
+    insertTail: string;
     ttlBadge: string;
     headers: {
       index: string;

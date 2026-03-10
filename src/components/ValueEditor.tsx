@@ -17,11 +17,13 @@ import {
   Save,
   ChevronRight,
   LoaderCircle,
+  Plus,
   RotateCw,
 } from "lucide-react";
 import type { KeyValue, RedisConnection, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
 import { getRedisErrorMessage } from "../lib/redis";
+import type { RedisListInsertPosition } from "../lib/redis";
 import { useAppSettings } from "../hooks/useAppSettings";
 import { useModalTransition } from "../hooks/useModalTransition";
 import type { JsonCodeEditorProps } from "./JsonCodeEditor";
@@ -40,6 +42,15 @@ interface ValueEditorProps {
   onUpdateStringValue: (key: string, nextValue: string) => Promise<void>;
   onUpdateKeyTtl: (key: string, nextTtl: number) => Promise<void>;
   onUpdateJsonValue: (key: string, nextValue: string) => Promise<void>;
+  onAppendListValue: (
+    key: string,
+    value: string,
+    position: RedisListInsertPosition
+  ) => Promise<void>;
+  onUpdateListValue: (key: string, index: number, value: string) => Promise<void>;
+  onDeleteListValue: (key: string, index: number) => Promise<void>;
+  onAddSetMember: (key: string, member: string) => Promise<void>;
+  onAddHashEntry: (key: string, field: string, value: string) => Promise<void>;
   onUpdateHashEntry: (
     key: string,
     oldField: string,
@@ -47,6 +58,7 @@ interface ValueEditorProps {
     nextValue: string
   ) => Promise<void>;
   onDeleteHashEntry: (key: string, field: string) => Promise<void>;
+  onAddZSetEntry: (key: string, member: string, score: number) => Promise<void>;
   onUpdateZSetEntry: (
     key: string,
     oldMember: string,
@@ -88,8 +100,14 @@ export function ValueEditor({
   onUpdateStringValue,
   onUpdateKeyTtl,
   onUpdateJsonValue,
+  onAppendListValue,
+  onUpdateListValue,
+  onDeleteListValue,
+  onAddSetMember,
+  onAddHashEntry,
   onUpdateHashEntry,
   onDeleteHashEntry,
+  onAddZSetEntry,
   onUpdateZSetEntry,
   onDeleteZSetEntry,
 }: ValueEditorProps) {
@@ -101,13 +119,22 @@ export function ValueEditor({
   const [editingTTL, setEditingTTL] = useState(false);
   const [ttlInput, setTtlInput] = useState("");
   const [isUpdatingTTL, setIsUpdatingTTL] = useState(false);
-  const [editingHashRow, setEditingHashRow] = useState<{
+  const [hashEditorState, setHashEditorState] = useState<{
+    mode: "create" | "edit";
     field: string;
     value: string;
   } | null>(null);
-  const [editingZSetRow, setEditingZSetRow] = useState<{
+  const [zSetEditorState, setZSetEditorState] = useState<{
+    mode: "create" | "edit";
     member: string;
     score: number;
+  } | null>(null);
+  const [singleValueEditorState, setSingleValueEditorState] = useState<{
+    kind: "list" | "set";
+    mode: "create" | "edit";
+    value: string;
+    index?: number;
+    insertPosition?: RedisListInsertPosition;
   } | null>(null);
 
   useEffect(() => {
@@ -115,8 +142,9 @@ export function ValueEditor({
     setTtlInput("");
     setIsDeletingKey(false);
     setIsUpdatingTTL(false);
-    setEditingHashRow(null);
-    setEditingZSetRow(null);
+    setHashEditorState(null);
+    setZSetEditorState(null);
+    setSingleValueEditorState(null);
   }, [keyValue?.key, keyValue?.type]);
 
   const copyText = async (text: string) => {
@@ -231,6 +259,54 @@ export function ValueEditor({
   const usesTableViewer =
     keyValue.type === "hash" || keyValue.type === "zset";
   const editorSettings: EditorRuntimeSettings = appSettings.editor;
+  const headerAddLabel =
+    keyValue.type === "hash"
+      ? messages.keyBrowser.addEntry
+      : keyValue.type === "list"
+      ? messages.keyBrowser.addValue
+      : keyValue.type === "set" || keyValue.type === "zset"
+      ? messages.keyBrowser.addMember
+      : "";
+  const canOpenCreateEditor =
+    keyValue.type === "hash" ||
+    keyValue.type === "list" ||
+    keyValue.type === "set" ||
+    keyValue.type === "zset";
+
+  const handleOpenCreateEditor = () => {
+    if (keyValue.type === "hash") {
+      setHashEditorState({
+        mode: "create",
+        field: "",
+        value: "",
+      });
+      setZSetEditorState(null);
+      setSingleValueEditorState(null);
+      return;
+    }
+
+    if (keyValue.type === "zset") {
+      setZSetEditorState({
+        mode: "create",
+        member: "",
+        score: 0,
+      });
+      setHashEditorState(null);
+      setSingleValueEditorState(null);
+      return;
+    }
+
+    if (keyValue.type === "list" || keyValue.type === "set") {
+      setSingleValueEditorState({
+        kind: keyValue.type,
+        mode: "create",
+        value: "",
+        insertPosition: keyValue.type === "list" ? "tail" : undefined,
+      });
+      setHashEditorState(null);
+      setZSetEditorState(null);
+    }
+  };
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0">
@@ -278,6 +354,17 @@ export function ValueEditor({
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
+            {canOpenCreateEditor ? (
+              <button
+                type="button"
+                onClick={handleOpenCreateEditor}
+                className="btn btn-ghost btn-xs gap-1 cursor-pointer"
+                aria-label={headerAddLabel}
+                title={headerAddLabel}
+              >
+                <Plus size={12} />
+              </button>
+            ) : null}
             <button
               onClick={handleCopy}
               className="btn btn-ghost btn-xs gap-1 cursor-pointer"
@@ -412,8 +499,13 @@ export function ValueEditor({
             onCopy={copyText}
             onRefresh={onRefreshKeyValue}
             onEditRow={(field, value) => {
-              setEditingZSetRow(null);
-              setEditingHashRow({ field, value });
+              setZSetEditorState(null);
+              setSingleValueEditorState(null);
+              setHashEditorState({
+                mode: "edit",
+                field,
+                value,
+              });
             }}
             onDeleteRow={(field) => onDeleteHashEntry(keyValue.key, field)}
           />
@@ -421,7 +513,20 @@ export function ValueEditor({
         {keyValue.type === "list" && (
           <ListViewer
             value={keyValue.value as string[]}
+            confirmDeleteEnabled={appSettings.general.confirmDelete}
             onCopy={copyText}
+            onEditValue={(index, value) => {
+              setHashEditorState(null);
+              setZSetEditorState(null);
+              setSingleValueEditorState({
+                kind: "list",
+                mode: "edit",
+                value,
+                index,
+              });
+            }}
+            onDeleteValue={(index) => onDeleteListValue(keyValue.key, index)}
+            onRefresh={onRefreshKeyValue}
           />
         )}
         {keyValue.type === "set" && (
@@ -437,8 +542,13 @@ export function ValueEditor({
             onCopy={copyText}
             onRefresh={onRefreshKeyValue}
             onEditRow={(member, score) => {
-              setEditingHashRow(null);
-              setEditingZSetRow({ member, score });
+              setHashEditorState(null);
+              setSingleValueEditorState(null);
+              setZSetEditorState({
+                mode: "edit",
+                member,
+                score,
+              });
             }}
             onDeleteRow={(member) => onDeleteZSetEntry(keyValue.key, member)}
           />
@@ -446,39 +556,76 @@ export function ValueEditor({
 
       </div>
 
-      {editingHashRow ? (
+      {hashEditorState ? (
         <HashRowEditDrawer
-          key={`${keyValue.key}:${editingHashRow.field}`}
+          key={`${keyValue.key}:${hashEditorState.mode}:${hashEditorState.field}`}
           keyName={keyValue.key}
-          initialField={editingHashRow.field}
-          initialValue={editingHashRow.value}
+          mode={hashEditorState.mode}
+          initialField={hashEditorState.field}
+          initialValue={hashEditorState.value}
           settings={editorSettings}
-          onClose={() => setEditingHashRow(null)}
+          onClose={() => setHashEditorState(null)}
           onSave={async (nextField, nextValue) => {
-            await onUpdateHashEntry(
+            if (hashEditorState.mode === "create") {
+              await onAddHashEntry(keyValue.key, nextField, nextValue);
+              return;
+            }
+
+            await onUpdateHashEntry(keyValue.key, hashEditorState.field, nextField, nextValue);
+          }}
+        />
+      ) : null}
+
+      {zSetEditorState ? (
+        <ZSetRowEditDrawer
+          key={`${keyValue.key}:${zSetEditorState.mode}:${zSetEditorState.member}`}
+          keyName={keyValue.key}
+          mode={zSetEditorState.mode}
+          initialMember={zSetEditorState.member}
+          initialScore={zSetEditorState.score}
+          onClose={() => setZSetEditorState(null)}
+          onSave={async (nextMember, nextScore) => {
+            if (zSetEditorState.mode === "create") {
+              await onAddZSetEntry(keyValue.key, nextMember, nextScore);
+              return;
+            }
+
+            await onUpdateZSetEntry(
               keyValue.key,
-              editingHashRow.field,
-              nextField,
-              nextValue
+              zSetEditorState.member,
+              nextMember,
+              nextScore
             );
           }}
         />
       ) : null}
 
-      {editingZSetRow ? (
-        <ZSetRowEditDrawer
-          key={`${keyValue.key}:${editingZSetRow.member}`}
+      {singleValueEditorState ? (
+        <SingleValueEditDrawer
+          key={`${keyValue.key}:${singleValueEditorState.kind}:${singleValueEditorState.mode}:${singleValueEditorState.index ?? "new"}`}
           keyName={keyValue.key}
-          initialMember={editingZSetRow.member}
-          initialScore={editingZSetRow.score}
-          onClose={() => setEditingZSetRow(null)}
-          onSave={async (nextMember, nextScore) => {
-            await onUpdateZSetEntry(
-              keyValue.key,
-              editingZSetRow.member,
-              nextMember,
-              nextScore
-            );
+          mode={singleValueEditorState.mode}
+          kind={singleValueEditorState.kind}
+          initialValue={singleValueEditorState.value}
+          initialInsertPosition={singleValueEditorState.insertPosition}
+          settings={editorSettings}
+          onClose={() => setSingleValueEditorState(null)}
+          onSave={async (nextValue, insertPosition) => {
+            if (singleValueEditorState.kind === "list") {
+              if (singleValueEditorState.mode === "edit") {
+                await onUpdateListValue(
+                  keyValue.key,
+                  singleValueEditorState.index ?? 0,
+                  nextValue
+                );
+                return;
+              }
+
+              await onAppendListValue(keyValue.key, nextValue, insertPosition ?? "tail");
+              return;
+            }
+
+            await onAddSetMember(keyValue.key, nextValue);
           }}
         />
       ) : null}
@@ -815,6 +962,7 @@ function TableRowActions({
   onRefresh,
   onEdit,
   onDelete,
+  showCopyAction = true,
   confirmDeleteEnabled = false,
   confirmDeleteMessage,
   onError,
@@ -823,6 +971,7 @@ function TableRowActions({
   onRefresh: () => Promise<void>;
   onEdit: () => void;
   onDelete: () => Promise<void>;
+  showCopyAction?: boolean;
   confirmDeleteEnabled?: boolean;
   confirmDeleteMessage?: string;
   onError?: (error: unknown) => void;
@@ -908,9 +1057,11 @@ function TableRowActions({
     <div
       className="flex w-28 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
     >
-      <RowActionButton label={messages.common.copy} onClick={handleCopy}>
-        {copied ? <Check size={10} /> : <Copy size={10} />}
-      </RowActionButton>
+      {showCopyAction ? (
+        <RowActionButton label={messages.common.copy} onClick={handleCopy}>
+          {copied ? <Check size={10} /> : <Copy size={10} />}
+        </RowActionButton>
+      ) : null}
       <RowActionButton
         label={messages.common.refresh}
         onClick={handleRefresh}
@@ -1079,56 +1230,67 @@ function HashViewer({
 
 function ListViewer({
   value,
+  confirmDeleteEnabled,
   onCopy,
+  onRefresh,
+  onEditValue,
+  onDeleteValue,
 }: {
   value: string[];
+  confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
+  onRefresh: () => Promise<void>;
+  onEditValue: (index: number, value: string) => void;
+  onDeleteValue: (index: number) => Promise<void>;
 }) {
   const { messages } = useI18n();
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (copiedIndex === null) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setCopiedIndex(null);
-    }, 900);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [copiedIndex]);
+  const [actionError, setActionError] = useState("");
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-2">
+      <TableActionError error={actionError} />
       {value.map((item, index) => (
-        <button
-          type="button"
+        <div
           key={index}
-          onClick={() => {
-            void onCopy(item).then(() => {
-              setCopiedIndex(index);
-            });
-          }}
-          className="flex w-full items-start gap-3 rounded-lg bg-base-200/50 p-2.5 text-left transition-colors duration-150 group hover:bg-base-200 cursor-copy"
-          aria-label={`${messages.common.copy} ${item}`}
+          className="group flex w-full items-start gap-2 rounded-lg bg-base-200/50 p-2.5 transition-colors duration-150 hover:bg-base-200"
         >
-          <span className="text-[10px] font-mono text-base-content/30 mt-0.5 w-5 text-right shrink-0">
-            {index}
-          </span>
-          <span className="text-xs font-mono text-base-content/80 flex-1 min-w-0 break-all">
-            {item}
-          </span>
-          <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base-content/35 transition-colors duration-150 group-hover:text-base-content/60">
-            {copiedIndex === index ? (
-              <Check size={11} className="text-success" />
-            ) : (
-              <Copy size={11} />
-            )}
-          </span>
-        </button>
+          <div className="flex min-w-0 flex-1 items-start gap-3 text-left">
+            <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-[10px] text-base-content/30">
+              {index}
+            </span>
+            <span className="min-w-0 flex-1 break-all font-mono text-xs text-base-content/80">
+              {item}
+            </span>
+          </div>
+          <div className="shrink-0">
+            <TableRowActions
+              onCopy={() => {
+                setActionError("");
+                return onCopy(item);
+              }}
+              onRefresh={async () => {
+                setActionError("");
+                await onRefresh();
+              }}
+              onEdit={() => {
+                setActionError("");
+                onEditValue(index, item);
+              }}
+              onDelete={async () => {
+                setActionError("");
+                await onDeleteValue(index);
+              }}
+              confirmDeleteEnabled={confirmDeleteEnabled}
+              confirmDeleteMessage={replaceTemplate(
+                messages.valueEditor.confirmDeleteListItem,
+                { index }
+              )}
+              onError={(error) => {
+                setActionError(getRedisErrorMessage(error));
+              }}
+            />
+          </div>
+        </div>
       ))}
     </div>
   );
@@ -1606,6 +1768,7 @@ function RowEditDrawerShell({
 
 function HashRowEditDrawer({
   keyName,
+  mode,
   initialField,
   initialValue,
   settings,
@@ -1613,6 +1776,7 @@ function HashRowEditDrawer({
   onSave,
 }: {
   keyName: string;
+  mode: "create" | "edit";
   initialField: string;
   initialValue: string;
   settings: EditorRuntimeSettings;
@@ -1672,7 +1836,7 @@ function HashRowEditDrawer({
 
   return (
     <RowEditDrawerShell
-      title={messages.common.edit}
+      title={mode === "create" ? messages.keyBrowser.addEntry : messages.common.edit}
       subtitle={keyName}
       isSaving={isSaving}
       error={error}
@@ -1746,12 +1910,14 @@ function HashRowEditDrawer({
 
 function ZSetRowEditDrawer({
   keyName,
+  mode,
   initialMember,
   initialScore,
   onClose,
   onSave,
 }: {
   keyName: string;
+  mode: "create" | "edit";
   initialMember: string;
   initialScore: number;
   onClose: () => void;
@@ -1792,7 +1958,7 @@ function ZSetRowEditDrawer({
 
   return (
     <RowEditDrawerShell
-      title={messages.common.edit}
+      title={mode === "create" ? messages.keyBrowser.addMember : messages.common.edit}
       subtitle={keyName}
       isSaving={isSaving}
       error={error}
@@ -1824,6 +1990,179 @@ function ZSetRowEditDrawer({
             className="input input-sm w-full bg-base-100 font-mono user-select-text"
           />
         </label>
+      </div>
+    </RowEditDrawerShell>
+  );
+}
+
+function SingleValueEditDrawer({
+  keyName,
+  mode,
+  kind,
+  initialValue,
+  initialInsertPosition = "tail",
+  settings,
+  onClose,
+  onSave,
+}: {
+  keyName: string;
+  mode: "create" | "edit";
+  kind: "list" | "set";
+  initialValue: string;
+  initialInsertPosition?: RedisListInsertPosition;
+  settings: EditorRuntimeSettings;
+  onClose: () => void;
+  onSave: (
+    nextValue: string,
+    insertPosition?: RedisListInsertPosition
+  ) => Promise<void>;
+}) {
+  const { messages } = useI18n();
+  const usesJsonValueEditor = useMemo(
+    () => mode === "edit" && isStructuredJsonText(initialValue),
+    [initialValue, mode]
+  );
+  const [value, setValue] = useState(() =>
+    usesJsonValueEditor && settings.autoFormatJson
+      ? formatJsonDraft(initialValue)
+      : initialValue
+  );
+  const [insertPosition, setInsertPosition] =
+    useState<RedisListInsertPosition>(initialInsertPosition);
+  const [saveError, setSaveError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const jsonValidationError = usesJsonValueEditor ? getJsonDraftError(value) : "";
+  const error = saveError || jsonValidationError;
+  const label = kind === "list" ? messages.valueEditor.value : messages.valueEditor.member;
+  const showsInsertPosition = kind === "list" && mode === "create";
+  const title =
+    mode === "create"
+      ? kind === "list"
+        ? messages.keyBrowser.addValue
+        : messages.keyBrowser.addMember
+      : messages.common.edit;
+
+  const handleResetValue = () => {
+    setValue(
+      usesJsonValueEditor && settings.autoFormatJson
+        ? formatJsonDraft(initialValue)
+        : initialValue
+    );
+    setSaveError("");
+  };
+
+  const handleSave = async () => {
+    const nextValue = usesJsonValueEditor ? compactJsonDraft(value) : value.trim();
+
+    if (!nextValue.length) {
+      setSaveError(`${label} cannot be empty`);
+      return false;
+    }
+
+    if (usesJsonValueEditor && jsonValidationError) {
+      setSaveError(jsonValidationError);
+      return false;
+    }
+
+    setIsSaving(true);
+    setSaveError("");
+
+    try {
+      await onSave(nextValue, showsInsertPosition ? insertPosition : undefined);
+      return true;
+    } catch (saveError) {
+      setSaveError(getRedisErrorMessage(saveError));
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <RowEditDrawerShell
+      title={title}
+      subtitle={keyName}
+      isSaving={isSaving}
+      error={error}
+      onClose={onClose}
+      onSave={handleSave}
+    >
+      <div className="flex flex-col gap-4">
+        {usesJsonValueEditor ? (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-mono text-base-content/50">
+                {label}
+              </span>
+              <button
+                type="button"
+                onClick={handleResetValue}
+                className="btn btn-ghost btn-xs cursor-pointer font-mono"
+              >
+                {messages.common.reset}
+              </button>
+            </div>
+            <JsonCodeEditor
+              value={value}
+              onChange={(nextValue) => {
+                setValue(nextValue);
+                setSaveError("");
+              }}
+              className="h-[18rem]"
+              surfaceClassName="bg-base-100"
+              wordWrap={settings.wordWrap}
+              syntaxHighlightingEnabled={settings.syntaxHighlighting}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-mono text-base-content/50">{label}</span>
+            <input
+              type="text"
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value);
+                setSaveError("");
+              }}
+              className="input input-sm w-full bg-base-100 font-mono user-select-text"
+              autoFocus
+            />
+          </label>
+        )}
+        {showsInsertPosition ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg bg-base-200/60 py-2">
+            <span className="text-[11px] font-mono text-base-content/50">
+              {messages.valueEditor.insertPosition}
+            </span>
+            <div className="tabs tabs-box tabs-xs rounded-lg bg-base-100/70 p-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setInsertPosition("head");
+                  setSaveError("");
+                }}
+                className={`tab cursor-pointer rounded-md font-mono text-[11px] transition-colors duration-150 ${
+                  insertPosition === "head" ? "tab-active" : ""
+                }`}
+              >
+                {messages.valueEditor.insertHead}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setInsertPosition("tail");
+                  setSaveError("");
+                }}
+                className={`tab cursor-pointer rounded-md font-mono text-[11px] transition-colors duration-150 ${
+                  insertPosition === "tail" ? "tab-active" : ""
+                }`}
+              >
+                {messages.valueEditor.insertTail}
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </RowEditDrawerShell>
   );

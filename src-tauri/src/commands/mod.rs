@@ -24,6 +24,8 @@ pub(crate) use stream::{
     get_redis_stream_pending_entries,
 };
 pub(crate) use values::{
-    create_redis_key, delete_redis_hash_entry, delete_redis_zset_entry, update_redis_hash_entry,
-    update_redis_json_value, update_redis_string_value, update_redis_zset_entry,
+    add_redis_hash_entry, add_redis_set_member, add_redis_zset_entry, append_redis_list_value,
+    create_redis_key, delete_redis_hash_entry, delete_redis_list_value, delete_redis_zset_entry,
+    update_redis_hash_entry, update_redis_json_value, update_redis_list_value,
+    update_redis_string_value, update_redis_zset_entry,
 };
