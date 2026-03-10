@@ -21,8 +21,11 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       createKey: state.createKey,
       deleteKey: state.deleteKey,
       deleteGroup: state.deleteGroup,
+      hasMoreKeys: state.hasMoreKeys,
       isLoadingKeys: state.isLoadingKeys,
+      isLoadingMoreKeys: state.isLoadingMoreKeys,
       keys: state.keys,
+      loadMoreKeys: state.loadMoreKeys,
       refreshKeys: state.refreshKeys,
       renameGroup: state.renameGroup,
       renameKey: state.renameKey,
@@ -54,11 +57,14 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       onCreateKey={workspace.createKey}
       confirmBeforeDelete={preferences.confirmBeforeDelete}
       defaultTtl={preferences.defaultTtl}
+      hasMoreKeys={workspace.hasMoreKeys}
+      isLoadingMoreKeys={workspace.isLoadingMoreKeys}
       keySeparator={preferences.keySeparator}
       showKeyType={preferences.showKeyType}
       showTtl={preferences.showTtl}
       keys={workspace.keys}
       selectedKey={workspace.selectedKey}
+      onLoadMoreKeys={workspace.loadMoreKeys}
       onSelectKey={workspace.selectKey}
       onDeleteKey={workspace.deleteKey}
       onDeleteGroup={workspace.deleteGroup}

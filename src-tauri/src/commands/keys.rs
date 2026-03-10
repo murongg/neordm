@@ -1,7 +1,7 @@
 use crate::models::{
     RedisClusterTopologyInput, RedisClusterTopologyNode, RedisKeyLookupInput, RedisKeyRenameInput,
     RedisKeyRenamePairInput, RedisKeySummary, RedisKeyValueResponse, RedisKeysListInput,
-    RedisKeysRenameInput,
+    RedisKeysRenameInput, RedisKeysScanPageInput, RedisKeysScanPageResponse,
 };
 use crate::redis_support::{
     find_cluster_node_address_for_slot, format_cli_output, get_cluster_topology,
@@ -9,6 +9,7 @@ use crate::redis_support::{
 };
 use redis::cluster_routing::get_slot;
 use redis::Value;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 use std::collections::{HashMap, HashSet};
 
@@ -16,6 +17,224 @@ const DEFAULT_SCAN_COUNT: u32 = 200;
 const DEFAULT_MAX_KEYS: u32 = 10_000;
 const MAX_SCAN_COUNT: u32 = 5_000;
 const MAX_TOTAL_KEYS: u32 = 50_000;
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClusterScanCursor {
+    node_index: usize,
+    cursor: u64,
+}
+
+async fn scan_key_metadata(
+    connection: &mut impl redis::aio::ConnectionLike,
+    key: String,
+    slot: Option<u16>,
+    node_address: Option<String>,
+) -> Option<RedisKeySummary> {
+    let metadata = redis::pipe()
+        .cmd("TYPE")
+        .arg(&key)
+        .cmd("TTL")
+        .arg(&key)
+        .query_async::<(String, i64)>(connection)
+        .await
+        .ok()?;
+
+    let (raw_type, ttl) = metadata;
+
+    if raw_type == "none" {
+        return None;
+    }
+
+    Some(RedisKeySummary {
+        key,
+        key_type: normalize_key_type(&raw_type),
+        ttl,
+        slot,
+        node_address,
+    })
+}
+
+fn clamp_scan_page_size(value: Option<u32>) -> usize {
+    value.unwrap_or(DEFAULT_SCAN_COUNT).clamp(1, MAX_TOTAL_KEYS) as usize
+}
+
+fn parse_direct_scan_cursor(cursor: Option<&str>) -> Result<u64, String> {
+    let Some(raw_cursor) = cursor.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(0);
+    };
+
+    raw_cursor
+        .parse::<u64>()
+        .map_err(|error| format!("Invalid scan cursor: {error}"))
+}
+
+fn parse_cluster_scan_cursor(cursor: Option<&str>) -> Result<ClusterScanCursor, String> {
+    let Some(raw_cursor) = cursor.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(ClusterScanCursor {
+            node_index: 0,
+            cursor: 0,
+        });
+    };
+
+    serde_json::from_str::<ClusterScanCursor>(raw_cursor)
+        .map_err(|error| format!("Invalid cluster scan cursor: {error}"))
+}
+
+async fn scan_cluster_keys_page(
+    input: &RedisKeysScanPageInput,
+    scan_count: u32,
+    page_size: usize,
+) -> Result<RedisKeysScanPageResponse, String> {
+    let cluster_node_filter = input
+        .cluster_node_address
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let topology = get_cluster_topology(&input.connection).await?;
+    let mut master_nodes = topology
+        .iter()
+        .filter(|node| {
+            cluster_node_filter
+                .map(|value| value == node.address)
+                .unwrap_or(true)
+        })
+        .map(|node| (node.host.clone(), node.port, node.address.clone()))
+        .collect::<Vec<_>>();
+
+    master_nodes.sort_by(|left, right| left.2.cmp(&right.2));
+
+    if master_nodes.is_empty() {
+        return Err(match cluster_node_filter {
+            Some(address) => format!("Cluster node not found: {address}"),
+            None => "Cluster returned no master nodes".to_string(),
+        });
+    }
+
+    let mut collected = Vec::with_capacity(page_size.min(1_024));
+    let mut cursor = parse_cluster_scan_cursor(input.cursor.as_deref())?;
+
+    while cursor.node_index < master_nodes.len() && collected.len() < page_size {
+        let (host, port, node_address) = &master_nodes[cursor.node_index];
+        let mut connection = open_connection(&crate::models::RedisConnectionTestInput {
+            host: host.clone(),
+            port: *port,
+            sentinel: None,
+            cluster: None,
+            username: input.connection.username.clone(),
+            password: input.connection.password.clone(),
+            db: 0,
+            tls: input.connection.tls,
+            ssh_tunnel: None,
+        })
+        .await?;
+
+        loop {
+            let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+                .arg(cursor.cursor)
+                .arg("COUNT")
+                .arg(scan_count)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to scan cluster node {host}:{port}: {error}"))?;
+
+            for key in batch {
+                let slot = get_slot(key.as_bytes());
+                if let Some(summary) = scan_key_metadata(
+                    &mut connection,
+                    key,
+                    Some(slot),
+                    Some(node_address.clone()),
+                )
+                .await
+                {
+                    collected.push(summary);
+
+                    if collected.len() >= page_size {
+                        break;
+                    }
+                }
+            }
+
+            cursor.cursor = next_cursor;
+
+            if collected.len() >= page_size {
+                break;
+            }
+
+            if cursor.cursor == 0 {
+                cursor.node_index += 1;
+                break;
+            }
+        }
+    }
+
+    let next_cursor = if cursor.node_index < master_nodes.len() && cursor.cursor != 0 {
+        Some(serde_json::to_string(&cursor).map_err(|error| error.to_string())?)
+    } else if cursor.node_index < master_nodes.len() {
+        Some(
+            serde_json::to_string(&ClusterScanCursor {
+                node_index: cursor.node_index,
+                cursor: 0,
+            })
+            .map_err(|error| error.to_string())?,
+        )
+    } else {
+        None
+    };
+
+    Ok(RedisKeysScanPageResponse {
+        keys: collected,
+        next_cursor,
+    })
+}
+
+async fn scan_direct_keys_page(
+    input: &RedisKeysScanPageInput,
+    scan_count: u32,
+    page_size: usize,
+) -> Result<RedisKeysScanPageResponse, String> {
+    let mut connection = open_connection(&input.connection).await?;
+    let mut cursor = parse_direct_scan_cursor(input.cursor.as_deref())?;
+    let mut keys = Vec::with_capacity(page_size.min(1_024));
+
+    loop {
+        let (next_cursor, batch): (u64, Vec<String>) = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("COUNT")
+            .arg(scan_count)
+            .query_async(&mut connection)
+            .await
+            .map_err(|error| format!("Failed to scan keys: {error}"))?;
+
+        for key in batch {
+            if let Some(summary) =
+                scan_key_metadata(&mut connection, key, None, None).await
+            {
+                keys.push(summary);
+
+                if keys.len() >= page_size {
+                    break;
+                }
+            }
+        }
+
+        cursor = next_cursor;
+
+        if cursor == 0 || keys.len() >= page_size {
+            break;
+        }
+    }
+
+    Ok(RedisKeysScanPageResponse {
+        keys,
+        next_cursor: if cursor == 0 {
+            None
+        } else {
+            Some(cursor.to_string())
+        },
+    })
+}
 
 async fn list_cluster_keys(
     input: &RedisKeysListInput,
@@ -210,6 +429,23 @@ pub async fn list_redis_keys(
     }
 
     Ok(keys)
+}
+
+#[tauri::command]
+pub async fn scan_redis_keys_page(
+    input: RedisKeysScanPageInput,
+) -> Result<RedisKeysScanPageResponse, String> {
+    let scan_count = input
+        .scan_count
+        .unwrap_or(DEFAULT_SCAN_COUNT)
+        .clamp(1, MAX_SCAN_COUNT);
+    let page_size = clamp_scan_page_size(input.page_size);
+
+    if input.connection.cluster.is_some() {
+        return scan_cluster_keys_page(&input, scan_count, page_size).await;
+    }
+
+    scan_direct_keys_page(&input, scan_count, page_size).await
 }
 
 #[tauri::command]

@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
+import { CommandPalette } from "./components/CommandPalette";
 import { useTheme } from "./hooks/useTheme";
 import { useTrayStatusbar } from "./hooks/useTrayStatusbar";
 import { KeyBrowserPanel } from "./components/KeyBrowserPanel";
@@ -75,6 +76,7 @@ function App() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
   const [showSettings, setShowSettings] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
   const [hasMountedPubSubPanel, setHasMountedPubSubPanel] = useState(false);
   const [isMacOS] = useState(() => isMacOSPlatform());
@@ -152,6 +154,27 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== "k") {
+        return;
+      }
+
+      if (!event.metaKey && !event.ctrlKey) {
+        return;
+      }
+
+      event.preventDefault();
+      setShowCommandPalette((currentValue) => !currentValue);
+    };
+
+    window.addEventListener("keydown", handleKeyDown, true);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, []);
+
   return (
     <ToastProvider>
       <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-300 text-base-content rounded-xl">
@@ -171,7 +194,9 @@ function App() {
           <main className="relative flex-1 flex flex-col min-w-0 bg-base-300">
             <ToastViewport />
 
-            <WorkspaceTopbarPanel />
+            <WorkspaceTopbarPanel
+              onOpenCommandPalette={() => setShowCommandPalette(true)}
+            />
 
             {/* Panel content */}
             <div className="flex-1 flex flex-col min-h-0">
@@ -229,6 +254,15 @@ function App() {
             />
           </Suspense>
         )}
+        {showCommandPalette ? (
+          <CommandPalette
+            onClose={() => setShowCommandPalette(false)}
+            onOpenSettings={() => {
+              setShowCommandPalette(false);
+              setShowSettings(true);
+            }}
+          />
+        ) : null}
       </div>
     </ToastProvider>
   );

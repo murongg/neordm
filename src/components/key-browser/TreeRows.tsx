@@ -319,22 +319,10 @@ function KeyRow({
   }
 
   return (
-    <button
+    <div
       ref={(element) => setMotionElement(motionId, element)}
-      onClick={(event) => {
-        if (event.detail === 1) {
-          onClick();
-        }
-      }}
-      onDoubleClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onStartRename();
-      }}
-      onContextMenu={onContextMenu}
-      title={rowTitle}
       className={`
-        flex h-8 items-center gap-2 w-full px-3 py-1.5 cursor-pointer transition-colors duration-150 text-left
+        flex h-8 w-full items-center gap-2 px-3 py-1.5 text-left transition-colors duration-150
         ${
           isSelected
             ? "bg-primary/10 text-primary"
@@ -343,20 +331,37 @@ function KeyRow({
       `}
       style={{ paddingLeft: `${12 + depth * 12}px` }}
     >
-      <span
-        className={`shrink-0 ${
-          isSelected ? "text-primary" : "text-base-content/30"
-        }`}
+      <button
+        type="button"
+        onClick={(event) => {
+          if (event.detail === 1) {
+            onClick();
+          }
+        }}
+        onDoubleClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onStartRename();
+        }}
+        onContextMenu={onContextMenu}
+        title={rowTitle}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left cursor-pointer"
       >
-        {cfg.icon}
-      </span>
-      <span className="flex h-5 flex-1 min-w-0 items-center">
-        <span className="block w-full truncate text-xs font-mono">
-          {label}
+        <span
+          className={`shrink-0 ${
+            isSelected ? "text-primary" : "text-base-content/30"
+          }`}
+        >
+          {cfg.icon}
         </span>
-      </span>
-      {rightSlot}
-    </button>
+        <span className="flex h-5 min-w-0 flex-1 items-center">
+          <span className="block w-full truncate text-xs font-mono">
+            {label}
+          </span>
+        </span>
+        {rightSlot}
+      </button>
+    </div>
   );
 }
 

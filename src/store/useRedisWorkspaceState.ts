@@ -20,9 +20,9 @@ import {
   deleteRedisKeys,
   getRedisErrorMessage,
   getRedisKeyValue,
-  listRedisKeys,
   renameRedisKey,
   renameRedisKeys,
+  scanRedisKeysPage,
   testRedisConnection,
   type RedisKeyCreateInput,
 } from "../lib/redis";
@@ -47,6 +47,18 @@ function insertRedisKey(keys: RedisKey[], nextKey: RedisKey) {
   const nextKeys = [...keys.filter((item) => item.key !== nextKey.key), nextKey];
   nextKeys.sort((left, right) => left.key.localeCompare(right.key));
   return nextKeys;
+}
+
+function mergeRedisKeys(keys: RedisKey[], nextKeys: RedisKey[]) {
+  const merged = new Map(keys.map((item) => [item.key, item]));
+
+  nextKeys.forEach((item) => {
+    merged.set(item.key, item);
+  });
+
+  return Array.from(merged.values()).sort((left, right) =>
+    left.key.localeCompare(right.key)
+  );
 }
 
 interface UseRedisWorkspaceStateOptions {
@@ -86,6 +98,9 @@ interface RedisWorkspaceStoreState {
   showConnectionModal: boolean;
   editingConnectionId: string | null;
   isLoadingKeys: boolean;
+  isLoadingMoreKeys: boolean;
+  keysScanCursor: string | null;
+  hasMoreKeys: boolean;
   hasHydratedConnections: boolean;
   hydrateConnections: (connections: RedisConnection[]) => void;
   markConnectionsHydrated: () => void;
@@ -113,6 +128,7 @@ interface RedisWorkspaceStoreState {
     db: number,
     options?: LoadKeysOptions
   ) => Promise<void>;
+  loadMoreKeys: () => Promise<void>;
   selectConnection: (connectionId: string) => Promise<void>;
   openNewConnectionModal: () => void;
   openEditConnectionModal: (connectionId: string) => void;
@@ -196,6 +212,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     showConnectionModal: false,
     editingConnectionId: null,
     isLoadingKeys: false,
+    isLoadingMoreKeys: false,
+    keysScanCursor: null,
+    hasMoreKeys: false,
     hasHydratedConnections: false,
     hydrateConnections: (connections) => {
       set({
@@ -280,8 +299,15 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       const { selectedKey, syncConnectionStatus } = get();
       const currentSelectedKey = options.preserveSelection ? selectedKey : null;
       const { appSettings } = getWorkspaceRuntime();
+      const clusterNodeAddress =
+        connection.mode === "cluster" ? get().selectedClusterNodeAddress : null;
 
-      set({ isLoadingKeys: true });
+      set({
+        isLoadingKeys: true,
+        isLoadingMoreKeys: false,
+        keysScanCursor: null,
+        hasMoreKeys: false,
+      });
       syncConnectionStatus(connection.id, "connecting", db);
 
       if (!options.preserveSelection) {
@@ -293,15 +319,12 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       try {
-        const nextKeys = await listRedisKeys(
+        const page = await scanRedisKeysPage(
           { ...connection, db },
           {
-            maxKeys: parsePositiveInt(appSettings.general.maxKeys, 10_000),
+            pageSize: parsePositiveInt(appSettings.general.maxKeys, 10_000),
             scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
-            clusterNodeAddress:
-              connection.mode === "cluster"
-                ? get().selectedClusterNodeAddress
-                : null,
+            clusterNodeAddress,
           }
         );
 
@@ -309,9 +332,20 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           return;
         }
 
+        let nextKeys = mergeRedisKeys([], page.keys);
+
+        if (
+          currentSelectedKey &&
+          !nextKeys.some((item) => item.key === currentSelectedKey.key)
+        ) {
+          nextKeys = insertRedisKey(nextKeys, currentSelectedKey);
+        }
+
         set({
           keys: nextKeys,
           selectedDb: db,
+          keysScanCursor: page.nextCursor,
+          hasMoreKeys: Boolean(page.nextCursor),
         });
         syncConnectionStatus(connection.id, "connected", db);
 
@@ -337,12 +371,80 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           keys: [],
           selectedKey: null,
           keyValue: null,
+          keysScanCursor: null,
+          hasMoreKeys: false,
         });
         syncConnectionStatus(connection.id, "error", db);
         throw error;
       } finally {
         if (requestId === keysRequestId) {
-          set({ isLoadingKeys: false });
+          set({
+            isLoadingKeys: false,
+            isLoadingMoreKeys: false,
+          });
+        }
+      }
+    },
+    loadMoreKeys: async () => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+
+      if (
+        !activeConnection ||
+        state.isLoadingKeys ||
+        state.isLoadingMoreKeys ||
+        !state.hasMoreKeys ||
+        !state.keysScanCursor
+      ) {
+        return;
+      }
+
+      const requestId = keysRequestId;
+      const { appSettings } = getWorkspaceRuntime();
+
+      set({ isLoadingMoreKeys: true });
+
+      try {
+        const page = await scanRedisKeysPage(
+          { ...activeConnection, db: state.selectedDb },
+          {
+            pageSize: parsePositiveInt(appSettings.general.maxKeys, 10_000),
+            scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
+            cursor: state.keysScanCursor,
+            clusterNodeAddress:
+              activeConnection.mode === "cluster"
+                ? state.selectedClusterNodeAddress
+                : null,
+          }
+        );
+
+        if (requestId !== keysRequestId) {
+          return;
+        }
+
+        set((currentState) => {
+          const nextKeys = mergeRedisKeys(currentState.keys, page.keys);
+          const selectedKey = currentState.selectedKey
+            ? nextKeys.find((item) => item.key === currentState.selectedKey?.key) ??
+              currentState.selectedKey
+            : null;
+
+          return {
+            keys: nextKeys,
+            selectedKey,
+            keysScanCursor: page.nextCursor,
+            hasMoreKeys: Boolean(page.nextCursor),
+          };
+        });
+      } catch (error) {
+        if (requestId !== keysRequestId) {
+          return;
+        }
+
+        throw error;
+      } finally {
+        if (requestId === keysRequestId) {
+          set({ isLoadingMoreKeys: false });
         }
       }
     },
@@ -363,6 +465,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           keys: [],
           selectedKey: null,
           keyValue: null,
+          isLoadingMoreKeys: false,
+          keysScanCursor: null,
+          hasMoreKeys: false,
         });
         return;
       }
@@ -458,6 +563,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           searchQuery: "",
           selectedKey: null,
           keyValue: null,
+          isLoadingMoreKeys: false,
+          keysScanCursor: null,
+          hasMoreKeys: false,
         }));
         persistLastConnectionId(newConnection.id);
         void loadKeys(newConnection, newConnection.db).catch(() => undefined);
@@ -545,6 +653,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         selectedKey: null,
         keyValue: null,
         keys: [],
+        isLoadingMoreKeys: false,
+        keysScanCursor: null,
+        hasMoreKeys: false,
       });
 
       const nextConnection = nextConnections[0];
@@ -553,9 +664,12 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         keysRequestId += 1;
         set({
           isLoadingKeys: false,
+          isLoadingMoreKeys: false,
           activeConnectionId: "",
           selectedDb: 0,
           selectedClusterNodeAddress: null,
+          keysScanCursor: null,
+          hasMoreKeys: false,
         });
         persistLastConnectionId("");
         return;
@@ -586,6 +700,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       set({
         isLoadingKeys: false,
+        isLoadingMoreKeys: false,
         activeConnectionId: "",
         selectedDb: 0,
         selectedClusterNodeAddress: null,
@@ -593,6 +708,8 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         keys: [],
         selectedKey: null,
         keyValue: null,
+        keysScanCursor: null,
+        hasMoreKeys: false,
       });
     },
     selectDb: async (db) => {
@@ -1060,10 +1177,13 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       connections: state.connections,
       deleteConnection: state.deleteConnection,
       disconnectConnection: state.disconnectConnection,
+      hasMoreKeys: state.hasMoreKeys,
       isLoadingKeys: state.isLoadingKeys,
+      isLoadingMoreKeys: state.isLoadingMoreKeys,
       keyValue: state.keyValue,
       keys: state.keys,
       loadKeys: state.loadKeys,
+      loadMoreKeys: state.loadMoreKeys,
       openEditConnectionModal: state.openEditConnectionModal,
       openNewConnectionModal: state.openNewConnectionModal,
       panelTab: state.panelTab,

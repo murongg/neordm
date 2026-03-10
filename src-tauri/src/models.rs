@@ -67,6 +67,16 @@ pub(crate) struct RedisKeysListInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeysScanPageInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) scan_count: Option<u32>,
+    pub(crate) page_size: Option<u32>,
+    pub(crate) cursor: Option<String>,
+    pub(crate) cluster_node_address: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisClusterTopologyInput {
     pub(crate) connection: RedisConnectionTestInput,
 }
@@ -378,6 +388,13 @@ pub(crate) struct RedisKeySummary {
     pub(crate) ttl: i64,
     pub(crate) slot: Option<u16>,
     pub(crate) node_address: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeysScanPageResponse {
+    pub(crate) keys: Vec<RedisKeySummary>,
+    pub(crate) next_cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

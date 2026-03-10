@@ -1,13 +1,30 @@
 import { memo, useMemo } from "react";
-import { Bot, Edit3, Rss, Server, Terminal, Wifi } from "lucide-react";
+import { Bot, Edit3, Rss, Search, Server, Terminal, Wifi } from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
 import { prepareAIAgentExperience } from "../lib/aiPrefetch";
 import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 
-export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
+interface WorkspaceTopbarPanelProps {
+  onOpenCommandPalette: () => void;
+}
+
+function getCommandPaletteShortcutLabel() {
+  if (typeof navigator === "undefined") {
+    return "Ctrl K";
+  }
+
+  return /mac/i.test(navigator.platform || navigator.userAgent)
+    ? "Cmd K"
+    : "Ctrl K";
+}
+
+export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
+  onOpenCommandPalette,
+}: WorkspaceTopbarPanelProps) {
   const { messages } = useI18n();
+  const shortcutLabel = useMemo(() => getCommandPaletteShortcutLabel(), []);
   const workspace = useRedisWorkspaceStore(
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
@@ -67,6 +84,15 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel() {
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onOpenCommandPalette}
+          className="btn btn-ghost btn-xs h-7 gap-1 rounded-lg px-2 font-mono text-[10px] text-base-content/55"
+          title={shortcutLabel}
+        >
+          <Search size={11} />
+          <span>{shortcutLabel}</span>
+        </button>
         {activeConnection && (
           <>
             <div className="flex items-center gap-1.5">

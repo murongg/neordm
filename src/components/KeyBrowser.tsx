@@ -42,6 +42,7 @@ import {
   type RedisKeyCreateInput,
 } from "../lib/redis";
 import { CreateKeyModal } from "./CreateKeyModal";
+import { LoadMoreSection } from "./key-browser/LoadMoreSection";
 import {
   MemoGroupRow,
   MemoKeyRow,
@@ -54,7 +55,10 @@ interface KeyBrowserProps {
   selectedDb: number;
   onSelectDb: (db: number) => void;
   isRefreshing: boolean;
+  hasMoreKeys: boolean;
+  isLoadingMoreKeys: boolean;
   onRefresh: () => void;
+  onLoadMoreKeys: () => Promise<void>;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
   confirmBeforeDelete: boolean;
   defaultTtl: string;
@@ -493,7 +497,10 @@ export function KeyBrowser({
   selectedDb,
   onSelectDb,
   isRefreshing,
+  hasMoreKeys,
+  isLoadingMoreKeys,
   onRefresh,
+  onLoadMoreKeys,
   onCreateKey,
   confirmBeforeDelete,
   defaultTtl,
@@ -512,8 +519,23 @@ export function KeyBrowser({
   onSelectClusterNode,
   onSearchChange,
 }: KeyBrowserProps) {
-  const { messages } = useI18n();
+  const { locale, messages } = useI18n();
   const { showToast } = useToast();
+  const uiText = useMemo(
+    () =>
+      locale === "zh"
+        ? {
+            loadMore: "加载更多",
+            loadingMore: "加载中...",
+            loadedSummary: (count: number) => `已加载 ${count} 个 key`,
+          }
+        : {
+            loadMore: "Load more",
+            loadingMore: "Loading...",
+            loadedSummary: (count: number) => `${count} keys loaded`,
+          },
+    [locale]
+  );
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingKeyName, setEditingKeyName] = useState<string | null>(null);
@@ -564,6 +586,7 @@ export function KeyBrowser({
     viewportHeight: 0,
   });
   const deferredSearchQuery = useDeferredValue(searchQuery);
+
   const closeCreateForm = useCallback(() => {
     setIsCreateOpen(false);
     setCreateInitialKeyName("");
@@ -1548,6 +1571,17 @@ export function KeyBrowser({
       await refreshClusterTopology();
     }
   }, [isClusterConnection, onRefresh, refreshClusterTopology]);
+  const handleLoadMore = useCallback(async () => {
+    try {
+      await onLoadMoreKeys();
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    }
+  }, [onLoadMoreKeys, showToast]);
   const handleRefreshFromContextMenu = useCallback(async () => {
     closeKeyContextMenu();
 
@@ -1602,6 +1636,37 @@ export function KeyBrowser({
     editingKeyName ?? pendingSelectedKeyName ?? selectedKey?.key ?? null;
 
   const typeConfig = TYPE_CONFIG;
+
+  useEffect(() => {
+    if (
+      !hasConnection ||
+      !hasMoreKeys ||
+      isRefreshing ||
+      isLoadingMoreKeys
+    ) {
+      return;
+    }
+
+    const totalContentHeight = totalRows * KEY_BROWSER_ROW_HEIGHT;
+    const distanceToBottom =
+      totalContentHeight -
+      (scrollMetrics.scrollTop + (scrollMetrics.viewportHeight || 0));
+
+    if (distanceToBottom > KEY_BROWSER_ROW_HEIGHT * 6) {
+      return;
+    }
+
+    void handleLoadMore();
+  }, [
+    handleLoadMore,
+    hasConnection,
+    hasMoreKeys,
+    isLoadingMoreKeys,
+    isRefreshing,
+    scrollMetrics.scrollTop,
+    scrollMetrics.viewportHeight,
+    totalRows,
+  ]);
 
   return (
     <>
@@ -1873,9 +1938,20 @@ export function KeyBrowser({
             {bottomSpacerHeight > 0 ? (
               <div style={{ height: bottomSpacerHeight }} aria-hidden="true" />
             ) : null}
+            <LoadMoreSection
+              hasMore={hasMoreKeys}
+              isLoadingMore={isLoadingMoreKeys}
+              loadedCount={keys.length}
+              loadMoreLabel={uiText.loadMore}
+              loadingMoreLabel={uiText.loadingMore}
+              loadedSummaryLabel={uiText.loadedSummary(keys.length)}
+              onLoadMore={() => {
+                void handleLoadMore();
+              }}
+            />
           </>
         )}
-        </div>
+      </div>
       </div>
       {isCreateOpen ? (
         <CreateKeyModal

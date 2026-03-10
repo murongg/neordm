@@ -101,6 +101,18 @@ export interface ListRedisKeysOptions {
   clusterNodeAddress?: string | null;
 }
 
+export interface RedisKeysScanPageOptions {
+  scanCount?: number;
+  pageSize?: number;
+  cursor?: string | null;
+  clusterNodeAddress?: string | null;
+}
+
+export interface RedisKeysScanPage {
+  keys: RedisKey[];
+  nextCursor: string | null;
+}
+
 export const REDIS_PUBSUB_EVENT = "redis://pubsub";
 
 type RedisConnectionInvokeInput = Pick<
@@ -200,6 +212,21 @@ export async function listRedisKeys(
       connection: toConnectionInput(connection),
       scanCount: options.scanCount,
       maxKeys: options.maxKeys,
+      clusterNodeAddress: options.clusterNodeAddress ?? null,
+    },
+  });
+}
+
+export async function scanRedisKeysPage(
+  connection: RedisConnectionInvokeInput,
+  options: RedisKeysScanPageOptions = {}
+): Promise<RedisKeysScanPage> {
+  return invoke("scan_redis_keys_page", {
+    input: {
+      connection: toConnectionInput(connection),
+      scanCount: options.scanCount,
+      pageSize: options.pageSize,
+      cursor: options.cursor ?? null,
       clusterNodeAddress: options.clusterNodeAddress ?? null,
     },
   });
