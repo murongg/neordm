@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="./screenshots/screenshot1.png" alt="NeoRDM Screenshot" width="1000" />
+  <img src="./screenshots/screenshot.jpeg" alt="NeoRDM Screenshot" width="1000" />
 </p>
 
 NeoRDM is a modern Redis desktop client with AI at the center of the workflow.  

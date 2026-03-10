@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="./screenshots/screenshot1.png" alt="NeoRDM 截图" width="1000" />
+  <img src="./screenshots/screenshot.jpeg" alt="NeoRDM 截图" width="1000" />
 </p>
 
 NeoRDM 是一个现代化 Redis 桌面客户端，核心体验围绕 AI 辅助工作流设计。  
