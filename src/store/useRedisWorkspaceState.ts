@@ -5,6 +5,7 @@ import {
 } from "react";
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import { getCurrentMessages } from "../i18n";
 import {
   DEFAULT_APP_SETTINGS,
   type AppSettings,
@@ -157,7 +158,7 @@ interface RedisWorkspaceStoreState {
 const defaultWorkspaceRuntime: RedisWorkspaceRuntime = {
   appSettings: DEFAULT_APP_SETTINGS,
   hasHydratedSettings: false,
-  notConnectedMessage: "Not connected",
+  notConnectedMessage: getCurrentMessages().app.status.notConnected,
   persistLastConnectionId: () => undefined,
 };
 
@@ -830,6 +831,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     createKey: async (input) => {
       const state = get();
+      const messages = getCurrentMessages();
       const activeConnection = getActiveConnectionFromState(state);
       const { notConnectedMessage } = getWorkspaceRuntime();
       const nextKeyName = input.key.trim();
@@ -839,11 +841,11 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       if (!nextKeyName.length) {
-        throw new Error("Key name cannot be empty");
+        throw new Error(messages.keyBrowser.keyNameRequired);
       }
 
       if (state.keys.some((item) => item.key === nextKeyName)) {
-        throw new Error("Key already exists");
+        throw new Error(messages.ui.errors.keyAlreadyExists);
       }
 
       const createdKey = await createRedisKey(
@@ -873,6 +875,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     deleteKey: async (key) => {
       const state = get();
+      const messages = getCurrentMessages();
       const activeConnection = getActiveConnectionFromState(state);
 
       if (!activeConnection) {
@@ -880,7 +883,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       if (!key.key.length) {
-        throw new Error("Key name cannot be empty");
+        throw new Error(messages.keyBrowser.keyNameRequired);
       }
 
       await deleteRedisKey(
@@ -897,6 +900,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     deleteGroup: async (groupId, separator) => {
       const state = get();
+      const messages = getCurrentMessages();
       const activeConnection = getActiveConnectionFromState(state);
 
       if (!activeConnection) {
@@ -904,7 +908,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       if (!groupId.length || !separator.length) {
-        throw new Error("Group name cannot be empty");
+        throw new Error(messages.ui.errors.groupNameRequired);
       }
 
       const groupPrefix = `${groupId}${separator}`;
@@ -947,6 +951,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     renameKey: async (key, nextKeyName) => {
       const state = get();
+      const messages = getCurrentMessages();
       const activeConnection = getActiveConnectionFromState(state);
       const { notConnectedMessage } = getWorkspaceRuntime();
 
@@ -955,7 +960,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       if (!nextKeyName.length) {
-        throw new Error("Key name cannot be empty");
+        throw new Error(messages.keyBrowser.keyNameRequired);
       }
 
       if (nextKeyName === key.key) {
@@ -995,6 +1000,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     renameGroup: async (groupId, nextGroupId, separator) => {
       const state = get();
+      const messages = getCurrentMessages();
       const activeConnection = getActiveConnectionFromState(state);
       const { notConnectedMessage } = getWorkspaceRuntime();
 
@@ -1003,7 +1009,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       if (!groupId.length || !nextGroupId.length) {
-        throw new Error("Group name cannot be empty");
+        throw new Error(messages.ui.errors.groupNameRequired);
       }
 
       if (groupId === nextGroupId) {

@@ -11,6 +11,7 @@ import {
   type LocaleOption,
   type Messages,
 } from "./locales";
+import { en } from "./locales/en";
 import {
   loadAppSettings,
   updateAppSettings,
@@ -76,6 +77,31 @@ const initPromise = i18n.isInitialized
       .then(() => i18n);
 
 i18n.on("languageChanged", syncDocumentLanguage);
+
+export function formatMessageTemplate(
+  template: string,
+  values: Record<string, string | number> = {}
+) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key)
+      ? String(values[key])
+      : `{${key}}`
+  );
+}
+
+export function getCurrentMessages(): Messages {
+  const locale = normalizeLocale(i18n.resolvedLanguage ?? i18n.language);
+  const activeBundle = i18n.getResourceBundle(
+    locale,
+    "translation"
+  ) as Messages | undefined;
+  const fallbackBundle = i18n.getResourceBundle(
+    "en",
+    "translation"
+  ) as Messages | undefined;
+
+  return activeBundle ?? fallbackBundle ?? en;
+}
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
@@ -166,15 +192,7 @@ export function useI18n() {
     throw new Error("i18n messages are not loaded yet");
   }, [i18nInstance, locale]);
 
-  const format = useCallback(
-    (template: string, values: Record<string, string | number> = {}) =>
-      template.replace(/\{(\w+)\}/g, (_, key: string) =>
-        Object.prototype.hasOwnProperty.call(values, key)
-          ? String(values[key])
-          : `{${key}}`
-      ),
-    []
-  );
+  const format = useCallback(formatMessageTemplate, []);
 
   return {
     locale,

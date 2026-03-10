@@ -484,7 +484,7 @@ export function RedisStreamViewer({
       const confirmed = await confirm(
         replaceTemplate(text.confirmDeleteEntry, { id: entryId }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,
@@ -656,7 +656,7 @@ export function RedisStreamViewer({
       const confirmed = await confirm(
         replaceTemplate(text.confirmDestroyGroup, { group: groupName }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,
@@ -706,7 +706,7 @@ export function RedisStreamViewer({
           consumer: consumerName,
         }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,

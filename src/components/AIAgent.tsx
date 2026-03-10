@@ -483,6 +483,8 @@ const AssistantTranscript = memo(function AssistantTranscript({
   activeToolName?: string | null;
   live?: boolean;
 }) {
+  const { messages, format } = useI18n();
+  const text = messages.ui.aiPanel;
   const { processBlocks, responseContent, hasThinkingBlock, hasRunningToolBlock } =
     useMemo(() => {
       const groupedBlocks = new Map<
@@ -635,14 +637,14 @@ const AssistantTranscript = memo(function AssistantTranscript({
           <span className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-pulse" />
           <span className="h-1.5 w-1.5 rounded-full bg-primary/50 animate-pulse [animation-delay:120ms]" />
           <span className="h-1.5 w-1.5 rounded-full bg-primary/40 animate-pulse [animation-delay:240ms]" />
-          <span>{hasThinkingBlock ? "Thinking" : "Working"}</span>
+          <span>{hasThinkingBlock ? text.thinking : text.working}</span>
         </div>
       )}
 
       {activeToolName && !hasRunningToolBlock && (
         <div className="flex items-center gap-1.5 text-[10px] font-mono text-base-content/45">
           <LoaderCircle size={10} className="animate-spin text-primary/70" />
-          <span>Using {activeToolName}</span>
+          <span>{format(text.usingTool, { toolName: activeToolName })}</span>
         </div>
       )}
 
@@ -660,10 +662,10 @@ const AssistantTranscript = memo(function AssistantTranscript({
               <ChevronRight size={12} className="shrink-0 text-base-content/40" />
             )}
             <span className="text-[10px] font-mono uppercase tracking-wide text-base-content/30">
-              Process
+              {text.process}
             </span>
             <span className="text-[10px] text-base-content/35">
-              {getProcessSummary(processBlocks)}
+              {getProcessSummary(processBlocks, text, format)}
             </span>
           </button>
 
@@ -694,7 +696,7 @@ const AssistantTranscript = memo(function AssistantTranscript({
       {responseContent && (
         <div className={processBlocks.length > 0 ? "border-t border-base-content/8 pt-2" : undefined}>
           <div className="mb-1 text-[9px] font-mono uppercase tracking-[0.18em] text-base-content/22">
-            Response
+            {text.response}
           </div>
           <div>
             {live ? (
@@ -720,6 +722,8 @@ const ProcessBlockRow = memo(function ProcessBlockRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { messages } = useI18n();
+  const text = messages.ui.aiPanel;
   if (block.kind === "tool") {
     const EventIcon =
       block.status === "running"
@@ -733,7 +737,7 @@ const ProcessBlockRow = memo(function ProcessBlockRow({
         : block.status === "error"
         ? "text-error"
         : "text-success";
-    const label = getToolEventLabel(block.status);
+    const label = getToolEventLabel(block.status, text);
 
     return (
       <div className="flex items-start gap-2 rounded-md bg-base-300/20 px-2 py-1.5 text-[11px] leading-5">
@@ -761,7 +765,7 @@ const ProcessBlockRow = memo(function ProcessBlockRow({
     return (
       <div className="rounded-md border border-error/20 bg-error/8 px-2 py-1.5">
         <div className="font-mono text-[10px] uppercase tracking-wide text-error">
-          Failed
+          {text.failed}
         </div>
         <div className="mt-1 break-words text-[11px] leading-5 text-base-content/65">
           {block.detail}
@@ -802,7 +806,7 @@ const ProcessBlockRow = memo(function ProcessBlockRow({
           />
           <div className="min-w-0 space-y-1">
             <div className={`text-[10px] font-mono uppercase tracking-wide ${headerToneClass}`}>
-              {getProcessBlockTitle(block)}
+              {getProcessBlockTitle(block, text)}
             </div>
             {!expanded && (
               <div className={`break-words ${previewToneClass}`}>
@@ -825,7 +829,7 @@ const ProcessBlockRow = memo(function ProcessBlockRow({
         {expanded && block.kind === "toolcall" && (
           <div className="space-y-1 rounded-md border border-info/12 bg-info/6 px-3 py-2">
             <div className="font-mono text-[10px] uppercase tracking-wide text-info/70">
-              {getProcessBlockTitle(block)}
+              {getProcessBlockTitle(block, text)}
             </div>
             <div className="overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-base-content/58">
               {detail}
@@ -851,7 +855,11 @@ function getCollapsedDeltaPreview(detail: string, maxLength = 140) {
   return `${normalizedDetail.slice(0, maxLength)}…`;
 }
 
-function getProcessSummary(processBlocks: ProcessBlock[]) {
+function getProcessSummary(
+  processBlocks: ProcessBlock[],
+  text: ReturnType<typeof useI18n>["messages"]["ui"]["aiPanel"],
+  format: ReturnType<typeof useI18n>["format"]
+) {
   if (processBlocks.length === 0) {
     return "";
   }
@@ -860,18 +868,27 @@ function getProcessSummary(processBlocks: ProcessBlock[]) {
   const hasThinking = processBlocks.some((block) => block.kind === "thinking");
 
   if (toolCount > 0 && hasThinking) {
-    return `${processBlocks.length} steps · ${toolCount} tools`;
+    return format(text.stepsWithTools, {
+      steps: processBlocks.length,
+      tools: toolCount,
+    });
   }
 
   if (toolCount > 0) {
-    return `${processBlocks.length} steps`;
+    return format(text.steps, {
+      count: processBlocks.length,
+    });
   }
 
   if (hasThinking) {
-    return `${processBlocks.length} steps`;
+    return format(text.steps, {
+      count: processBlocks.length,
+    });
   }
 
-  return `${processBlocks.length} items`;
+  return format(text.items, {
+    count: processBlocks.length,
+  });
 }
 
 function parseGroupedAssistantEventKey(event: AiAssistantEvent) {
@@ -889,18 +906,21 @@ function parseGroupedAssistantEventKey(event: AiAssistantEvent) {
   };
 }
 
-function getProcessBlockTitle(block: Extract<ProcessBlock, { kind: "thinking" | "toolcall" }>) {
+function getProcessBlockTitle(
+  block: Extract<ProcessBlock, { kind: "thinking" | "toolcall" }>,
+  text: ReturnType<typeof useI18n>["messages"]["ui"]["aiPanel"]
+) {
   if (block.kind === "thinking") {
-    return block.status === "completed" ? "Thought Process" : "Thinking";
+    return block.status === "completed" ? text.thoughtProcess : text.thinking;
   }
 
   const toolName = extractToolName(block.detail);
 
   if (toolName) {
-    return `${block.status === "completed" ? "Prepared Tool" : "Preparing Tool"} · ${toolName}`;
+    return `${block.status === "completed" ? text.preparedTool : text.preparingTool} · ${toolName}`;
   }
 
-  return block.status === "completed" ? "Prepared Tool" : "Preparing Tool";
+  return block.status === "completed" ? text.preparedTool : text.preparingTool;
 }
 
 function extractToolName(detail: string) {
@@ -908,16 +928,19 @@ function extractToolName(detail: string) {
   return match?.[1] ?? null;
 }
 
-function getToolEventLabel(status: AiToolEvent["status"]) {
+function getToolEventLabel(
+  status: AiToolEvent["status"],
+  text: ReturnType<typeof useI18n>["messages"]["ui"]["aiPanel"]
+) {
   switch (status) {
     case "running":
-      return "Running tool";
+      return text.runningTool;
     case "success":
-      return "Tool finished";
+      return text.toolFinished;
     case "error":
-      return "Tool failed";
+      return text.toolFailed;
     default:
-      return "Tool";
+      return text.completed;
   }
 }
 

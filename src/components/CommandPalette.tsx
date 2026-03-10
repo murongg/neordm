@@ -53,7 +53,7 @@ export function CommandPalette({
   onClose,
   onOpenSettings,
 }: CommandPaletteProps) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const { isVisible, requestClose, handleBackdropClick } =
     useModalTransition(onClose);
   const { showToast } = useToast();
@@ -77,37 +77,7 @@ export function CommandPalette({
     }))
   );
 
-  const labels = useMemo(
-    () =>
-      locale === "zh"
-        ? {
-            placeholder: "输入命令、连接名或 key...",
-            actions: "操作",
-            connections: "连接",
-            keys: "Keys",
-            loadMoreKeys: "继续加载 Keys",
-            newConnection: "新建连接",
-            refreshKeys: "刷新 Keys",
-            settings: "打开设置",
-            noResults: "没有匹配项",
-            hint: "Enter 执行 · ↑↓ 导航 · Esc 关闭",
-            active: "当前",
-          }
-        : {
-            placeholder: "Search commands, connections, or keys...",
-            actions: "Actions",
-            connections: "Connections",
-            keys: "Keys",
-            loadMoreKeys: "Load more keys",
-            newConnection: "New connection",
-            refreshKeys: "Refresh keys",
-            settings: "Open settings",
-            noResults: "No matches",
-            hint: "Enter to run, arrows to navigate, Esc to close",
-            active: "Active",
-          },
-    [locale]
-  );
+  const labels = messages.commandPalette;
 
   const activeConnection = useMemo(
     () =>
@@ -137,11 +107,11 @@ export function CommandPalette({
       {
         id: "action:settings",
         group: "actions",
-        title: labels.settings,
+        title: labels.openSettings,
         subtitle: messages.common.settings,
         icon: <Settings size={14} />,
         searchText: buildSearchText([
-          labels.settings,
+          labels.openSettings,
           messages.common.settings,
         ]),
         onSelect: () => {
@@ -152,9 +122,13 @@ export function CommandPalette({
         id: "action:panel-editor",
         group: "actions",
         title: messages.app.tabs.editor,
-        subtitle: "Panel",
+        subtitle: labels.panel,
         icon: <Edit3 size={14} />,
-        searchText: buildSearchText([messages.app.tabs.editor, "panel editor"]),
+        searchText: buildSearchText([
+          messages.app.tabs.editor,
+          labels.panel,
+          "panel editor",
+        ]),
         onSelect: () => {
           workspace.setPanelTab("editor");
         },
@@ -163,9 +137,9 @@ export function CommandPalette({
         id: "action:panel-ai",
         group: "actions",
         title: messages.app.tabs.ai,
-        subtitle: "Panel",
+        subtitle: labels.panel,
         icon: <Bot size={14} />,
-        searchText: buildSearchText([messages.app.tabs.ai, "panel ai"]),
+        searchText: buildSearchText([messages.app.tabs.ai, labels.panel, "panel ai"]),
         onSelect: () => {
           workspace.setPanelTab("ai");
         },
@@ -174,9 +148,13 @@ export function CommandPalette({
         id: "action:panel-cli",
         group: "actions",
         title: messages.app.tabs.cli,
-        subtitle: "Panel",
+        subtitle: labels.panel,
         icon: <Terminal size={14} />,
-        searchText: buildSearchText([messages.app.tabs.cli, "panel cli"]),
+        searchText: buildSearchText([
+          messages.app.tabs.cli,
+          labels.panel,
+          "panel cli",
+        ]),
         onSelect: () => {
           workspace.setPanelTab("cli");
         },
@@ -185,9 +163,13 @@ export function CommandPalette({
         id: "action:panel-pubsub",
         group: "actions",
         title: messages.app.tabs.pubsub,
-        subtitle: "Panel",
+        subtitle: labels.panel,
         icon: <Rss size={14} />,
-        searchText: buildSearchText([messages.app.tabs.pubsub, "panel pubsub"]),
+        searchText: buildSearchText([
+          messages.app.tabs.pubsub,
+          labels.panel,
+          "panel pubsub",
+        ]),
         onSelect: () => {
           workspace.setPanelTab("pubsub");
         },
@@ -227,7 +209,22 @@ export function CommandPalette({
     }
 
     return items;
-  }, [activeConnection, labels.loadMoreKeys, labels.newConnection, labels.refreshKeys, labels.settings, messages.app.tabs.ai, messages.app.tabs.cli, messages.app.tabs.editor, messages.app.tabs.pubsub, messages.common.settings, messages.sidebar.newConnection, onOpenSettings, workspace]);
+  }, [
+    activeConnection,
+    labels.loadMoreKeys,
+    labels.newConnection,
+    labels.openSettings,
+    labels.panel,
+    labels.refreshKeys,
+    messages.app.tabs.ai,
+    messages.app.tabs.cli,
+    messages.app.tabs.editor,
+    messages.app.tabs.pubsub,
+    messages.common.settings,
+    messages.sidebar.newConnection,
+    onOpenSettings,
+    workspace,
+  ]);
 
   const connectionItems = useMemo<CommandPaletteItem[]>(
     () =>

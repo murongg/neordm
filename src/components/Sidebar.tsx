@@ -181,7 +181,7 @@ export function Sidebar({
           name: contextConnection.name,
         }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,

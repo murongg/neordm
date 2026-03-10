@@ -1,6 +1,8 @@
+import { en } from "./en";
 import type { Messages } from "./types";
 
 export const es: Messages = {
+  ...en,
   common: {
     save: "Guardar",
     cancel: "Cancelar",
@@ -44,6 +46,7 @@ export const es: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "Claves",
     refresh: "Actualizar",
     expandAll: "Expandir todo",

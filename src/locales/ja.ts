@@ -1,6 +1,8 @@
+import { en } from "./en";
 import type { Messages } from "./types";
 
 export const ja: Messages = {
+  ...en,
   common: {
     save: "保存",
     cancel: "キャンセル",
@@ -44,6 +46,7 @@ export const ja: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "キー",
     refresh: "更新",
     expandAll: "すべて展開",

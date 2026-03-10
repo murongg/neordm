@@ -40,6 +40,7 @@ export const ar: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "المفاتيح",
     refresh: "تحديث",
     expandAll: "توسيع الكل",

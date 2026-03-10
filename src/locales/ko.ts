@@ -40,6 +40,7 @@ export const ko: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "키",
     refresh: "새로고침",
     expandAll: "모두 펼치기",

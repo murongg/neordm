@@ -416,7 +416,7 @@ function TableRowActions({
 
     if (confirmDeleteEnabled && confirmDeleteMessage) {
       const confirmed = await confirm(confirmDeleteMessage, {
-        title: "NeoRDM",
+        title: messages.ui.appName,
         kind: "warning",
         okLabel: messages.common.delete,
         cancelLabel: messages.common.cancel,

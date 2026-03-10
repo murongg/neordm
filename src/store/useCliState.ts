@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from "zustand/react/shallow";
+import { getCurrentMessages } from "../i18n";
 import { DEFAULT_APP_SETTINGS, type AppSettings } from "../lib/appSettings";
 import { getRedisErrorMessage, runRedisCommand } from "../lib/redis";
 import {
@@ -61,7 +62,7 @@ interface CliStoreState {
 const defaultCliRuntime: CliRuntimeState = {
   activeConnection: undefined,
   cliSettings: DEFAULT_APP_SETTINGS.cli,
-  notConnectedMessage: "Not connected",
+  notConnectedMessage: getCurrentMessages().app.status.notConnected,
   onRefreshKeys: async () => undefined,
   onSelectDb: () => undefined,
   onSyncConnectionStatus: () => undefined,

@@ -40,6 +40,7 @@ export const pt: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "Chaves",
     refresh: "Atualizar",
     expandAll: "Expandir tudo",

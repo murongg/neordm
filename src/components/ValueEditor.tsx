@@ -177,7 +177,7 @@ export function ValueEditor({
 
     if (!Number.isInteger(nextTtl) || nextTtl < -1 || nextTtl === 0) {
       showToast({
-        message: "TTL must be -1 or a positive integer",
+        message: messages.keyBrowser.ttlInvalid,
         tone: "error",
         duration: 1800,
       });
@@ -212,7 +212,7 @@ export function ValueEditor({
           key: keyValue.key,
         }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,

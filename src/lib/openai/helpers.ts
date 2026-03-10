@@ -9,6 +9,7 @@ import type {
   RedisConnection,
   RedisKey,
 } from "../../types";
+import { formatMessageTemplate, getCurrentMessages } from "../../i18n";
 import type { AiProviderConfig } from "../aiSettings";
 import { getRedisConnectionEndpointLabel } from "../redisConnection";
 import {
@@ -103,9 +104,13 @@ export function normalizeAiRequestError(
   }
 
   const configuredBaseUrl = config.baseUrl.trim();
-  const locationHint = configuredBaseUrl ? ` at ${configuredBaseUrl}` : "";
+  const errors = getCurrentMessages().ui.errors;
 
-  return `OpenAI request failed${locationHint}. Check whether the upstream API endpoint is reachable from the Tauri backend.`;
+  return configuredBaseUrl
+    ? formatMessageTemplate(errors.openAiRequestFailedAt, {
+        baseUrl: configuredBaseUrl,
+      })
+    : errors.openAiRequestFailed;
 }
 
 export function buildRedisContext({
@@ -186,7 +191,7 @@ export function parseAssistantResponse(
   const content = rawContent.replace(/^\s*COMMAND:\s*.+$/gim, "").trim();
 
   return {
-    content: content || "Suggested a Redis command.",
+    content: content || getCurrentMessages().ui.aiPanel.suggestedCommand,
     command: command || undefined,
     tools: tools?.length ? tools : undefined,
     events: events?.length ? events : undefined,
@@ -200,7 +205,7 @@ export function requireActiveConnection(
   connection: RedisConnection | undefined
 ): RedisConnection {
   if (!connection) {
-    throw new Error("No active Redis connection is available.");
+    throw new Error(getCurrentMessages().ui.errors.aiNoActiveRedisConnection);
   }
 
   return connection;

@@ -40,6 +40,7 @@ export const hi: Messages = {
     confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
+    ...en.keyBrowser,
     title: "कीज़",
     refresh: "रिफ्रेश",
     expandAll: "सभी फैलाएँ",

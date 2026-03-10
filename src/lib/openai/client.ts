@@ -31,6 +31,7 @@ import type {
   OpenAIAssistantRequest,
   OpenAIAssistantResponse,
 } from "./types";
+import { formatMessageTemplate, getCurrentMessages } from "../../i18n";
 
 export type AiProviderConnectionTestCheckStatus =
   | "pending"
@@ -149,6 +150,7 @@ function formatHttpFailure(
 }
 
 function extractModelAvailabilityDetail(bodyText: string, currentModel: string) {
+  const text = getCurrentMessages().ui.aiConnectionTest;
   const parsedBody = safeParseJson(bodyText);
 
   if (
@@ -176,14 +178,19 @@ function extractModelAvailabilityDetail(bodyText: string, currentModel: string) 
     return {
       status: hasCurrentModel ? ("success" as const) : ("info" as const),
       detail: hasCurrentModel
-        ? `Gateway reachable. Model \`${currentModel}\` is listed in \`GET /models\`.`
-        : `Gateway reachable. \`GET /models\` returned ${modelIds.length} models, but \`${currentModel}\` was not listed.`,
+        ? formatMessageTemplate(text.modelsSuccess, {
+            model: currentModel,
+          })
+        : formatMessageTemplate(text.modelsMissing, {
+            count: modelIds.length,
+            model: currentModel,
+          }),
     };
   }
 
   return {
     status: "success" as const,
-    detail: "Gateway reachable. `GET /models` responded successfully.",
+    detail: text.modelsReachable,
   };
 }
 
@@ -265,35 +272,36 @@ function extractChatCompletionPreview(bodyText: string) {
 }
 
 function buildConnectionTestSummary(checks: AiProviderConnectionTestCheck[]) {
+  const text = getCurrentMessages().ui.aiConnectionTest;
   const modelsCheck = checks.find((check) => check.id === "models");
   const responsesCheck = checks.find((check) => check.id === "responses");
   const chatCheck = checks.find((check) => check.id === "chat");
 
   if (responsesCheck?.status === "success") {
     if (chatCheck?.status === "success") {
-      return "Responses API and Chat Completions API both work.";
+      return text.summaryAllOk;
     }
 
     if (modelsCheck?.status === "error") {
-      return "Runtime request succeeded, but `GET /models` is unavailable on this gateway.";
+      return text.summaryRuntimeNoModels;
     }
 
-    return "OpenAI runtime connection verified.";
+    return text.summaryRuntimeVerified;
   }
 
   if (responsesCheck?.status === "error" && chatCheck?.status === "success") {
-    return "Gateway supports `chat/completions`, while `responses` is unavailable.";
+    return text.summaryChatOnly;
   }
 
   if (responsesCheck?.status === "error" && modelsCheck?.status === "success") {
-    return "Gateway is reachable, but `POST /responses` failed.";
+    return text.summaryResponsesFailed;
   }
 
   if (responsesCheck?.status === "error") {
-    return "OpenAI connection test failed.";
+    return text.summaryFailed;
   }
 
-  return "OpenAI connection test completed.";
+  return text.summaryCompleted;
 }
 
 function resolvePreferredApiStyle(
@@ -311,15 +319,17 @@ function resolvePreferredApiStyle(
 }
 
 function formatApiStyleLabel(apiStyle: OpenAiApiStyle | null) {
+  const text = getCurrentMessages().ui.aiConnectionTest;
+
   if (apiStyle === "chat-completions") {
-    return "POST /chat/completions";
+    return text.apiStyleChatCompletions;
   }
 
   if (apiStyle === "responses") {
-    return "POST /responses";
+    return text.apiStyleResponses;
   }
 
-  return "Unknown";
+  return text.apiStyleUnknown;
 }
 
 function isAbortSignalTriggered(signal?: AbortSignal) {
@@ -332,12 +342,15 @@ function buildToolEventDetail(toolResult: {
   content: Array<{ type: string; text?: string }>;
   details?: AssistantToolResultDetails;
 }) {
+  const text = getCurrentMessages().ui.aiPanel;
   if (!toolResult.isError) {
     if (toolResult.details?.executedCommand) {
-      return `Executed · ${toolResult.details.executedCommand}`;
+      return formatMessageTemplate(text.executedCommand, {
+        command: toolResult.details.executedCommand,
+      });
     }
 
-    return "Completed";
+    return text.completed;
   }
 
   const errorText = toolResult.content
@@ -350,7 +363,7 @@ function buildToolEventDetail(toolResult: {
     .trim();
 
   if (!errorText) {
-    return `${toolResult.toolName} failed`;
+    return `${toolResult.toolName} · ${text.failed}`;
   }
 
   return errorText.length > 140 ? `${errorText.slice(0, 140)}…` : errorText;
@@ -400,9 +413,9 @@ function formatAssistantStreamEventDetail(event: AssistantMessageEvent) {
       return normalizeAssistantEventDetail(event.delta);
     }
     case "text_end":
-      return "completed";
+      return getCurrentMessages().ui.aiPanel.completed;
     case "thinking_end":
-      return "completed";
+      return getCurrentMessages().ui.aiPanel.completed;
     case "toolcall_start": {
       const partialBlock = getPartialContentBlock(event);
 
@@ -600,7 +613,8 @@ export async function requestOpenAIAssistantResponse(
 
       if (assistantMessage.stopReason === "error") {
         throw new Error(
-          assistantMessage.errorMessage || "The AI provider returned an error."
+          assistantMessage.errorMessage ||
+            getCurrentMessages().ui.errors.aiProviderReturnedError
         );
       }
 
@@ -615,13 +629,13 @@ export async function requestOpenAIAssistantResponse(
         const normalizedContent = extractAssistantText(assistantMessage);
         const fallbackContent =
           didMutateRedis
-            ? "Executed the requested Redis command."
+            ? getCurrentMessages().ui.aiPanel.executedRedisCommand
             : usedTools.length > 0
-            ? "Completed the requested Redis inspection."
+            ? getCurrentMessages().ui.aiPanel.completedRedisInspection
             : "";
 
         if (!normalizedContent && !suggestedCommandFromTool && !fallbackContent) {
-          throw new Error("The AI provider returned an empty assistant response.");
+          throw new Error(getCurrentMessages().ui.errors.aiEmptyAssistantResponse);
         }
 
         return parseAssistantResponse(
@@ -643,7 +657,7 @@ export async function requestOpenAIAssistantResponse(
           id: toolCall.id,
           toolName: formattedToolName,
           status: "running",
-          detail: "Running…",
+          detail: getCurrentMessages().ui.aiPanel.working,
         });
 
         const toolResult = await executeAssistantToolCall({
@@ -669,7 +683,7 @@ export async function requestOpenAIAssistantResponse(
       request.onToolActivity?.(null);
     }
 
-    throw new Error("The AI provider reached the maximum tool-call steps.");
+    throw new Error(getCurrentMessages().ui.errors.aiMaxToolSteps);
   } catch (error) {
     request.onToolActivity?.(null);
 
@@ -688,30 +702,31 @@ export async function testAiProviderConnection(
   config: AiProviderConfig,
   options: AiProviderConnectionTestOptions = {}
 ): Promise<AiProviderConnectionTestResult> {
+  const text = getCurrentMessages().ui.aiConnectionTest;
   const checks: AiProviderConnectionTestCheck[] = [
     {
       id: "config",
-      label: "Config",
+      label: text.configLabel,
       status: "running",
-      detail: "Validating API key, base URL, and model.",
+      detail: text.configPending,
     },
     {
       id: "models",
       label: "GET /models",
       status: "pending",
-      detail: "Checks whether the gateway is reachable through the backend proxy.",
+      detail: text.modelsPending,
     },
     {
       id: "responses",
       label: "POST /responses",
       status: "pending",
-      detail: "Runs the same endpoint the AI agent uses at runtime.",
+      detail: text.responsesPending,
     },
     {
       id: "chat",
       label: "POST /chat/completions",
       status: "pending",
-      detail: "Checks legacy OpenAI chat compatibility on the same gateway.",
+      detail: text.chatPending,
     },
   ];
   emitConnectionTestUpdate(checks, options.onUpdate);
@@ -722,7 +737,10 @@ export async function testAiProviderConnection(
     validatedConfig = getValidatedOpenAIConfig(config);
     updateConnectionTestCheck(checks, "config", {
       status: "success",
-      detail: `Using model \`${validatedConfig.model}\` at \`${validatedConfig.baseUrl}\`.`,
+      detail: formatMessageTemplate(text.configValidated, {
+        model: validatedConfig.model,
+        baseUrl: validatedConfig.baseUrl,
+      }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -734,7 +752,7 @@ export async function testAiProviderConnection(
 
     return {
       ok: false,
-      summary: "AI settings are incomplete.",
+      summary: text.settingsIncomplete,
       normalizedBaseUrl: config.baseUrl.trim(),
       model: config.model.trim(),
       preferredApiStyle: null,
@@ -751,7 +769,7 @@ export async function testAiProviderConnection(
 
   updateConnectionTestCheck(checks, "models", {
     status: "running",
-    detail: "Checking `GET /models`…",
+    detail: text.modelsChecking,
   });
   emitConnectionTestUpdate(checks, options.onUpdate);
 
@@ -779,7 +797,7 @@ export async function testAiProviderConnection(
         detail: formatHttpFailure(
           modelsResponse,
           modelsBodyText,
-          "`GET /models` did not return a success status."
+          text.modelsFailure
         ),
       });
     } else {
@@ -800,7 +818,7 @@ export async function testAiProviderConnection(
 
   updateConnectionTestCheck(checks, "responses", {
     status: "running",
-    detail: "Checking `POST /responses`…",
+    detail: text.responsesChecking,
   });
   emitConnectionTestUpdate(checks, options.onUpdate);
 
@@ -829,7 +847,7 @@ export async function testAiProviderConnection(
         detail: formatHttpFailure(
           runtimeResponse,
           runtimeBodyText,
-          "`POST /responses` did not return a success status."
+          text.responsesFailure
         ),
       });
     } else {
@@ -838,8 +856,10 @@ export async function testAiProviderConnection(
       updateConnectionTestCheck(checks, "responses", {
         status: "success",
         detail: outputPreview
-          ? `Runtime endpoint succeeded. Model reply: ${outputPreview}`
-          : "Runtime endpoint succeeded and returned a valid response.",
+          ? formatMessageTemplate(text.responsesSuccessWithReply, {
+              preview: outputPreview,
+            })
+          : text.responsesSuccess,
       });
     }
   } catch (error) {
@@ -853,7 +873,7 @@ export async function testAiProviderConnection(
 
   updateConnectionTestCheck(checks, "chat", {
     status: "running",
-    detail: "Checking `POST /chat/completions`…",
+    detail: text.chatChecking,
   });
   emitConnectionTestUpdate(checks, options.onUpdate);
 
@@ -887,7 +907,7 @@ export async function testAiProviderConnection(
         detail: formatHttpFailure(
           chatResponse,
           chatBodyText,
-          "`POST /chat/completions` did not return a success status."
+          text.chatFailure
         ),
       });
     } else {
@@ -896,8 +916,10 @@ export async function testAiProviderConnection(
       updateConnectionTestCheck(checks, "chat", {
         status: "success",
         detail: outputPreview
-          ? `Chat Completions succeeded. Model reply: ${outputPreview}`
-          : "Chat Completions succeeded and returned a valid response.",
+          ? formatMessageTemplate(text.chatSuccessWithReply, {
+              preview: outputPreview,
+            })
+          : text.chatSuccess,
       });
     }
   } catch (error) {
@@ -915,7 +937,10 @@ export async function testAiProviderConnection(
   const result: AiProviderConnectionTestResult = {
     ok: preferredApiStyle !== null,
     summary: preferredApiStyle
-      ? `${summary} Runtime will use ${formatApiStyleLabel(preferredApiStyle)}.`
+      ? formatMessageTemplate(text.runtimeWillUse, {
+          summary,
+          api: formatApiStyleLabel(preferredApiStyle),
+        })
       : summary,
     normalizedBaseUrl: validatedConfig.baseUrl,
     model: validatedConfig.model,

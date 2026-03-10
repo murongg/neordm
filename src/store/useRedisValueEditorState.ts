@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { getCurrentMessages } from "../i18n";
 import {
   addRedisHashEntry,
   addRedisSetMember,
@@ -45,12 +46,13 @@ export function useRedisValueEditorState({
 }: UseRedisValueEditorStateOptions) {
   const addHashEntry = useCallback(
     async (key: string, field: string, value: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!field.length) {
-        throw new Error("Field cannot be empty");
+        throw new Error(messages.ui.errors.fieldRequired);
       }
 
       await addRedisHashEntry(
@@ -90,12 +92,13 @@ export function useRedisValueEditorState({
 
   const appendListValue = useCallback(
     async (key: string, value: string, position: RedisListInsertPosition = "tail") => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!value.length) {
-        throw new Error("Value cannot be empty");
+        throw new Error(messages.ui.errors.valueRequired);
       }
 
       await appendRedisListValue(
@@ -132,16 +135,17 @@ export function useRedisValueEditorState({
 
   const updateListValue = useCallback(
     async (key: string, index: number, value: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!Number.isInteger(index) || index < 0) {
-        throw new Error("Index must be a non-negative integer");
+        throw new Error(messages.ui.errors.indexInvalid);
       }
 
       if (!value.length) {
-        throw new Error("Value cannot be empty");
+        throw new Error(messages.ui.errors.valueRequired);
       }
 
       await updateRedisListValue(
@@ -178,12 +182,13 @@ export function useRedisValueEditorState({
 
   const deleteListValue = useCallback(
     async (key: string, index: number) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!Number.isInteger(index) || index < 0) {
-        throw new Error("Index must be a non-negative integer");
+        throw new Error(messages.ui.errors.indexInvalid);
       }
 
       await deleteRedisListValue(
@@ -238,12 +243,13 @@ export function useRedisValueEditorState({
 
   const addSetMember = useCallback(
     async (key: string, member: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!member.length) {
-        throw new Error("Member cannot be empty");
+        throw new Error(messages.ui.errors.memberRequired);
       }
 
       await addRedisSetMember(
@@ -277,12 +283,13 @@ export function useRedisValueEditorState({
 
   const updateKeyTtl = useCallback(
     async (key: string, nextTtl: number) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!Number.isInteger(nextTtl) || nextTtl < -1 || nextTtl === 0) {
-        throw new Error("TTL must be -1 or a positive integer");
+        throw new Error(messages.keyBrowser.ttlInvalid);
       }
 
       const escapedKey = escapeRedisCommandArgument(key);
@@ -319,12 +326,13 @@ export function useRedisValueEditorState({
       nextField: string,
       nextValue: string
     ) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!nextField.length) {
-        throw new Error("Field cannot be empty");
+        throw new Error(messages.ui.errors.fieldRequired);
       }
 
       if (oldField === nextField && keyValue?.type === "hash") {
@@ -479,12 +487,13 @@ export function useRedisValueEditorState({
 
   const deleteKey = useCallback(
     async (key: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!key.length) {
-        throw new Error("Key name cannot be empty");
+        throw new Error(messages.keyBrowser.keyNameRequired);
       }
 
       await deleteRedisKey({ ...activeConnection, db: selectedDb }, key);
@@ -499,12 +508,13 @@ export function useRedisValueEditorState({
 
   const deleteHashEntry = useCallback(
     async (key: string, field: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!field.length) {
-        throw new Error("Field cannot be empty");
+        throw new Error(messages.ui.errors.fieldRequired);
       }
 
       await deleteRedisHashEntry(
@@ -573,16 +583,17 @@ export function useRedisValueEditorState({
       nextMember: string,
       nextScore: number
     ) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!nextMember.length) {
-        throw new Error("Member cannot be empty");
+        throw new Error(messages.ui.errors.memberRequired);
       }
 
       if (!Number.isFinite(nextScore)) {
-        throw new Error("Score must be a finite number");
+        throw new Error(messages.keyBrowser.scoreInvalid);
       }
 
       if (keyValue?.type === "zset" && Array.isArray(keyValue.value)) {
@@ -658,12 +669,13 @@ export function useRedisValueEditorState({
 
   const deleteZSetEntry = useCallback(
     async (key: string, member: string) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!member.length) {
-        throw new Error("Member cannot be empty");
+        throw new Error(messages.ui.errors.memberRequired);
       }
 
       await deleteRedisZSetEntry(
@@ -723,16 +735,17 @@ export function useRedisValueEditorState({
 
   const addZSetEntry = useCallback(
     async (key: string, member: string, score: number) => {
+      const messages = getCurrentMessages();
       if (!activeConnection) {
         throw new Error(notConnectedMessage);
       }
 
       if (!member.length) {
-        throw new Error("Member cannot be empty");
+        throw new Error(messages.ui.errors.memberRequired);
       }
 
       if (!Number.isFinite(score)) {
-        throw new Error("Score must be a finite number");
+        throw new Error(messages.keyBrowser.scoreInvalid);
       }
 
       await addRedisZSetEntry(

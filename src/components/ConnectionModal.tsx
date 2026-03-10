@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { AppSettings } from "../lib/appSettings";
+import { formatMessageTemplate, getCurrentMessages } from "../i18n";
 import {
   getRedisConnectionDefaultName,
   parseRedisConnectionUrl,
@@ -129,6 +130,7 @@ function createInitialForm(connection?: RedisConnection): ConnectionFormState {
 }
 
 function parseSentinelNodes(value: string): RedisSentinelNode[] {
+  const errors = getCurrentMessages().ui.errors;
   return value
     .split(/[\n,]/)
     .map((segment) => segment.trim())
@@ -141,13 +143,17 @@ function parseSentinelNodes(value: string): RedisSentinelNode[] {
           segment.includes("://") ? segment : `redis://${segment}`
         );
       } catch {
-        throw new Error(`Invalid sentinel node: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.sentinelNodeInvalid, { segment })
+        );
       }
 
       const host = parsedUrl.hostname.trim();
 
       if (!host.length) {
-        throw new Error(`Invalid sentinel node host: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.sentinelNodeHostInvalid, { segment })
+        );
       }
 
       const port = parsedUrl.port
@@ -155,7 +161,9 @@ function parseSentinelNodes(value: string): RedisSentinelNode[] {
         : DEFAULT_SENTINEL_PORT;
 
       if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-        throw new Error(`Invalid sentinel node port: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.sentinelNodePortInvalid, { segment })
+        );
       }
 
       return {
@@ -166,6 +174,7 @@ function parseSentinelNodes(value: string): RedisSentinelNode[] {
 }
 
 function parseClusterNodes(value: string): RedisClusterNode[] {
+  const errors = getCurrentMessages().ui.errors;
   return value
     .split(/[\n,]/)
     .map((segment) => segment.trim())
@@ -178,13 +187,17 @@ function parseClusterNodes(value: string): RedisClusterNode[] {
           segment.includes("://") ? segment : `redis://${segment}`
         );
       } catch {
-        throw new Error(`Invalid cluster node: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.clusterNodeInvalid, { segment })
+        );
       }
 
       const host = parsedUrl.hostname.trim();
 
       if (!host.length) {
-        throw new Error(`Invalid cluster node host: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.clusterNodeHostInvalid, { segment })
+        );
       }
 
       const port = parsedUrl.port
@@ -192,7 +205,9 @@ function parseClusterNodes(value: string): RedisClusterNode[] {
         : 6379;
 
       if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-        throw new Error(`Invalid cluster node port: ${segment}`);
+        throw new Error(
+          formatMessageTemplate(errors.clusterNodePortInvalid, { segment })
+        );
       }
 
       return {
@@ -203,6 +218,7 @@ function parseClusterNodes(value: string): RedisClusterNode[] {
 }
 
 function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefined {
+  const errors = getCurrentMessages().ui.errors;
   if (!form.sshEnabled) {
     return undefined;
   }
@@ -212,15 +228,15 @@ function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefi
   const username = form.sshUsername.trim();
 
   if (!host.length) {
-    throw new Error("SSH host cannot be empty");
+    throw new Error(errors.sshHostRequired);
   }
 
   if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error("SSH port must be between 1 and 65535");
+    throw new Error(errors.sshPortInvalid);
   }
 
   if (!username.length) {
-    throw new Error("SSH username cannot be empty");
+    throw new Error(errors.sshUsernameRequired);
   }
 
   return {
@@ -236,6 +252,7 @@ function buildSshTunnelInput(form: ConnectionFormState): RedisSshTunnel | undefi
 function buildSentinelInput(
   form: ConnectionFormState
 ): RedisSentinelConfig | undefined {
+  const errors = getCurrentMessages().ui.errors;
   if (form.mode !== "sentinel") {
     return undefined;
   }
@@ -243,13 +260,13 @@ function buildSentinelInput(
   const masterName = form.sentinelMasterName.trim();
 
   if (!masterName.length) {
-    throw new Error("Sentinel master name cannot be empty");
+    throw new Error(errors.sentinelMasterNameRequired);
   }
 
   const nodes = parseSentinelNodes(form.sentinelNodes);
 
   if (!nodes.length) {
-    throw new Error("Add at least one sentinel node");
+    throw new Error(errors.sentinelNodeRequired);
   }
 
   return {
@@ -264,6 +281,7 @@ function buildSentinelInput(
 function buildClusterInput(
   form: ConnectionFormState
 ): RedisClusterConfig | undefined {
+  const errors = getCurrentMessages().ui.errors;
   if (form.mode !== "cluster") {
     return undefined;
   }
@@ -271,7 +289,7 @@ function buildClusterInput(
   const nodes = parseClusterNodes(form.clusterNodes);
 
   if (!nodes.length) {
-    throw new Error("Add at least one cluster node");
+    throw new Error(errors.clusterNodeRequired);
   }
 
   return {
@@ -280,10 +298,11 @@ function buildClusterInput(
 }
 
 function buildConnectionInput(form: ConnectionFormState) {
+  const errors = getCurrentMessages().ui.errors;
   const db = form.mode === "cluster" ? 0 : Number.parseInt(form.db, 10);
 
   if (!Number.isInteger(db) || db < 0) {
-    throw new Error("Database must be a non-negative integer");
+    throw new Error(errors.databaseInvalid);
   }
 
   const sentinel = buildSentinelInput(form);
@@ -294,7 +313,7 @@ function buildConnectionInput(form: ConnectionFormState) {
     const primaryNode = cluster?.nodes[0];
 
     if (!primaryNode) {
-      throw new Error("Add at least one cluster node");
+      throw new Error(errors.clusterNodeRequired);
     }
 
     return {
@@ -315,7 +334,7 @@ function buildConnectionInput(form: ConnectionFormState) {
     const primaryNode = sentinel?.nodes[0];
 
     if (!primaryNode) {
-      throw new Error("Add at least one sentinel node");
+      throw new Error(errors.sentinelNodeRequired);
     }
 
     return {
@@ -336,11 +355,11 @@ function buildConnectionInput(form: ConnectionFormState) {
   const port = Number.parseInt(form.port, 10);
 
   if (!host.length) {
-    throw new Error("Host cannot be empty");
+    throw new Error(errors.hostRequired);
   }
 
   if (!Number.isInteger(port) || port <= 0 || port > 65_535) {
-    throw new Error("Port must be between 1 and 65535");
+    throw new Error(errors.portInvalid);
   }
 
   return {

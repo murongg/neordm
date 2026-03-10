@@ -26,6 +26,7 @@ import {
   stringifyContextValue,
   stringifyToolResult,
 } from "./helpers";
+import { formatMessageTemplate, getCurrentMessages } from "../../i18n";
 import type {
   AssistantToolResultDetails,
   OpenAIAssistantRequest,
@@ -263,7 +264,7 @@ function createToolResultMessage(
   details?: AssistantToolResultDetails
 ): ToolResultMessage {
   const text = isError
-    ? String(value ?? "Unknown tool error")
+    ? String(value ?? getCurrentMessages().ui.errors.aiUnknownToolError)
     : stringifyToolResult(value);
 
   return {
@@ -615,24 +616,29 @@ async function executeRunReadOnlyCommandTool(
   request: OpenAIAssistantRequest,
   args: ReadOnlyCommandArgs
 ) {
+  const errors = getCurrentMessages().ui.errors;
   const trimmedCommand = args.command.trim();
   const commandName = getCliCommandName(trimmedCommand);
   const connection = requireActiveConnection(request.activeConnection);
 
   if (!trimmedCommand) {
-    throw new Error("Command cannot be empty.");
+    throw new Error(errors.aiCommandRequired);
   }
 
   if (!isSingleRedisCommand(trimmedCommand)) {
-    throw new Error("Only one Redis command is allowed.");
+    throw new Error(errors.aiSingleCommandOnly);
   }
 
   if (!isReadOnlyRedisCommand(commandName)) {
-    throw new Error(`\`${commandName}\` is not a read-only Redis command.`);
+    throw new Error(
+      formatMessageTemplate(errors.aiReadOnlyCommandRequired, { commandName })
+    );
   }
 
   if (DISALLOWED_AI_READ_ONLY_COMMANDS.has(commandName)) {
-    throw new Error(`\`${commandName}\` is disabled for AI tool execution.`);
+    throw new Error(
+      formatMessageTemplate(errors.aiCommandDisabled, { commandName })
+    );
   }
 
   const output = await runRedisCommand(
@@ -651,6 +657,7 @@ async function executeRunRedisCommandTool(
   toolCall: ToolCall,
   args: RunRedisCommandArgs
 ) {
+  const errors = getCurrentMessages().ui.errors;
   const trimmedCommand = args.command.trim();
   const normalizedReason = args.reason?.trim() || null;
   const commandName = getCliCommandName(trimmedCommand);
@@ -659,26 +666,30 @@ async function executeRunRedisCommandTool(
   const isDangerousCommand = isDangerousRedisCommand(commandName);
 
   if (!trimmedCommand) {
-    throw new Error("Command cannot be empty.");
+    throw new Error(errors.aiCommandRequired);
   }
 
   if (!isSingleRedisCommand(trimmedCommand)) {
-    throw new Error("Only one Redis command is allowed.");
+    throw new Error(errors.aiSingleCommandOnly);
   }
 
   if (DISALLOWED_AI_EXECUTION_COMMANDS.has(commandName)) {
-    throw new Error(`\`${commandName}\` is disabled for AI tool execution.`);
+    throw new Error(
+      formatMessageTemplate(errors.aiCommandDisabled, { commandName })
+    );
   }
 
   if (!isReadOnlyCommand && !isDangerousCommand) {
     throw new Error(
-      `\`${commandName}\` is not supported for direct AI execution. Use a read-only or dangerous Redis command instead.`
+      formatMessageTemplate(errors.aiDirectExecutionUnsupported, {
+        commandName,
+      })
     );
   }
 
   if (isDangerousCommand) {
     if (!request.confirmDangerousCommand) {
-      throw new Error("Dangerous Redis commands require user confirmation.");
+      throw new Error(errors.aiDangerousNeedsConfirmation);
     }
 
     const approved = await request.confirmDangerousCommand({
@@ -689,7 +700,7 @@ async function executeRunRedisCommandTool(
     });
 
     if (!approved) {
-      throw new Error("The user cancelled the dangerous Redis command.");
+      throw new Error(errors.aiDangerousCancelled);
     }
   }
 
@@ -717,14 +728,15 @@ async function executeSuggestRedisCommandTool(
   args: SuggestCommandArgs,
   onSuggestedCommand: (command: string) => void
 ) {
+  const errors = getCurrentMessages().ui.errors;
   const trimmedCommand = args.command.trim();
 
   if (!trimmedCommand) {
-    throw new Error("Suggested command cannot be empty.");
+    throw new Error(errors.aiSuggestedCommandRequired);
   }
 
   if (!isSingleRedisCommand(trimmedCommand)) {
-    throw new Error("Suggest exactly one Redis command.");
+    throw new Error(errors.aiSuggestSingleCommand);
   }
 
   onSuggestedCommand(trimmedCommand);
@@ -883,14 +895,20 @@ export async function executeAssistantToolCall({
         );
         break;
       default:
-        throw new Error(`Unknown AI tool: ${toolCall.name}`);
+        throw new Error(
+          formatMessageTemplate(getCurrentMessages().ui.errors.aiUnknownTool, {
+            toolName: toolCall.name,
+          })
+        );
     }
 
     return createToolResultMessage(toolCall, result, false, details);
   } catch (error) {
     return createToolResultMessage(
       toolCall,
-      error instanceof Error ? error.message : String(error ?? "Unknown tool error"),
+      error instanceof Error
+        ? error.message
+        : String(error ?? getCurrentMessages().ui.errors.aiUnknownToolError),
       true
     );
   }

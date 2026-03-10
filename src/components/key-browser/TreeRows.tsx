@@ -5,6 +5,7 @@ import {
   type RefObject,
 } from "react";
 import { ChevronDown, LoaderCircle } from "lucide-react";
+import { useI18n } from "../../i18n";
 import type { RedisKey, RedisKeyType } from "../../types";
 
 export interface KeyTypeConfig {
@@ -55,6 +56,7 @@ function GroupRow<Group>({
   onContextMenu,
   placeInputCursorAtEnd,
 }: GroupRowProps<Group>) {
+  const { messages } = useI18n();
   const isRowRenaming = isEditing && isRenaming;
   const countSlot = (
     <span className="ml-auto flex h-5 shrink-0 items-center justify-end">
@@ -138,7 +140,11 @@ function GroupRow<Group>({
         type="button"
         onClick={onToggle}
         className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-base-content/40 transition-colors duration-150 hover:text-base-content/70 cursor-pointer"
-        aria-label={isExpanded ? "Collapse group" : "Expand group"}
+        aria-label={
+          isExpanded
+            ? messages.ui.tree.collapseGroup
+            : messages.ui.tree.expandGroup
+        }
       >
         <ChevronDown
           size={11}

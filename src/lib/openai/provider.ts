@@ -5,6 +5,7 @@ import {
   type AiProviderConfig,
   getActiveAiProviderConfig,
 } from "../aiSettings";
+import { getCurrentMessages } from "../../i18n";
 
 const OPENAI_RESPONSES_CONTEXT_WINDOW = 128_000;
 const OPENAI_RESPONSES_MAX_TOKENS = 16_384;
@@ -27,13 +28,14 @@ export function getValidatedOpenAIConfig(config: AiProviderConfig) {
   const apiKey = config.apiKey.trim();
   const model = config.model.trim();
   const baseUrl = normalizeBaseUrl(config.baseUrl);
+  const errors = getCurrentMessages().ui.errors;
 
   if (!apiKey) {
-    throw new Error("Please configure your OpenAI API key in Settings → AI.");
+    throw new Error(errors.openAiApiKeyRequired);
   }
 
   if (!model) {
-    throw new Error("Please configure an OpenAI model in Settings → AI.");
+    throw new Error(errors.openAiModelRequired);
   }
 
   return {

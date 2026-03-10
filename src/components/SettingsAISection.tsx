@@ -23,9 +23,10 @@ import {
 import { useToast } from "./ToastProvider";
 
 export function SettingsAISection() {
-  const { messages } = useI18n();
+  const { messages, format } = useI18n();
   const { showToast } = useToast();
   const ai = messages.settings.ai;
+  const text = messages.ui.aiConnectionTest;
   const [settings, setSettings] = useState(DEFAULT_AI_SETTINGS);
   const [showKey, setShowKey] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
@@ -116,7 +117,7 @@ export function SettingsAISection() {
       });
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : "Failed to test AI connection.";
+        error instanceof Error ? error.message : text.failedToTest;
 
       setConnectionTestResult({
         ok: false,
@@ -132,7 +133,7 @@ export function SettingsAISection() {
         checks: [
           {
             id: "config",
-            label: "Config",
+            label: text.configLabel,
             status: "error",
             detail: message,
           },
@@ -147,13 +148,13 @@ export function SettingsAISection() {
     } finally {
       setIsTestingConnection(false);
     }
-  }, [selectedProviderConfig, settings, showToast]);
+  }, [selectedProviderConfig, settings, showToast, text.configLabel, text.failedToTest]);
 
   const activeConnectionTestChecks =
     connectionTestResult?.checks ??
     (connectionTestChecks.length > 0
       ? connectionTestChecks
-      : DEFAULT_AI_TEST_CHECKS);
+      : buildDefaultAiTestChecks(text));
   const activeConnectionTestTone = connectionTestResult
     ? connectionTestResult.ok
       ? "success"
@@ -165,15 +166,15 @@ export function SettingsAISection() {
   const activeConnectionTestSummary = connectionTestResult
     ? connectionTestResult.summary
     : activeRunningCheck
-      ? `Testing ${activeRunningCheck.label}...`
-      : `Runtime currently uses ${formatApiStyleLabel(
-          selectedProviderConfig.apiStyle
-        )}. Test checks \`GET /models\`, \`POST /responses\`, and \`POST /chat/completions\`.`;
+      ? format(text.testingCheck, { label: activeRunningCheck.label })
+      : format(text.idleSummary, {
+          api: formatApiStyleLabel(selectedProviderConfig.apiStyle, text),
+        });
 
   return (
     <>
       <SettingsSection title={ai.apiConfiguration}>
-        <SettingsField label="API Key">
+        <SettingsField label={ai.apiKey}>
           <div className="flex items-center gap-2">
             <input
               type={showKey ? "text" : "password"}
@@ -201,7 +202,7 @@ export function SettingsAISection() {
             onChange={(event) =>
               updateSelectedProviderConfig({ baseUrl: event.target.value })
             }
-            placeholder="https://api.openai.com/v1"
+            placeholder={text.baseUrlPlaceholder}
             className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
           />
         </SettingsField>
@@ -213,7 +214,7 @@ export function SettingsAISection() {
               onChange={(event) =>
                 updateSelectedProviderConfig({ model: event.target.value })
               }
-              placeholder="gpt-4.1-mini"
+              placeholder={text.modelPlaceholder}
               className="input input-xs h-8 min-h-8 w-full bg-base-300 border-base-content/10 font-mono text-xs user-select-text"
             />
           </SettingsField>
@@ -319,32 +320,36 @@ const CONNECTION_TEST_CHECK_STYLES: Record<
   error: "text-error",
 };
 
-const DEFAULT_AI_TEST_CHECKS: AiProviderConnectionTestCheck[] = [
-  {
-    id: "config",
-    label: "Config",
-    status: "info",
-    detail: "Validates the API key, base URL, and selected model first.",
-  },
-  {
-    id: "models",
-    label: "GET /models",
-    status: "info",
-    detail: "Checks whether the gateway is reachable through the Tauri backend proxy.",
-  },
-  {
-    id: "responses",
-    label: "POST /responses",
-    status: "info",
-    detail: "Verifies the same runtime endpoint the AI agent will use.",
-  },
-  {
-    id: "chat",
-    label: "POST /chat/completions",
-    status: "info",
-    detail: "Checks legacy OpenAI chat compatibility on the same gateway.",
-  },
-];
+function buildDefaultAiTestChecks(
+  text: ReturnType<typeof useI18n>["messages"]["ui"]["aiConnectionTest"]
+): AiProviderConnectionTestCheck[] {
+  return [
+    {
+      id: "config",
+      label: text.configLabel,
+      status: "info",
+      detail: text.configPending,
+    },
+    {
+      id: "models",
+      label: "GET /models",
+      status: "info",
+      detail: text.modelsPending,
+    },
+    {
+      id: "responses",
+      label: "POST /responses",
+      status: "info",
+      detail: text.responsesPending,
+    },
+    {
+      id: "chat",
+      label: "POST /chat/completions",
+      status: "info",
+      detail: text.chatPending,
+    },
+  ];
+}
 
 function ConnectionTestStatus({
   tone,
@@ -359,6 +364,8 @@ function ConnectionTestStatus({
   isTesting: boolean;
   apiStyle: OpenAiApiStyle;
 }) {
+  const { messages } = useI18n();
+  const text = messages.ui.aiConnectionTest;
   const SummaryIcon =
     tone === "success" ? Check : tone === "error" ? AlertCircle : Info;
 
@@ -389,7 +396,7 @@ function ConnectionTestStatus({
             {summary}
           </p>
           <p className="mt-1 text-[10px] font-mono text-base-content/40">
-            Runtime API: {formatApiStyleLabel(apiStyle)}
+            {text.runtimeApi}: {formatApiStyleLabel(apiStyle, text)}
           </p>
 
           <div className="mt-2 space-y-1.5 pb-0.5">
@@ -435,10 +442,13 @@ function ConnectionTestCheckRow({
   );
 }
 
-function formatApiStyleLabel(apiStyle: OpenAiApiStyle) {
+function formatApiStyleLabel(
+  apiStyle: OpenAiApiStyle,
+  text: ReturnType<typeof useI18n>["messages"]["ui"]["aiConnectionTest"]
+) {
   return apiStyle === "chat-completions"
-    ? "POST /chat/completions"
-    : "POST /responses";
+    ? text.apiStyleChatCompletions
+    : text.apiStyleResponses;
 }
 
 function SettingsSection({

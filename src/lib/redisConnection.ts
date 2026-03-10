@@ -1,4 +1,5 @@
 import type { RedisConnection } from "../types";
+import { formatMessageTemplate, getCurrentMessages } from "../i18n";
 
 export interface ParsedRedisConnectionUrl {
   host: string;
@@ -22,8 +23,12 @@ export function getRedisConnectionEndpointLabel(
     "host" | "port" | "mode" | "sentinel" | "cluster"
   >
 ) {
+  const messages = getCurrentMessages();
+
   if (connection.mode === "cluster" && connection.cluster?.nodes?.length) {
-    return `cluster/${connection.cluster.nodes.length} nodes`;
+    return formatMessageTemplate(messages.ui.connection.clusterNodesLabel, {
+      count: connection.cluster.nodes.length,
+    });
   }
 
   if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
@@ -39,12 +44,18 @@ export function getRedisConnectionDefaultName(
     "host" | "port" | "mode" | "sentinel" | "cluster"
   >
 ) {
+  const messages = getCurrentMessages();
+
   if (connection.mode === "cluster" && connection.cluster?.nodes?.length) {
-    return `cluster (${connection.cluster.nodes.length} nodes)`;
+    return formatMessageTemplate(messages.ui.connection.clusterDefaultName, {
+      count: connection.cluster.nodes.length,
+    });
   }
 
   if (connection.mode === "sentinel" && connection.sentinel?.masterName?.trim()) {
-    return `${connection.sentinel.masterName.trim()} (sentinel)`;
+    return formatMessageTemplate(messages.ui.connection.sentinelDefaultName, {
+      name: connection.sentinel.masterName.trim(),
+    });
   }
 
   return formatRedisAddress(connection.host, connection.port);
@@ -53,10 +64,11 @@ export function getRedisConnectionDefaultName(
 export function parseRedisConnectionUrl(
   connectionUrl: string
 ): ParsedRedisConnectionUrl {
+  const errors = getCurrentMessages().ui.errors;
   const normalizedUrl = connectionUrl.trim();
 
   if (!normalizedUrl) {
-    throw new Error("Redis URL cannot be empty");
+    throw new Error(errors.redisUrlEmpty);
   }
 
   let parsedUrl: URL;
@@ -64,17 +76,17 @@ export function parseRedisConnectionUrl(
   try {
     parsedUrl = new URL(normalizedUrl);
   } catch {
-    throw new Error("Invalid Redis URL");
+    throw new Error(errors.invalidRedisUrl);
   }
 
   if (parsedUrl.protocol !== "redis:" && parsedUrl.protocol !== "rediss:") {
-    throw new Error("Redis URL must start with redis:// or rediss://");
+    throw new Error(errors.redisUrlProtocol);
   }
 
   const host = parsedUrl.hostname.trim();
 
   if (!host.length) {
-    throw new Error("Redis URL is missing a host");
+    throw new Error(errors.redisUrlHostMissing);
   }
 
   const port = parsedUrl.port
@@ -82,7 +94,7 @@ export function parseRedisConnectionUrl(
     : DEFAULT_REDIS_PORT;
 
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error("Redis URL port must be between 1 and 65535");
+    throw new Error(errors.redisUrlPortInvalid);
   }
 
   const dbSegment = parsedUrl.pathname.replace(/^\/+/, "");
@@ -95,7 +107,7 @@ export function parseRedisConnectionUrl(
     !Number.isInteger(db) ||
     db < 0
   ) {
-    throw new Error("Redis URL database must be a non-negative integer");
+    throw new Error(errors.redisUrlDbInvalid);
   }
 
   const username = parsedUrl.username

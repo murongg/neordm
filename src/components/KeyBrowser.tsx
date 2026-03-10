@@ -519,23 +519,8 @@ export function KeyBrowser({
   onSelectClusterNode,
   onSearchChange,
 }: KeyBrowserProps) {
-  const { locale, messages } = useI18n();
+  const { messages } = useI18n();
   const { showToast } = useToast();
-  const uiText = useMemo(
-    () =>
-      locale === "zh"
-        ? {
-            loadMore: "加载更多",
-            loadingMore: "加载中...",
-            loadedSummary: (count: number) => `已加载 ${count} 个 key`,
-          }
-        : {
-            loadMore: "Load more",
-            loadingMore: "Loading...",
-            loadedSummary: (count: number) => `${count} keys loaded`,
-          },
-    [locale]
-  );
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingKeyName, setEditingKeyName] = useState<string | null>(null);
@@ -940,7 +925,7 @@ export function KeyBrowser({
       const renameTarget = getRenameTarget(redisKey.key, keySeparator);
 
       if (!renameDraft.length) {
-        setRenameError("Key name cannot be empty");
+        setRenameError(messages.keyBrowser.keyNameRequired);
         requestAnimationFrame(() => {
           renameInputRef.current?.focus({ preventScroll: true });
           renameInputRef.current?.select();
@@ -953,7 +938,11 @@ export function KeyBrowser({
         keySeparator &&
         renameDraft.includes(keySeparator)
       ) {
-        setRenameError(`Key segment cannot include "${keySeparator}"`);
+        setRenameError(
+          replaceTemplate(messages.ui.errors.keySegmentSeparatorInvalid, {
+            separator: keySeparator,
+          })
+        );
         requestAnimationFrame(() => {
           renameInputRef.current?.focus({ preventScroll: true });
           renameInputRef.current?.select();
@@ -1010,7 +999,15 @@ export function KeyBrowser({
         setIsRenaming(false);
       }
     },
-    [cancelRename, isRenaming, keySeparator, onRenameKey, renameDraft]
+    [
+      cancelRename,
+      isRenaming,
+      keySeparator,
+      messages.keyBrowser.keyNameRequired,
+      messages.ui.errors.keySegmentSeparatorInvalid,
+      onRenameKey,
+      renameDraft,
+    ]
   );
 
   const submitGroupRename = useCallback(
@@ -1024,7 +1021,7 @@ export function KeyBrowser({
       );
 
       if (!renameDraft.length) {
-        setRenameError("Group name cannot be empty");
+        setRenameError(messages.ui.errors.groupNameRequired);
         requestAnimationFrame(() => {
           renameInputRef.current?.focus({ preventScroll: true });
           renameInputRef.current?.select();
@@ -1033,7 +1030,11 @@ export function KeyBrowser({
       }
 
       if (keySeparator && renameDraft.includes(keySeparator)) {
-        setRenameError(`Group segment cannot include "${keySeparator}"`);
+        setRenameError(
+          replaceTemplate(messages.ui.errors.groupSegmentSeparatorInvalid, {
+            separator: keySeparator,
+          })
+        );
         requestAnimationFrame(() => {
           renameInputRef.current?.focus({ preventScroll: true });
           renameInputRef.current?.select();
@@ -1138,7 +1139,16 @@ export function KeyBrowser({
         setIsRenaming(false);
       }
     },
-    [cancelRename, isRenaming, keySeparator, keys, onRenameGroup, renameDraft]
+    [
+      cancelRename,
+      isRenaming,
+      keySeparator,
+      keys,
+      messages.ui.errors.groupNameRequired,
+      messages.ui.errors.groupSegmentSeparatorInvalid,
+      onRenameGroup,
+      renameDraft,
+    ]
   );
 
   useEffect(() => {
@@ -1520,7 +1530,7 @@ export function KeyBrowser({
               group: target.group.id,
             }),
         {
-          title: "NeoRDM",
+          title: messages.ui.appName,
           kind: "warning",
           okLabel: messages.common.delete,
           cancelLabel: messages.common.cancel,
@@ -1942,9 +1952,12 @@ export function KeyBrowser({
               hasMore={hasMoreKeys}
               isLoadingMore={isLoadingMoreKeys}
               loadedCount={keys.length}
-              loadMoreLabel={uiText.loadMore}
-              loadingMoreLabel={uiText.loadingMore}
-              loadedSummaryLabel={uiText.loadedSummary(keys.length)}
+              loadMoreLabel={messages.keyBrowser.loadMore}
+              loadingMoreLabel={messages.keyBrowser.loadingMore}
+              loadedSummaryLabel={replaceTemplate(
+                messages.keyBrowser.loadedSummary,
+                { count: keys.length }
+              )}
               onLoadMore={() => {
                 void handleLoadMore();
               }}
