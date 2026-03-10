@@ -1,6 +1,4 @@
-use crate::models::{
-    HttpProxyHeaderOutput, HttpProxyRequestInput, HttpProxyResponse,
-};
+use crate::models::{HttpProxyHeaderOutput, HttpProxyRequestInput, HttpProxyResponse};
 use reqwest::{
     header::{HeaderMap, HeaderName, HeaderValue},
     Client, Method,
@@ -55,10 +53,7 @@ pub async fn proxy_http_request(input: HttpProxyRequestInput) -> Result<HttpProx
         .map_err(|error| format!("HTTP proxy request failed: {error}"))?;
 
     let status = response.status();
-    let status_text = status
-        .canonical_reason()
-        .unwrap_or_default()
-        .to_string();
+    let status_text = status.canonical_reason().unwrap_or_default().to_string();
     let headers = response
         .headers()
         .iter()

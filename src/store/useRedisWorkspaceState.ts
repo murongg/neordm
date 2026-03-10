@@ -20,7 +20,7 @@ import {
   deleteRedisKey,
   deleteRedisKeys,
   getRedisErrorMessage,
-  getRedisKeyValue,
+  getRedisKeyValuePage,
   renameRedisKey,
   renameRedisKeys,
   scanRedisKeysPage,
@@ -38,6 +38,10 @@ import type {
   RedisConnection,
   RedisKey,
 } from "../types";
+
+const RECENT_CONNECTION_LIMIT = 6;
+const RECENT_KEY_LIMIT = 10;
+const KEY_VALUE_PAGE_SIZE = 200;
 
 function parsePositiveInt(value: string, fallback: number) {
   const parsed = Number.parseInt(value, 10);
@@ -62,6 +66,128 @@ function mergeRedisKeys(keys: RedisKey[], nextKeys: RedisKey[]) {
   );
 }
 
+function pushRecentValue(values: string[], nextValue: string, limit: number) {
+  return [nextValue, ...values.filter((value) => value !== nextValue)].slice(0, limit);
+}
+
+interface RecentKeyReference {
+  connectionId: string;
+  db: number;
+  key: RedisKey;
+}
+
+function pushRecentKey(
+  values: RecentKeyReference[],
+  nextValue: RecentKeyReference,
+  limit: number
+) {
+  return [
+    nextValue,
+    ...values.filter(
+      (value) =>
+        !(
+          value.connectionId === nextValue.connectionId &&
+          value.db === nextValue.db &&
+          value.key.key === nextValue.key.key
+        )
+    ),
+  ].slice(0, limit);
+}
+
+function mergeKeyValuePages(currentValue: KeyValue, nextValue: KeyValue): KeyValue {
+  if (currentValue.type !== nextValue.type) {
+    return nextValue;
+  }
+
+  if (currentValue.type === "hash") {
+    const mergedValue = {
+      ...(currentValue.value &&
+      typeof currentValue.value === "object" &&
+      !Array.isArray(currentValue.value)
+        ? (currentValue.value as Record<string, string>)
+        : {}),
+      ...(nextValue.value &&
+      typeof nextValue.value === "object" &&
+      !Array.isArray(nextValue.value)
+        ? (nextValue.value as Record<string, string>)
+        : {}),
+    };
+
+    return {
+      ...nextValue,
+      value: mergedValue,
+      page: nextValue.page
+        ? {
+            ...nextValue.page,
+            loadedCount: Object.keys(mergedValue).length,
+          }
+        : nextValue.page,
+    };
+  }
+
+  if (currentValue.type === "set") {
+    const mergedValue = Array.from(
+      new Set([
+        ...(Array.isArray(currentValue.value) ? (currentValue.value as string[]) : []),
+        ...(Array.isArray(nextValue.value) ? (nextValue.value as string[]) : []),
+      ])
+    );
+
+    return {
+      ...nextValue,
+      value: mergedValue,
+      page: nextValue.page
+        ? {
+            ...nextValue.page,
+            loadedCount: mergedValue.length,
+          }
+        : nextValue.page,
+    };
+  }
+
+  if (currentValue.type === "list") {
+    const mergedValue = [
+      ...(Array.isArray(currentValue.value) ? (currentValue.value as string[]) : []),
+      ...(Array.isArray(nextValue.value) ? (nextValue.value as string[]) : []),
+    ];
+
+    return {
+      ...nextValue,
+      value: mergedValue,
+      page: nextValue.page
+        ? {
+            ...nextValue.page,
+            loadedCount: mergedValue.length,
+          }
+        : nextValue.page,
+    };
+  }
+
+  if (currentValue.type === "zset") {
+    const mergedValue = [
+      ...(Array.isArray(currentValue.value)
+        ? (currentValue.value as Array<{ member: string; score: number }>)
+        : []),
+      ...(Array.isArray(nextValue.value)
+        ? (nextValue.value as Array<{ member: string; score: number }>)
+        : []),
+    ];
+
+    return {
+      ...nextValue,
+      value: mergedValue,
+      page: nextValue.page
+        ? {
+            ...nextValue.page,
+            loadedCount: mergedValue.length,
+          }
+        : nextValue.page,
+    };
+  }
+
+  return nextValue;
+}
+
 interface UseRedisWorkspaceStateOptions {
   appSettings: AppSettings;
   hasHydratedSettings: boolean;
@@ -75,6 +201,10 @@ interface LoadKeyValueOptions {
 
 interface LoadKeysOptions {
   preserveSelection?: boolean;
+}
+
+interface SelectConnectionOptions {
+  db?: number;
 }
 
 type SetKeyValueAction = SetStateAction<KeyValue | null>;
@@ -94,12 +224,15 @@ interface RedisWorkspaceStoreState {
   keys: RedisKey[];
   selectedKey: RedisKey | null;
   keyValue: KeyValue | null;
+  recentConnectionIds: string[];
+  recentKeys: RecentKeyReference[];
   searchQuery: string;
   panelTab: PanelTab;
   showConnectionModal: boolean;
   editingConnectionId: string | null;
   isLoadingKeys: boolean;
   isLoadingMoreKeys: boolean;
+  isLoadingMoreKeyValue: boolean;
   keysScanCursor: string | null;
   hasMoreKeys: boolean;
   hasHydratedConnections: boolean;
@@ -117,7 +250,10 @@ interface RedisWorkspaceStoreState {
     status: RedisConnection["status"],
     db?: number
   ) => void;
-  removeKeyFromState: (key: string) => void;
+  removeKeyFromState: (
+    key: string,
+    options?: { connectionId?: string; db?: number }
+  ) => void;
   loadKeyValue: (
     connection: RedisConnection,
     key: RedisKey,
@@ -130,7 +266,12 @@ interface RedisWorkspaceStoreState {
     options?: LoadKeysOptions
   ) => Promise<void>;
   loadMoreKeys: () => Promise<void>;
-  selectConnection: (connectionId: string) => Promise<void>;
+  cancelLoadMoreKeys: () => void;
+  loadMoreKeyValue: () => Promise<void>;
+  selectConnection: (
+    connectionId: string,
+    options?: SelectConnectionOptions
+  ) => Promise<void>;
   openNewConnectionModal: () => void;
   openEditConnectionModal: (connectionId: string) => void;
   closeConnectionModal: () => void;
@@ -208,12 +349,15 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     keys: [],
     selectedKey: null,
     keyValue: null,
+    recentConnectionIds: [],
+    recentKeys: [],
     searchQuery: "",
     panelTab: "editor",
     showConnectionModal: false,
     editingConnectionId: null,
     isLoadingKeys: false,
     isLoadingMoreKeys: false,
+    isLoadingMoreKeyValue: false,
     keysScanCursor: null,
     hasMoreKeys: false,
     hasHydratedConnections: false,
@@ -253,12 +397,26 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         db: db ?? connection.db,
       }));
     },
-    removeKeyFromState: (key) => {
+    removeKeyFromState: (key, options = {}) => {
+      const state = get();
+      const connectionId = options.connectionId ?? state.activeConnectionId;
+      const db = options.db ?? state.selectedDb;
+
       keyValueRequestId += 1;
       set((state) => ({
         keys: state.keys.filter((item) => item.key !== key),
         selectedKey: state.selectedKey?.key === key ? null : state.selectedKey,
         keyValue: state.keyValue?.key === key ? null : state.keyValue,
+        isLoadingMoreKeyValue:
+          state.keyValue?.key === key ? false : state.isLoadingMoreKeyValue,
+        recentKeys: state.recentKeys.filter(
+          (item) =>
+            !(
+              item.connectionId === connectionId &&
+              item.db === db &&
+              item.key.key === key
+            )
+        ),
       }));
     },
     loadKeyValue: async (connection, key, db, options = {}) => {
@@ -268,10 +426,17 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         selectedKey: key,
         panelTab: "editor",
         keyValue: options.preserveValue ? state.keyValue : null,
+        isLoadingMoreKeyValue: false,
       }));
 
       try {
-        const value = await getRedisKeyValue({ ...connection, db }, key.key);
+        const value = await getRedisKeyValuePage(
+          { ...connection, db },
+          key.key,
+          {
+            pageSize: KEY_VALUE_PAGE_SIZE,
+          }
+        );
 
         if (requestId !== keyValueRequestId) {
           return;
@@ -290,9 +455,72 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
             ttl: key.ttl,
             slot: key.slot,
             nodeAddress: key.nodeAddress,
+            page: null,
             value: getRedisErrorMessage(error),
           },
+          isLoadingMoreKeyValue: false,
         });
+      }
+    },
+    loadMoreKeyValue: async () => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+      const cursor = state.keyValue?.page?.nextCursor ?? null;
+
+      if (
+        !activeConnection ||
+        !state.selectedKey ||
+        !state.keyValue ||
+        state.isLoadingMoreKeyValue ||
+        !cursor
+      ) {
+        return;
+      }
+
+      const requestId = keyValueRequestId;
+
+      set({ isLoadingMoreKeyValue: true });
+
+      try {
+        const nextValue = await getRedisKeyValuePage(
+          { ...activeConnection, db: state.selectedDb },
+          state.selectedKey.key,
+          {
+            pageSize: state.keyValue.page?.pageSize ?? KEY_VALUE_PAGE_SIZE,
+            cursor,
+          }
+        );
+
+        if (requestId !== keyValueRequestId) {
+          return;
+        }
+
+        set((currentState) => {
+          if (
+            !currentState.keyValue ||
+            currentState.keyValue.key !== nextValue.key
+          ) {
+            return {
+              isLoadingMoreKeyValue: false,
+            };
+          }
+
+          return {
+            keyValue: mergeKeyValuePages(currentState.keyValue, nextValue),
+            isLoadingMoreKeyValue: false,
+          };
+        });
+      } catch (error) {
+        if (requestId !== keyValueRequestId) {
+          return;
+        }
+
+        set({ isLoadingMoreKeyValue: false });
+        throw error;
+      } finally {
+        if (requestId === keyValueRequestId) {
+          set({ isLoadingMoreKeyValue: false });
+        }
       }
     },
     loadKeys: async (connection, db, options = {}) => {
@@ -306,6 +534,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       set({
         isLoadingKeys: true,
         isLoadingMoreKeys: false,
+        isLoadingMoreKeyValue: false,
         keysScanCursor: null,
         hasMoreKeys: false,
       });
@@ -316,6 +545,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         set({
           selectedKey: null,
           keyValue: null,
+          isLoadingMoreKeyValue: false,
         });
       }
 
@@ -358,6 +588,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
             set({
               selectedKey: null,
               keyValue: null,
+              isLoadingMoreKeyValue: false,
             });
           } else {
             await get().loadKeyValue(connection, refreshedSelectedKey, db);
@@ -372,6 +603,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           keys: [],
           selectedKey: null,
           keyValue: null,
+          isLoadingMoreKeyValue: false,
           keysScanCursor: null,
           hasMoreKeys: false,
         });
@@ -449,8 +681,13 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         }
       }
     },
-    selectConnection: async (connectionId) => {
+    cancelLoadMoreKeys: () => {
+      keysRequestId += 1;
+      set({ isLoadingMoreKeys: false });
+    },
+    selectConnection: async (connectionId, options = {}) => {
       const connection = get().connections.find((item) => item.id === connectionId);
+      const targetDb = connection?.mode === "cluster" ? 0 : options.db ?? connection?.db ?? 0;
 
       set({
         activeConnectionId: connectionId,
@@ -466,6 +703,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           keys: [],
           selectedKey: null,
           keyValue: null,
+          isLoadingMoreKeyValue: false,
           isLoadingMoreKeys: false,
           keysScanCursor: null,
           hasMoreKeys: false,
@@ -473,14 +711,19 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         return;
       }
 
-      set({
-        selectedDb: connection.db,
+      set((state) => ({
+        selectedDb: targetDb,
         selectedClusterNodeAddress: null,
-      });
+        recentConnectionIds: pushRecentValue(
+          state.recentConnectionIds,
+          connection.id,
+          RECENT_CONNECTION_LIMIT
+        ),
+      }));
       getWorkspaceRuntime().persistLastConnectionId(connection.id);
 
       try {
-        await get().loadKeys(connection, connection.db);
+        await get().loadKeys({ ...connection, db: targetDb }, targetDb);
       } catch {
         return;
       }
@@ -564,6 +807,12 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           searchQuery: "",
           selectedKey: null,
           keyValue: null,
+          recentConnectionIds: pushRecentValue(
+            state.recentConnectionIds,
+            newConnection.id,
+            RECENT_CONNECTION_LIMIT
+          ),
+          isLoadingMoreKeyValue: false,
           isLoadingMoreKeys: false,
           keysScanCursor: null,
           hasMoreKeys: false,
@@ -597,11 +846,16 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }));
 
       if (activeConnectionId === editingConnectionId) {
-        set({
+        set((state) => ({
           selectedDb: updatedConnection.db,
           selectedClusterNodeAddress: null,
           searchQuery: "",
-        });
+          recentConnectionIds: pushRecentValue(
+            state.recentConnectionIds,
+            updatedConnection.id,
+            RECENT_CONNECTION_LIMIT
+          ),
+        }));
         void loadKeys(updatedConnection, updatedConnection.db).catch(() => undefined);
       }
     },
@@ -625,7 +879,13 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         return;
       }
 
-      set({ connections: nextConnections });
+      set((state) => ({
+        connections: nextConnections,
+        recentConnectionIds: state.recentConnectionIds.filter((id) => id !== connectionId),
+        recentKeys: state.recentKeys.filter(
+          (item) => item.connectionId !== connectionId
+        ),
+      }));
 
       if (
         activeConnectionId !== connectionId &&
@@ -654,6 +914,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         selectedKey: null,
         keyValue: null,
         keys: [],
+        isLoadingMoreKeyValue: false,
         isLoadingMoreKeys: false,
         keysScanCursor: null,
         hasMoreKeys: false,
@@ -666,6 +927,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         set({
           isLoadingKeys: false,
           isLoadingMoreKeys: false,
+          isLoadingMoreKeyValue: false,
           activeConnectionId: "",
           selectedDb: 0,
           selectedClusterNodeAddress: null,
@@ -676,11 +938,16 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         return;
       }
 
-      set({
+      set((state) => ({
         activeConnectionId: nextConnection.id,
         selectedDb: nextConnection.db,
         selectedClusterNodeAddress: null,
-      });
+        recentConnectionIds: pushRecentValue(
+          state.recentConnectionIds,
+          nextConnection.id,
+          RECENT_CONNECTION_LIMIT
+        ),
+      }));
       persistLastConnectionId(nextConnection.id);
       void loadKeys(nextConnection, nextConnection.db).catch(() => undefined);
     },
@@ -699,9 +966,10 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       keysRequestId += 1;
       keyValueRequestId += 1;
 
-      set({
+      set((state) => ({
         isLoadingKeys: false,
         isLoadingMoreKeys: false,
+        isLoadingMoreKeyValue: false,
         activeConnectionId: "",
         selectedDb: 0,
         selectedClusterNodeAddress: null,
@@ -709,9 +977,12 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         keys: [],
         selectedKey: null,
         keyValue: null,
+        recentKeys: state.recentKeys.filter(
+          (item) => item.connectionId !== connectionId
+        ),
         keysScanCursor: null,
         hasMoreKeys: false,
-      });
+      }));
     },
     selectDb: async (db) => {
       const { activeConnection, loadKeys, updateConnection } = {
@@ -823,11 +1094,33 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         state.selectedKey?.key === key.key &&
         state.keyValue?.key === key.key
       ) {
-        set({ panelTab: "editor" });
+        set((currentState) => ({
+          panelTab: "editor",
+          recentKeys: pushRecentKey(
+            currentState.recentKeys,
+            {
+              connectionId: activeConnection.id,
+              db: state.selectedDb,
+              key,
+            },
+            RECENT_KEY_LIMIT
+          ),
+        }));
         return;
       }
 
       await state.loadKeyValue(activeConnection, key, state.selectedDb);
+      set((currentState) => ({
+        recentKeys: pushRecentKey(
+          currentState.recentKeys,
+          {
+            connectionId: activeConnection.id,
+            db: state.selectedDb,
+            key,
+          },
+          RECENT_KEY_LIMIT
+        ),
+      }));
     },
     createKey: async (input) => {
       const state = get();
@@ -867,6 +1160,15 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       set((currentState) => ({
         keys: insertRedisKey(currentState.keys, createdKey),
         searchQuery: shouldClearSearch ? "" : currentState.searchQuery,
+        recentKeys: pushRecentKey(
+          currentState.recentKeys,
+          {
+            connectionId: activeConnection.id,
+            db: state.selectedDb,
+            key: createdKey,
+          },
+          RECENT_KEY_LIMIT
+        ),
       }));
 
       await state.loadKeyValue(activeConnection, createdKey, state.selectedDb);
@@ -896,7 +1198,10 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         key: key.key,
       });
 
-      get().removeKeyFromState(key.key);
+      get().removeKeyFromState(key.key, {
+        connectionId: activeConnection.id,
+        db: state.selectedDb,
+      });
     },
     deleteGroup: async (groupId, separator) => {
       const state = get();
@@ -939,6 +1244,14 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           currentState.keyValue && deletedKeys.has(currentState.keyValue.key)
             ? null
             : currentState.keyValue,
+        recentKeys: currentState.recentKeys.filter(
+          (item) =>
+            !(
+              item.connectionId === activeConnection.id &&
+              item.db === state.selectedDb &&
+              deletedKeys.has(item.key.key)
+            )
+        ),
       }));
 
       void recordTelemetryEvent("workspace.group.delete");
@@ -994,6 +1307,19 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
                 key: nextKeyName,
               }
             : currentState.keyValue,
+        recentKeys: currentState.recentKeys.map((item) =>
+          item.connectionId === activeConnection.id &&
+          item.db === state.selectedDb &&
+          item.key.key === key.key
+            ? {
+                ...item,
+                key: {
+                  ...item.key,
+                  key: nextKeyName,
+                },
+              }
+            : item
+        ),
       }));
 
       return renamedKey;
@@ -1065,6 +1391,25 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
                 : currentState.keyValue;
             })()
           : currentState.keyValue,
+        recentKeys: currentState.recentKeys.map((item) => {
+          if (
+            item.connectionId !== activeConnection.id ||
+            item.db !== state.selectedDb
+          ) {
+            return item;
+          }
+
+          const nextKey = renamedMap.get(item.key.key);
+          return nextKey
+            ? {
+                ...item,
+                key: {
+                  ...item.key,
+                  key: nextKey,
+                },
+              }
+            : item;
+        }),
       }));
 
       return renamedPairs;

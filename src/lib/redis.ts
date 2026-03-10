@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   KeyValue,
+  KeyValuePageState,
   RedisConnection,
   RedisClusterTopologyNode,
   RedisPubSubEvent,
@@ -111,6 +112,15 @@ export interface RedisKeysScanPageOptions {
 export interface RedisKeysScanPage {
   keys: RedisKey[];
   nextCursor: string | null;
+}
+
+export interface RedisKeyValuePageOptions {
+  pageSize?: number;
+  cursor?: string | null;
+}
+
+export interface RedisKeyValuePage extends KeyValue {
+  page: KeyValuePageState;
 }
 
 export const REDIS_PUBSUB_EVENT = "redis://pubsub";
@@ -252,6 +262,38 @@ export async function getRedisKeyValue(
       key,
     },
   });
+}
+
+export async function getRedisKeyValuePage(
+  connection: RedisConnectionInvokeInput,
+  key: string,
+  options: RedisKeyValuePageOptions = {}
+): Promise<RedisKeyValuePage> {
+  const response = await invoke<
+    KeyValue & {
+      nextCursor: string | null;
+      totalCount: number | null;
+      loadedCount: number;
+      pageSize: number;
+    }
+  >("get_redis_key_value_page", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+      pageSize: options.pageSize,
+      cursor: options.cursor ?? null,
+    },
+  });
+
+  return {
+    ...response,
+    page: {
+      nextCursor: response.nextCursor,
+      totalCount: response.totalCount,
+      loadedCount: response.loadedCount,
+      pageSize: response.pageSize,
+    },
+  };
 }
 
 export async function createRedisKey(

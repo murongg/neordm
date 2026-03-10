@@ -226,7 +226,10 @@ export interface Messages {
   commandPalette: {
     placeholder: string;
     actions: string;
+    recentConnections: string;
+    databases: string;
     connections: string;
+    recentKeys: string;
     keys: string;
     loadMoreKeys: string;
     newConnection: string;
@@ -236,10 +239,14 @@ export interface Messages {
     hint: string;
     active: string;
     panel: string;
+    switchDb: string;
+    currentDb: string;
   };
   keyBrowser: {
     title: string;
     refresh: string;
+    loading: string;
+    refreshing: string;
     expandAll: string;
     collapseAll: string;
     filterPlaceholder: string;
@@ -279,6 +286,7 @@ export interface Messages {
     confirmDeleteGroup: string;
     loadMore: string;
     loadingMore: string;
+    stopLoading: string;
     loadedSummary: string;
   };
   ai: {
@@ -389,6 +397,9 @@ export interface Messages {
     insertHead: string;
     insertTail: string;
     ttlBadge: string;
+    loadMore: string;
+    loadingMore: string;
+    loadedSummary: string;
     headers: {
       index: string;
     };

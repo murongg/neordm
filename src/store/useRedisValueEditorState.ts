@@ -23,11 +23,12 @@ import {
   recordCrashReport,
   recordTelemetryEvent,
 } from "../lib/privacyRuntime";
-import type { KeyValue, RedisConnection, ZSetMember } from "../types";
+import type { KeyValue, RedisConnection } from "../types";
 
 interface UseRedisValueEditorStateOptions {
   activeConnection?: RedisConnection;
   keyValue: KeyValue | null;
+  onRefreshKeyValue: () => Promise<void>;
   notConnectedMessage: string;
   onRefreshKeys: () => Promise<void>;
   removeKeyFromState: (key: string) => void;
@@ -38,12 +39,40 @@ interface UseRedisValueEditorStateOptions {
 export function useRedisValueEditorState({
   activeConnection,
   keyValue,
+  onRefreshKeyValue,
   notConnectedMessage,
   onRefreshKeys,
   removeKeyFromState,
   selectedDb,
   setKeyValue,
 }: UseRedisValueEditorStateOptions) {
+  const refreshCurrentKeyValue = useCallback(async () => {
+    await onRefreshKeyValue();
+  }, [onRefreshKeyValue]);
+
+  const getCurrentCollectionCount = useCallback(
+    (expectedKey: string, expectedType: KeyValue["type"]) => {
+      if (!keyValue || keyValue.key !== expectedKey || keyValue.type !== expectedType) {
+        return null;
+      }
+
+      if (typeof keyValue.page?.totalCount === "number") {
+        return keyValue.page.totalCount;
+      }
+
+      if (Array.isArray(keyValue.value)) {
+        return keyValue.value.length;
+      }
+
+      if (keyValue.value && typeof keyValue.value === "object") {
+        return Object.keys(keyValue.value).length;
+      }
+
+      return null;
+    },
+    [keyValue]
+  );
+
   const addHashEntry = useCallback(
     async (key: string, field: string, value: string) => {
       const messages = getCurrentMessages();
@@ -65,29 +94,9 @@ export function useRedisValueEditorState({
       );
       void recordTelemetryEvent("editor.hash.add");
       void recordAuditEvent("editor.hash.add", { key, field });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "hash" ||
-          !previous.value ||
-          typeof previous.value !== "object" ||
-          Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        return {
-          ...previous,
-          value: {
-            ...(previous.value as Record<string, string>),
-            [field]: value,
-          },
-        };
-      });
+      await refreshCurrentKeyValue();
     },
-    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+    [activeConnection, notConnectedMessage, refreshCurrentKeyValue, selectedDb]
   );
 
   const appendListValue = useCallback(
@@ -108,29 +117,9 @@ export function useRedisValueEditorState({
       );
       void recordTelemetryEvent("editor.list.add");
       void recordAuditEvent("editor.list.add", { key, position });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "list" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const currentValues = previous.value as string[];
-
-        return {
-          ...previous,
-          value:
-            position === "head"
-              ? [value, ...currentValues]
-              : [...currentValues, value],
-        };
-      });
+      await refreshCurrentKeyValue();
     },
-    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+    [activeConnection, notConnectedMessage, refreshCurrentKeyValue, selectedDb]
   );
 
   const updateListValue = useCallback(
@@ -155,29 +144,9 @@ export function useRedisValueEditorState({
       );
       void recordTelemetryEvent("editor.list.update");
       void recordAuditEvent("editor.list.update", { key, index });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "list" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const currentValues = previous.value as string[];
-        const nextValues = currentValues.map((item, itemIndex) =>
-          itemIndex === index ? value : item
-        );
-
-        return {
-          ...previous,
-          value: nextValues,
-        };
-      });
+      await refreshCurrentKeyValue();
     },
-    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+    [activeConnection, notConnectedMessage, refreshCurrentKeyValue, selectedDb]
   );
 
   const deleteListValue = useCallback(
@@ -199,45 +168,21 @@ export function useRedisValueEditorState({
       void recordTelemetryEvent("editor.list.delete");
       void recordAuditEvent("editor.list.delete", { key, index });
 
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "list" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const currentValues = previous.value as string[];
-        const nextValues = currentValues.filter((_, itemIndex) => itemIndex !== index);
-
-        if (!nextValues.length) {
-          return null;
-        }
-
-        return {
-          ...previous,
-          value: nextValues,
-        };
-      });
-
-      const currentValues =
-        keyValue?.key === key && keyValue.type === "list" && Array.isArray(keyValue.value)
-          ? (keyValue.value as string[])
-          : null;
-
-      if (currentValues && currentValues.length <= 1) {
+      const currentCount = getCurrentCollectionCount(key, "list");
+      if (currentCount !== null && currentCount <= 1) {
         removeKeyFromState(key);
+        return;
       }
+
+      await refreshCurrentKeyValue();
     },
     [
       activeConnection,
-      keyValue,
+      getCurrentCollectionCount,
       notConnectedMessage,
+      refreshCurrentKeyValue,
       removeKeyFromState,
       selectedDb,
-      setKeyValue,
     ]
   );
 
@@ -259,26 +204,9 @@ export function useRedisValueEditorState({
       );
       void recordTelemetryEvent("editor.set.add");
       void recordAuditEvent("editor.set.add", { key });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "set" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const currentMembers = previous.value as string[];
-
-        return {
-          ...previous,
-          value: [...currentMembers, member],
-        };
-      });
+      await refreshCurrentKeyValue();
     },
-    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+    [activeConnection, notConnectedMessage, refreshCurrentKeyValue, selectedDb]
   );
 
   const updateKeyTtl = useCallback(
@@ -361,39 +289,15 @@ export function useRedisValueEditorState({
       void recordAuditEvent("editor.hash.update", {
         key,
       });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "hash" ||
-          !previous.value ||
-          typeof previous.value !== "object" ||
-          Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const nextEntries = Object.entries(previous.value as Record<string, string>)
-          .map(([field, value]) =>
-            field === oldField
-              ? ([nextField, nextValue] as const)
-              : ([field, value] as const)
-          );
-
-        return {
-          ...previous,
-          value: Object.fromEntries(nextEntries),
-        };
-      });
+      await refreshCurrentKeyValue();
     },
     [
       activeConnection,
       keyValue?.type,
       keyValue?.value,
       notConnectedMessage,
+      refreshCurrentKeyValue,
       selectedDb,
-      setKeyValue,
     ]
   );
 
@@ -527,52 +431,21 @@ export function useRedisValueEditorState({
         key,
       });
 
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "hash" ||
-          !previous.value ||
-          typeof previous.value !== "object" ||
-          Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const nextEntries = Object.entries(previous.value as Record<string, string>).filter(
-          ([entryField]) => entryField !== field
-        );
-
-        if (!nextEntries.length) {
-          return null;
-        }
-
-        return {
-          ...previous,
-          value: Object.fromEntries(nextEntries),
-        };
-      });
-
-      const currentEntries =
-        keyValue?.key === key &&
-        keyValue.type === "hash" &&
-        keyValue.value &&
-        typeof keyValue.value === "object" &&
-        !Array.isArray(keyValue.value)
-          ? (keyValue.value as Record<string, string>)
-          : null;
-
-      if (currentEntries && Object.keys(currentEntries).length <= 1) {
+      const currentCount = getCurrentCollectionCount(key, "hash");
+      if (currentCount !== null && currentCount <= 1) {
         removeKeyFromState(key);
+        return;
       }
+
+      await refreshCurrentKeyValue();
     },
     [
       activeConnection,
-      keyValue,
+      getCurrentCollectionCount,
       notConnectedMessage,
+      refreshCurrentKeyValue,
       removeKeyFromState,
       selectedDb,
-      setKeyValue,
     ]
   );
 
@@ -623,47 +496,15 @@ export function useRedisValueEditorState({
       void recordAuditEvent("editor.zset.update", {
         key,
       });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "zset" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const nextMembers = (previous.value as Array<{ member: string; score: number }>)
-          .map((item) =>
-            item.member === oldMember
-              ? {
-                  member: nextMember,
-                  score: nextScore,
-                }
-              : item
-          )
-          .sort((left, right) => {
-            if (left.score === right.score) {
-              return left.member.localeCompare(right.member);
-            }
-
-            return left.score - right.score;
-          });
-
-        return {
-          ...previous,
-          value: nextMembers,
-        };
-      });
+      await refreshCurrentKeyValue();
     },
     [
       activeConnection,
       keyValue?.type,
       keyValue?.value,
       notConnectedMessage,
+      refreshCurrentKeyValue,
       selectedDb,
-      setKeyValue,
     ]
   );
 
@@ -688,48 +529,21 @@ export function useRedisValueEditorState({
         key,
       });
 
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "zset" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const nextMembers = (previous.value as Array<{ member: string; score: number }>).filter(
-          (item) => item.member !== member
-        );
-
-        if (!nextMembers.length) {
-          return null;
-        }
-
-        return {
-          ...previous,
-          value: nextMembers,
-        };
-      });
-
-      const currentMembers =
-        keyValue?.key === key &&
-        keyValue.type === "zset" &&
-        Array.isArray(keyValue.value)
-          ? (keyValue.value as Array<{ member: string; score: number }>)
-          : null;
-
-      if (currentMembers && currentMembers.length <= 1) {
+      const currentCount = getCurrentCollectionCount(key, "zset");
+      if (currentCount !== null && currentCount <= 1) {
         removeKeyFromState(key);
+        return;
       }
+
+      await refreshCurrentKeyValue();
     },
     [
       activeConnection,
-      keyValue,
+      getCurrentCollectionCount,
       notConnectedMessage,
+      refreshCurrentKeyValue,
       removeKeyFromState,
       selectedDb,
-      setKeyValue,
     ]
   );
 
@@ -755,33 +569,9 @@ export function useRedisValueEditorState({
       );
       void recordTelemetryEvent("editor.zset.add");
       void recordAuditEvent("editor.zset.add", { key, member });
-
-      setKeyValue((previous) => {
-        if (
-          !previous ||
-          previous.key !== key ||
-          previous.type !== "zset" ||
-          !Array.isArray(previous.value)
-        ) {
-          return previous;
-        }
-
-        const currentMembers = previous.value as ZSetMember[];
-        const nextValue = [...currentMembers, { member, score }].sort((left, right) => {
-          if (left.score === right.score) {
-            return left.member.localeCompare(right.member);
-          }
-
-          return left.score - right.score;
-        });
-
-        return {
-          ...previous,
-          value: nextValue,
-        };
-      });
+      await refreshCurrentKeyValue();
     },
-    [activeConnection, notConnectedMessage, selectedDb, setKeyValue]
+    [activeConnection, notConnectedMessage, refreshCurrentKeyValue, selectedDb]
   );
 
   return {

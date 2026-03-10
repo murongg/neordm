@@ -3,10 +3,10 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-#[path = "statusbar/menu.rs"]
-mod menu;
 #[path = "statusbar/actions.rs"]
 mod actions;
+#[path = "statusbar/menu.rs"]
+mod menu;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Value as JsonValue};
@@ -56,14 +56,25 @@ const STATUSBAR_RECENT_KEY_LIMIT: usize = 6;
 
 #[derive(Clone, Debug)]
 enum StatusBarAction {
-    SelectConnection { connection_id: String },
-    OpenKey { connection_id: String, key: String },
-    DeleteKey { connection_id: String, key: String },
+    SelectConnection {
+        connection_id: String,
+    },
+    OpenKey {
+        connection_id: String,
+        key: String,
+    },
+    DeleteKey {
+        connection_id: String,
+        key: String,
+    },
     PinKey {
         connection_id: String,
         key_entry: StatusBarKeyEntry,
     },
-    UnpinKey { connection_id: String, key: String },
+    UnpinKey {
+        connection_id: String,
+        key: String,
+    },
 }
 
 #[derive(Default)]
@@ -476,11 +487,7 @@ fn sync_statusbar_pinned_key_metadata(
     persist_statusbar_pinned_keys(app, &pinned_keys)
 }
 
-fn record_statusbar_recent_key(
-    app: &AppHandle,
-    connection_id: &str,
-    key_entry: StatusBarKeyEntry,
-) {
+fn record_statusbar_recent_key(app: &AppHandle, connection_id: &str, key_entry: StatusBarKeyEntry) {
     let statusbar_state = app.state::<StatusBarState>();
     let mut recent_keys = statusbar_state.recent_keys.lock().unwrap();
     let entries = recent_keys.entry(connection_id.to_string()).or_default();
@@ -524,7 +531,9 @@ fn load_statusbar_connections(app: &AppHandle) -> Result<Vec<StoredStatusBarConn
         return Ok(connections);
     }
 
-    let store = app.store("connections.json").map_err(|error| error.to_string())?;
+    let store = app
+        .store("connections.json")
+        .map_err(|error| error.to_string())?;
     let Some(raw_connections) = store.get("connections") else {
         return Ok(Vec::new());
     };
@@ -547,7 +556,9 @@ fn load_statusbar_connections(app: &AppHandle) -> Result<Vec<StoredStatusBarConn
 }
 
 fn load_statusbar_settings(app: &AppHandle) -> Result<StoredStatusBarSettings, String> {
-    let store = app.store("settings.json").map_err(|error| error.to_string())?;
+    let store = app
+        .store("settings.json")
+        .map_err(|error| error.to_string())?;
     let Some(raw_settings) = store.get("app") else {
         return Ok(StoredStatusBarSettings::default());
     };
@@ -560,7 +571,9 @@ fn persist_statusbar_last_connection_id(
     app: &AppHandle,
     connection_id: Option<&str>,
 ) -> Result<(), String> {
-    let store = app.store("settings.json").map_err(|error| error.to_string())?;
+    let store = app
+        .store("settings.json")
+        .map_err(|error| error.to_string())?;
     let raw_settings = store
         .get("app")
         .unwrap_or_else(|| JsonValue::Object(JsonMap::new()));
@@ -611,16 +624,18 @@ pub(crate) fn setup_macos_statusbar(app: &mut tauri::App) -> tauri::Result<()> {
     let app_handle = app.handle().clone();
     let listener_app_handle = app_handle.clone();
     let tray_menu = build_loading_statusbar_menu(&app_handle)?;
-    let initial_pinned_keys = load_statusbar_pinned_keys_from_store(&app_handle).unwrap_or_default();
+    let initial_pinned_keys =
+        load_statusbar_pinned_keys_from_store(&app_handle).unwrap_or_default();
 
     set_statusbar_pinned_keys(&app_handle, initial_pinned_keys);
 
-    app_handle.listen_any(TRAY_STATUSBAR_CONTEXT_EVENT, move |event| {
-        match serde_json::from_str::<TrayStatusbarContextPayload>(event.payload()) {
+    app_handle.listen_any(
+        TRAY_STATUSBAR_CONTEXT_EVENT,
+        move |event| match serde_json::from_str::<TrayStatusbarContextPayload>(event.payload()) {
             Ok(payload) => handle_statusbar_context_payload(&listener_app_handle, payload),
             Err(error) => eprintln!("Failed to parse tray context payload: {error}"),
-        }
-    });
+        },
+    );
 
     let mut tray_builder = TrayIconBuilder::with_id(STATUSBAR_TRAY_ID)
         .menu(&tray_menu)

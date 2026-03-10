@@ -4,8 +4,10 @@ interface LoadMoreSectionProps {
   loadedCount: number;
   loadMoreLabel: string;
   loadingMoreLabel: string;
+  stopLoadingLabel: string;
   loadedSummaryLabel: string;
   onLoadMore: () => void;
+  onStopLoadingMore: () => void;
 }
 
 export function LoadMoreSection({
@@ -14,8 +16,10 @@ export function LoadMoreSection({
   loadedCount,
   loadMoreLabel,
   loadingMoreLabel,
+  stopLoadingLabel,
   loadedSummaryLabel,
   onLoadMore,
+  onStopLoadingMore,
 }: LoadMoreSectionProps) {
   if (!loadedCount && !hasMore) {
     return null;
@@ -28,14 +32,20 @@ export function LoadMoreSection({
           {loadedSummaryLabel}
         </span>
         {hasMore ? (
-          <button
-            type="button"
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            className="btn btn-ghost btn-xs h-7 px-2 font-mono text-[10px]"
-          >
-            {isLoadingMore ? loadingMoreLabel : loadMoreLabel}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={isLoadingMore ? onStopLoadingMore : onLoadMore}
+              className="btn btn-ghost btn-xs h-7 px-2 font-mono text-[10px]"
+            >
+              {isLoadingMore ? stopLoadingLabel : loadMoreLabel}
+            </button>
+            {isLoadingMore ? (
+              <span className="text-[10px] font-mono text-base-content/40">
+                {loadingMoreLabel}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

@@ -48,6 +48,7 @@ interface ValueEditorProps {
   selectedDb: number;
   keyValue: KeyValue | null;
   onRefreshKeyValue: () => Promise<void>;
+  onLoadMoreKeyValue: () => Promise<void>;
   onDeleteKey: (key: string) => Promise<void>;
   onJumpToClusterNode?: (nodeAddress: string | null) => Promise<void> | void;
   onUpdateStringValue: (key: string, nextValue: string) => Promise<void>;
@@ -77,6 +78,7 @@ interface ValueEditorProps {
     nextScore: number
   ) => Promise<void>;
   onDeleteZSetEntry: (key: string, member: string) => Promise<void>;
+  isLoadingMoreKeyValue: boolean;
 }
 
 export function ValueEditor({
@@ -84,6 +86,7 @@ export function ValueEditor({
   selectedDb,
   keyValue,
   onRefreshKeyValue,
+  onLoadMoreKeyValue,
   onDeleteKey,
   onJumpToClusterNode,
   onUpdateStringValue,
@@ -99,6 +102,7 @@ export function ValueEditor({
   onAddZSetEntry,
   onUpdateZSetEntry,
   onDeleteZSetEntry,
+  isLoadingMoreKeyValue,
 }: ValueEditorProps) {
   const { messages } = useI18n();
   const appSettings = useAppSettings();
@@ -247,6 +251,12 @@ export function ValueEditor({
       : formatTTLFull(keyValue.ttl, messages.units.full);
   const usesTableViewer =
     keyValue.type === "hash" || keyValue.type === "zset";
+  const supportsPagedValue =
+    (keyValue.type === "hash" ||
+      keyValue.type === "list" ||
+      keyValue.type === "set" ||
+      keyValue.type === "zset") &&
+    Boolean(keyValue.page);
   const editorSettings: EditorRuntimeSettings = appSettings.editor;
   const headerAddLabel =
     keyValue.type === "hash"
@@ -261,6 +271,12 @@ export function ValueEditor({
     keyValue.type === "list" ||
     keyValue.type === "set" ||
     keyValue.type === "zset";
+  const loadedSummaryLabel = keyValue.page
+    ? replaceTemplate(messages.valueEditor.loadedSummary, {
+        loaded: keyValue.page.loadedCount,
+        total: keyValue.page.totalCount ?? keyValue.page.loadedCount,
+      })
+    : "";
 
   const handleOpenCreateEditor = () => {
     if (keyValue.type === "hash") {
@@ -453,96 +469,125 @@ export function ValueEditor({
 
       <div
         className={`flex-1 min-h-0 p-4 ${
-          usesTableViewer ? "overflow-hidden" : "overflow-auto"
+          usesTableViewer || supportsPagedValue ? "overflow-hidden" : "overflow-auto"
         } relative`}
       >
-        {keyValue.type === "string" && (
-          <StringViewer
-            value={keyValue.value as string}
-            settings={editorSettings}
-            onSave={(nextValue) => onUpdateStringValue(keyValue.key, nextValue)}
-          />
-        )}
-        {keyValue.type === "json" && (
-          <JsonEditorViewer
-            value={keyValue.value as string}
-            settings={editorSettings}
-            onSave={(nextValue) => onUpdateJsonValue(keyValue.key, nextValue)}
-          />
-        )}
-        {keyValue.type === "stream" && (
-          <RedisStreamViewer
-            activeConnection={activeConnection}
-            selectedDb={selectedDb}
-            keyName={keyValue.key}
-            rawValue={keyValue.value as string}
-            onCopy={copyText}
-            onRefreshStream={onRefreshKeyValue}
-          />
-        )}
-        {keyValue.type === "hash" && (
-          <HashViewer
-            value={keyValue.value as Record<string, string>}
-            settings={editorSettings}
-            confirmDeleteEnabled={appSettings.general.confirmDelete}
-            onCopy={copyText}
-            onRefresh={onRefreshKeyValue}
-            onEditRow={(field, value) => {
-              setZSetEditorState(null);
-              setSingleValueEditorState(null);
-              setHashEditorState({
-                mode: "edit",
-                field,
-                value,
-              });
-            }}
-            onDeleteRow={(field) => onDeleteHashEntry(keyValue.key, field)}
-          />
-        )}
-        {keyValue.type === "list" && (
-          <ListViewer
-            value={keyValue.value as string[]}
-            confirmDeleteEnabled={appSettings.general.confirmDelete}
-            onCopy={copyText}
-            onEditValue={(index, value) => {
-              setHashEditorState(null);
-              setZSetEditorState(null);
-              setSingleValueEditorState({
-                kind: "list",
-                mode: "edit",
-                value,
-                index,
-              });
-            }}
-            onDeleteValue={(index) => onDeleteListValue(keyValue.key, index)}
-            onRefresh={onRefreshKeyValue}
-          />
-        )}
-        {keyValue.type === "set" && (
-          <SetViewer
-            value={keyValue.value as string[]}
-            onCopy={copyText}
-          />
-        )}
-        {keyValue.type === "zset" && (
-          <ZSetViewer
-            value={keyValue.value as ZSetMember[]}
-            confirmDeleteEnabled={appSettings.general.confirmDelete}
-            onCopy={copyText}
-            onRefresh={onRefreshKeyValue}
-            onEditRow={(member, score) => {
-              setHashEditorState(null);
-              setSingleValueEditorState(null);
-              setZSetEditorState({
-                mode: "edit",
-                member,
-                score,
-              });
-            }}
-            onDeleteRow={(member) => onDeleteZSetEntry(keyValue.key, member)}
-          />
-        )}
+        <div className={`${supportsPagedValue ? "flex h-full min-h-0 flex-col gap-3" : ""}`}>
+          <div
+            className={`${
+              supportsPagedValue ? "min-h-0 flex-1 overflow-hidden" : "h-full"
+            }`}
+          >
+            {keyValue.type === "string" && (
+              <StringViewer
+                value={keyValue.value as string}
+                settings={editorSettings}
+                onSave={(nextValue) => onUpdateStringValue(keyValue.key, nextValue)}
+              />
+            )}
+            {keyValue.type === "json" && (
+              <JsonEditorViewer
+                value={keyValue.value as string}
+                settings={editorSettings}
+                onSave={(nextValue) => onUpdateJsonValue(keyValue.key, nextValue)}
+              />
+            )}
+            {keyValue.type === "stream" && (
+              <RedisStreamViewer
+                activeConnection={activeConnection}
+                selectedDb={selectedDb}
+                keyName={keyValue.key}
+                rawValue={keyValue.value as string}
+                onCopy={copyText}
+                onRefreshStream={onRefreshKeyValue}
+              />
+            )}
+            {keyValue.type === "hash" && (
+              <HashViewer
+                value={keyValue.value as Record<string, string>}
+                settings={editorSettings}
+                confirmDeleteEnabled={appSettings.general.confirmDelete}
+                onCopy={copyText}
+                onRefresh={onRefreshKeyValue}
+                onEditRow={(field, value) => {
+                  setZSetEditorState(null);
+                  setSingleValueEditorState(null);
+                  setHashEditorState({
+                    mode: "edit",
+                    field,
+                    value,
+                  });
+                }}
+                onDeleteRow={(field) => onDeleteHashEntry(keyValue.key, field)}
+              />
+            )}
+            {keyValue.type === "list" && (
+              <ListViewer
+                value={keyValue.value as string[]}
+                confirmDeleteEnabled={appSettings.general.confirmDelete}
+                onCopy={copyText}
+                onEditValue={(index, value) => {
+                  setHashEditorState(null);
+                  setZSetEditorState(null);
+                  setSingleValueEditorState({
+                    kind: "list",
+                    mode: "edit",
+                    value,
+                    index,
+                  });
+                }}
+                onDeleteValue={(index) => onDeleteListValue(keyValue.key, index)}
+                onRefresh={onRefreshKeyValue}
+              />
+            )}
+            {keyValue.type === "set" && (
+              <SetViewer
+                value={keyValue.value as string[]}
+                onCopy={copyText}
+              />
+            )}
+            {keyValue.type === "zset" && (
+              <ZSetViewer
+                value={keyValue.value as ZSetMember[]}
+                confirmDeleteEnabled={appSettings.general.confirmDelete}
+                onCopy={copyText}
+                onRefresh={onRefreshKeyValue}
+                onEditRow={(member, score) => {
+                  setHashEditorState(null);
+                  setSingleValueEditorState(null);
+                  setZSetEditorState({
+                    mode: "edit",
+                    member,
+                    score,
+                  });
+                }}
+                onDeleteRow={(member) => onDeleteZSetEntry(keyValue.key, member)}
+              />
+            )}
+          </div>
 
+          {supportsPagedValue && keyValue.page ? (
+            <div className="flex items-center justify-between rounded-xl border border-base-content/8 bg-base-100/60 px-3 py-2">
+              <span className="text-[11px] font-mono text-base-content/45">
+                {loadedSummaryLabel}
+              </span>
+              {keyValue.page.nextCursor ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void onLoadMoreKeyValue();
+                  }}
+                  disabled={isLoadingMoreKeyValue}
+                  className="btn btn-ghost btn-xs h-7 px-2 font-mono text-[10px]"
+                >
+                  {isLoadingMoreKeyValue
+                    ? messages.valueEditor.loadingMore
+                    : messages.valueEditor.loadMore}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </div>
 
       {hashEditorState ? (

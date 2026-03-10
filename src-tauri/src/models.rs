@@ -90,6 +90,15 @@ pub(crate) struct RedisKeyLookupInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyValuePageInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) page_size: Option<u32>,
+    pub(crate) cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisStreamGroupLookupInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
@@ -406,6 +415,22 @@ pub(crate) struct RedisKeyValueResponse {
     pub(crate) slot: Option<u16>,
     pub(crate) node_address: Option<String>,
     pub(crate) value: JsonValue,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyValuePageResponse {
+    pub(crate) key: String,
+    #[serde(rename = "type")]
+    pub(crate) key_type: String,
+    pub(crate) ttl: i64,
+    pub(crate) slot: Option<u16>,
+    pub(crate) node_address: Option<String>,
+    pub(crate) value: JsonValue,
+    pub(crate) next_cursor: Option<String>,
+    pub(crate) total_count: Option<u64>,
+    pub(crate) loaded_count: u64,
+    pub(crate) page_size: u32,
 }
 
 #[derive(Clone, Debug, Serialize)]

@@ -9,11 +9,11 @@ use super::{
     record_statusbar_recent_key, remove_statusbar_recent_key, set_statusbar_menu_actions,
     set_statusbar_selected_connection_id, set_statusbar_synced_connections, show_main_window,
     sync_statusbar_pinned_key_metadata, truncate_statusbar_text, unpin_statusbar_key,
-    StatusBarAction, StatusBarKeyEntry, StatusBarState, TrayStatusbarContextPayload,
-    TrayStatusbarEventPayload, RedisConnectionTestInput, STATUSBAR_TRAY_ID,
-    STATUSBAR_VALUE_PREVIEW_LIMIT, TRAY_BROWSE_KEYS_ID, TRAY_DISCONNECT_ID,
-    TRAY_HIDE_WINDOW_ID, TRAY_NEW_CONNECTION_ID, TRAY_OPEN_CLI_ID, TRAY_OPEN_PUBSUB_ID,
-    TRAY_OPEN_WINDOW_ID, TRAY_QUIT_ID, TRAY_REFRESH_KEYS_ID,
+    RedisConnectionTestInput, StatusBarAction, StatusBarKeyEntry, StatusBarState,
+    TrayStatusbarContextPayload, TrayStatusbarEventPayload, STATUSBAR_TRAY_ID,
+    STATUSBAR_VALUE_PREVIEW_LIMIT, TRAY_BROWSE_KEYS_ID, TRAY_DISCONNECT_ID, TRAY_HIDE_WINDOW_ID,
+    TRAY_NEW_CONNECTION_ID, TRAY_OPEN_CLI_ID, TRAY_OPEN_PUBSUB_ID, TRAY_OPEN_WINDOW_ID,
+    TRAY_QUIT_ID, TRAY_REFRESH_KEYS_ID,
 };
 
 pub(super) async fn delete_statusbar_key(
@@ -242,13 +242,14 @@ pub(super) fn handle_statusbar_menu_event(app: &AppHandle, event_id: &str) {
                     let app_handle = app.clone();
 
                     tauri::async_runtime::spawn(async move {
-                        let connection = load_statusbar_connections(&app_handle)
-                            .ok()
-                            .and_then(|connections| {
-                                connections
-                                    .into_iter()
-                                    .find(|connection| connection.id == connection_id)
-                            });
+                        let connection =
+                            load_statusbar_connections(&app_handle)
+                                .ok()
+                                .and_then(|connections| {
+                                    connections
+                                        .into_iter()
+                                        .find(|connection| connection.id == connection_id)
+                                });
 
                         if let Some(connection) = connection {
                             if let Err(error) =

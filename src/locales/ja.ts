@@ -201,6 +201,9 @@ export const ja: Messages = {
     insertHead: "Head",
     insertTail: "Tail",
     ttlBadge: "TTL",
+    loadMore: "Load more",
+    loadingMore: "Loading...",
+    loadedSummary: "{loaded}/{total} loaded",
     headers: {
       index: "#",
     },

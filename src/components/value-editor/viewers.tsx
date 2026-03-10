@@ -638,51 +638,53 @@ export function ListViewer({
   const [actionError, setActionError] = useState("");
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       <TableActionError error={actionError} />
-      {value.map((item, index) => (
-        <div
-          key={index}
-          className="group flex w-full items-start gap-2 rounded-lg bg-base-200/50 p-2.5 transition-colors duration-150 hover:bg-base-200"
-        >
-          <div className="flex min-w-0 flex-1 items-start gap-3 text-left">
-            <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-[10px] text-base-content/30">
-              {index}
-            </span>
-            <span className="min-w-0 flex-1 break-all font-mono text-xs text-base-content/80">
-              {item}
-            </span>
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        {value.map((item, index) => (
+          <div
+            key={index}
+            className="group flex w-full items-start gap-2 rounded-lg bg-base-200/50 p-2.5 transition-colors duration-150 hover:bg-base-200"
+          >
+            <div className="flex min-w-0 flex-1 items-start gap-3 text-left">
+              <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-[10px] text-base-content/30">
+                {index}
+              </span>
+              <span className="min-w-0 flex-1 break-all font-mono text-xs text-base-content/80">
+                {item}
+              </span>
+            </div>
+            <div className="shrink-0">
+              <TableRowActions
+                onCopy={() => {
+                  setActionError("");
+                  return onCopy(item);
+                }}
+                onRefresh={async () => {
+                  setActionError("");
+                  await onRefresh();
+                }}
+                onEdit={() => {
+                  setActionError("");
+                  onEditValue(index, item);
+                }}
+                onDelete={async () => {
+                  setActionError("");
+                  await onDeleteValue(index);
+                }}
+                confirmDeleteEnabled={confirmDeleteEnabled}
+                confirmDeleteMessage={replaceTemplate(
+                  messages.valueEditor.confirmDeleteListItem,
+                  { index }
+                )}
+                onError={(error) => {
+                  setActionError(getRedisErrorMessage(error));
+                }}
+              />
+            </div>
           </div>
-          <div className="shrink-0">
-            <TableRowActions
-              onCopy={() => {
-                setActionError("");
-                return onCopy(item);
-              }}
-              onRefresh={async () => {
-                setActionError("");
-                await onRefresh();
-              }}
-              onEdit={() => {
-                setActionError("");
-                onEditValue(index, item);
-              }}
-              onDelete={async () => {
-                setActionError("");
-                await onDeleteValue(index);
-              }}
-              confirmDeleteEnabled={confirmDeleteEnabled}
-              confirmDeleteMessage={replaceTemplate(
-                messages.valueEditor.confirmDeleteListItem,
-                { index }
-              )}
-              onError={(error) => {
-                setActionError(getRedisErrorMessage(error));
-              }}
-            />
-          </div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -712,31 +714,33 @@ export function SetViewer({
   }, [copiedIndex]);
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {value.map((item, index) => (
-        <button
-          type="button"
-          key={index}
-          onClick={() => {
-            void onCopy(item).then(() => {
-              setCopiedIndex(index);
-            });
-          }}
-          className="flex max-w-full cursor-copy items-center gap-1.5 rounded-full bg-base-200 px-3 py-1.5 transition-colors duration-150 group hover:bg-base-200/80"
-          aria-label={`${messages.common.copy} ${item}`}
-        >
-          <span className="min-w-0 truncate text-xs font-mono text-base-content/80">
-            {item}
-          </span>
-          <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base-content/35 transition-colors duration-150 group-hover:text-base-content/60">
-            {copiedIndex === index ? (
-              <Check size={9} className="text-success" />
-            ) : (
-              <Copy size={9} />
-            )}
-          </span>
-        </button>
-      ))}
+    <div className="h-full min-h-0 overflow-y-auto pr-1">
+      <div className="flex flex-wrap gap-2">
+        {value.map((item, index) => (
+          <button
+            type="button"
+            key={index}
+            onClick={() => {
+              void onCopy(item).then(() => {
+                setCopiedIndex(index);
+              });
+            }}
+            className="flex max-w-full cursor-copy items-center gap-1.5 rounded-full bg-base-200 px-3 py-1.5 transition-colors duration-150 group hover:bg-base-200/80"
+            aria-label={`${messages.common.copy} ${item}`}
+          >
+            <span className="min-w-0 truncate text-xs font-mono text-base-content/80">
+              {item}
+            </span>
+            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base-content/35 transition-colors duration-150 group-hover:text-base-content/60">
+              {copiedIndex === index ? (
+                <Check size={9} className="text-success" />
+              ) : (
+                <Copy size={9} />
+              )}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

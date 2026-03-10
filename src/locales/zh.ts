@@ -182,7 +182,10 @@ export const zh: Messages = {
   commandPalette: {
     placeholder: "输入命令、连接名或 key...",
     actions: "操作",
+    recentConnections: "最近连接",
+    databases: "数据库",
     connections: "连接",
+    recentKeys: "最近 key",
     keys: "键",
     loadMoreKeys: "继续加载键",
     newConnection: "新建连接",
@@ -192,10 +195,14 @@ export const zh: Messages = {
     hint: "Enter 执行 · ↑↓ 导航 · Esc 关闭",
     active: "当前",
     panel: "面板",
+    switchDb: "切换 DB",
+    currentDb: "当前 DB",
   },
   keyBrowser: {
     title: "键",
     refresh: "刷新",
+    loading: "正在加载 key...",
+    refreshing: "正在刷新 key...",
     expandAll: "全部展开",
     collapseAll: "全部折叠",
     filterPlaceholder: "筛选键...",
@@ -235,6 +242,7 @@ export const zh: Messages = {
     confirmDeleteGroup: "确定删除分组 `{group}` 及其下所有 key 吗？",
     loadMore: "加载更多",
     loadingMore: "加载中...",
+    stopLoading: "停止",
     loadedSummary: "已加载 {count} 个 key",
   },
   ai: {
@@ -350,6 +358,9 @@ export const zh: Messages = {
     insertHead: "头部",
     insertTail: "尾部",
     ttlBadge: "TTL",
+    loadMore: "加载更多",
+    loadingMore: "加载中...",
+    loadedSummary: "已加载 {loaded}/{total}",
     headers: {
       index: "#",
     },

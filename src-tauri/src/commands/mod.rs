@@ -8,8 +8,8 @@ mod values;
 pub(crate) use core::{greet, run_redis_command, test_redis_connection};
 pub(crate) use http::proxy_http_request;
 pub(crate) use keys::{
-    get_redis_cluster_topology, get_redis_key_value, list_redis_keys, rename_redis_key,
-    rename_redis_keys, scan_redis_keys_page,
+    get_redis_cluster_topology, get_redis_key_value, get_redis_key_value_page, list_redis_keys,
+    rename_redis_key, rename_redis_keys, scan_redis_keys_page,
 };
 pub(crate) use pubsub::{
     publish_redis_pubsub_message, start_redis_pubsub_session, stop_redis_pubsub_session,
@@ -19,9 +19,8 @@ pub(crate) use pubsub::{
 pub(crate) use stream::{
     ack_redis_stream_entries, append_redis_stream_entry, claim_redis_stream_entries,
     create_redis_stream_consumer_group, delete_redis_stream_consumer, delete_redis_stream_entries,
-    destroy_redis_stream_consumer_group,
-    get_redis_stream_consumers, get_redis_stream_entries, get_redis_stream_groups,
-    get_redis_stream_pending_entries,
+    destroy_redis_stream_consumer_group, get_redis_stream_consumers, get_redis_stream_entries,
+    get_redis_stream_groups, get_redis_stream_pending_entries,
 };
 pub(crate) use values::{
     add_redis_hash_entry, add_redis_set_member, add_redis_zset_entry, append_redis_list_value,

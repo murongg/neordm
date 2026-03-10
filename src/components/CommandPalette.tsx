@@ -10,6 +10,8 @@ import {
 } from "react";
 import {
   Bot,
+  Clock3,
+  Database,
   Edit3,
   Hash,
   Plus,
@@ -26,6 +28,7 @@ import { getRedisErrorMessage } from "../lib/redis";
 import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
 import { useModalTransition } from "../hooks/useModalTransition";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
+import type { RedisKey } from "../types";
 import { useToast } from "./ToastProvider";
 
 interface CommandPaletteProps {
@@ -33,7 +36,13 @@ interface CommandPaletteProps {
   onOpenSettings: () => void;
 }
 
-type CommandPaletteGroup = "actions" | "connections" | "keys";
+type CommandPaletteGroup =
+  | "actions"
+  | "recentConnections"
+  | "databases"
+  | "connections"
+  | "recentKeys"
+  | "keys";
 
 interface CommandPaletteItem {
   id: string;
@@ -69,10 +78,13 @@ export function CommandPalette({
       keys: state.keys,
       loadMoreKeys: state.loadMoreKeys,
       openNewConnectionModal: state.openNewConnectionModal,
-      panelTab: state.panelTab,
+      recentConnectionIds: state.recentConnectionIds,
+      recentKeys: state.recentKeys,
       refreshKeys: state.refreshKeys,
       selectConnection: state.selectConnection,
+      selectDb: state.selectDb,
       selectKey: state.selectKey,
+      selectedDb: state.selectedDb,
       setPanelTab: state.setPanelTab,
     }))
   );
@@ -85,6 +97,34 @@ export function CommandPalette({
         (connection) => connection.id === workspace.activeConnectionId
       ),
     [workspace.activeConnectionId, workspace.connections]
+  );
+  const connectionById = useMemo(
+    () => new Map(workspace.connections.map((connection) => [connection.id, connection])),
+    [workspace.connections]
+  );
+  const recentConnectionIdSet = useMemo(
+    () => new Set(workspace.recentConnectionIds),
+    [workspace.recentConnectionIds]
+  );
+  const openRecentKey = useCallback(
+    async (connectionId: string, db: number, key: RedisKey) => {
+      const nextConnection = connectionById.get(connectionId);
+
+      if (!nextConnection) {
+        return;
+      }
+
+      await useRedisWorkspaceStore
+        .getState()
+        .selectConnection(connectionId, { db });
+
+      const latestState = useRedisWorkspaceStore.getState();
+      const matchedKey =
+        latestState.keys.find((item) => item.key === key.key) ?? key;
+
+      await latestState.selectKey(matchedKey);
+    },
+    [connectionById]
   );
 
   const actionItems = useMemo<CommandPaletteItem[]>(() => {
@@ -226,48 +266,179 @@ export function CommandPalette({
     workspace,
   ]);
 
+  const recentConnectionItems = useMemo<CommandPaletteItem[]>(
+    () =>
+      workspace.recentConnectionIds
+        .map((connectionId) => connectionById.get(connectionId))
+        .filter((connection): connection is NonNullable<typeof connection> => Boolean(connection))
+        .map((connection) => ({
+          id: `recent-connection:${connection.id}`,
+          group: "recentConnections",
+          title: connection.name,
+          subtitle: `${getRedisConnectionEndpointLabel(connection)}${
+            connection.id === workspace.activeConnectionId
+              ? ` · ${labels.active}`
+              : ""
+          }`,
+          icon: <Clock3 size={14} />,
+          searchText: buildSearchText([
+            connection.name,
+            getRedisConnectionEndpointLabel(connection),
+            connection.mode,
+            labels.recentConnections,
+            connection.id === workspace.activeConnectionId ? labels.active : "",
+          ]),
+          onSelect: () => workspace.selectConnection(connection.id),
+        })),
+    [
+      connectionById,
+      labels.active,
+      labels.recentConnections,
+      workspace.activeConnectionId,
+      workspace.recentConnectionIds,
+      workspace.selectConnection,
+    ]
+  );
+
+  const databaseItems = useMemo<CommandPaletteItem[]>(
+    () => {
+      if (!activeConnection || activeConnection.mode === "cluster") {
+        return [];
+      }
+
+      const dbIndexes = Array.from(
+        new Set([...Array.from({ length: 16 }, (_, index) => index), workspace.selectedDb])
+      ).sort((left, right) => left - right);
+
+      return dbIndexes.map((db) => ({
+        id: `db:${db}`,
+        group: "databases",
+        title: `db${db}`,
+        subtitle:
+          db === workspace.selectedDb
+            ? `${activeConnection.name} · ${labels.currentDb}`
+            : `${activeConnection.name} · ${labels.switchDb}`,
+        icon: <Database size={14} />,
+        searchText: buildSearchText([
+          `db${db}`,
+          labels.databases,
+          labels.switchDb,
+          activeConnection.name,
+          db === workspace.selectedDb ? labels.currentDb : "",
+          "switch db database",
+        ]),
+        onSelect: () => workspace.selectDb(db),
+      }));
+    },
+    [
+      activeConnection,
+      labels.currentDb,
+      labels.databases,
+      labels.switchDb,
+      workspace.selectDb,
+      workspace.selectedDb,
+    ]
+  );
+
   const connectionItems = useMemo<CommandPaletteItem[]>(
     () =>
-      workspace.connections.map((connection) => ({
-        id: `connection:${connection.id}`,
-        group: "connections",
-        title: connection.name,
-        subtitle: `${getRedisConnectionEndpointLabel(connection)}${
-          connection.id === workspace.activeConnectionId
-            ? ` · ${labels.active}`
-            : ""
-        }`,
-        icon: <Server size={14} />,
-        searchText: buildSearchText([
-          connection.name,
-          getRedisConnectionEndpointLabel(connection),
-          connection.mode,
-          connection.id === workspace.activeConnectionId ? labels.active : "",
-        ]),
-        onSelect: () => workspace.selectConnection(connection.id),
-      })),
-    [labels.active, workspace.activeConnectionId, workspace.connections, workspace.selectConnection]
+      workspace.connections
+        .filter((connection) => !recentConnectionIdSet.has(connection.id))
+        .map((connection) => ({
+          id: `connection:${connection.id}`,
+          group: "connections",
+          title: connection.name,
+          subtitle: `${getRedisConnectionEndpointLabel(connection)}${
+            connection.id === workspace.activeConnectionId
+              ? ` · ${labels.active}`
+              : ""
+          }`,
+          icon: <Server size={14} />,
+          searchText: buildSearchText([
+            connection.name,
+            getRedisConnectionEndpointLabel(connection),
+            connection.mode,
+            connection.id === workspace.activeConnectionId ? labels.active : "",
+          ]),
+          onSelect: () => workspace.selectConnection(connection.id),
+        })),
+    [
+      labels.active,
+      recentConnectionIdSet,
+      workspace.activeConnectionId,
+      workspace.connections,
+      workspace.selectConnection,
+    ]
+  );
+
+  const recentKeyItems = useMemo<CommandPaletteItem[]>(
+    () =>
+      workspace.recentKeys.reduce<CommandPaletteItem[]>((items, entry) => {
+        const connection = connectionById.get(entry.connectionId);
+
+        if (!connection) {
+          return items;
+        }
+
+        items.push({
+          id: `recent-key:${entry.connectionId}:${entry.db}:${entry.key.key}`,
+          group: "recentKeys",
+          title: entry.key.key,
+          subtitle: `${connection.name} · db${entry.db}`,
+          icon: <Clock3 size={14} />,
+          searchText: buildSearchText([
+            entry.key.key,
+            entry.key.type,
+            connection.name,
+            `db${entry.db}`,
+            labels.recentKeys,
+          ]),
+          onSelect: () => openRecentKey(entry.connectionId, entry.db, entry.key),
+        });
+
+        return items;
+      }, []),
+    [connectionById, labels.recentKeys, openRecentKey, workspace.recentKeys]
   );
 
   const keyItems = useMemo<CommandPaletteItem[]>(
-    () =>
-      workspace.keys.map((key) => ({
-        id: `key:${key.key}`,
-        group: "keys",
-        title: key.key,
-        subtitle: `${key.type}${
-          typeof key.ttl === "number" && key.ttl >= 0 ? ` · ttl ${key.ttl}` : ""
-        }${key.nodeAddress ? ` · ${key.nodeAddress}` : ""}`,
-        icon: <Hash size={14} />,
-        searchText: buildSearchText([
-          key.key,
-          key.type,
-          key.nodeAddress,
-          typeof key.slot === "number" ? String(key.slot) : "",
-        ]),
-        onSelect: () => workspace.selectKey(key),
-      })),
-    [workspace.keys, workspace.selectKey]
+    () => {
+      const recentActiveKeyIds = new Set(
+        workspace.recentKeys
+          .filter(
+            (entry) =>
+              entry.connectionId === workspace.activeConnectionId &&
+              entry.db === workspace.selectedDb
+          )
+          .map((entry) => entry.key.key)
+      );
+
+      return workspace.keys
+        .filter((key) => !recentActiveKeyIds.has(key.key))
+        .map((key) => ({
+          id: `key:${key.key}`,
+          group: "keys",
+          title: key.key,
+          subtitle: `${key.type}${
+            typeof key.ttl === "number" && key.ttl >= 0 ? ` · ttl ${key.ttl}` : ""
+          }${key.nodeAddress ? ` · ${key.nodeAddress}` : ""}`,
+          icon: <Hash size={14} />,
+          searchText: buildSearchText([
+            key.key,
+            key.type,
+            key.nodeAddress,
+            typeof key.slot === "number" ? String(key.slot) : "",
+          ]),
+          onSelect: () => workspace.selectKey(key),
+        }));
+    },
+    [
+      workspace.activeConnectionId,
+      workspace.keys,
+      workspace.recentKeys,
+      workspace.selectKey,
+      workspace.selectedDb,
+    ]
   );
 
   const queryTerms = useMemo(
@@ -297,9 +468,21 @@ export function CommandPalette({
     () => filterItems(actionItems),
     [actionItems, filterItems]
   );
+  const visibleRecentConnectionItems = useMemo(
+    () => filterItems(recentConnectionItems),
+    [filterItems, recentConnectionItems]
+  );
+  const visibleDatabaseItems = useMemo(
+    () => filterItems(databaseItems),
+    [databaseItems, filterItems]
+  );
   const visibleConnectionItems = useMemo(
     () => filterItems(connectionItems),
     [connectionItems, filterItems]
+  );
+  const visibleRecentKeyItems = useMemo(
+    () => filterItems(recentKeyItems).slice(0, 12),
+    [filterItems, recentKeyItems]
   );
   const visibleKeyItems = useMemo(
     () => filterItems(keyItems).slice(0, 60),
@@ -315,9 +498,24 @@ export function CommandPalette({
           items: visibleActionItems,
         },
         {
+          group: "recentConnections" as const,
+          label: labels.recentConnections,
+          items: visibleRecentConnectionItems,
+        },
+        {
+          group: "databases" as const,
+          label: labels.databases,
+          items: visibleDatabaseItems,
+        },
+        {
           group: "connections" as const,
           label: labels.connections,
           items: visibleConnectionItems,
+        },
+        {
+          group: "recentKeys" as const,
+          label: labels.recentKeys,
+          items: visibleRecentKeyItems,
         },
         {
           group: "keys" as const,
@@ -328,9 +526,15 @@ export function CommandPalette({
     [
       labels.actions,
       labels.connections,
+      labels.databases,
       labels.keys,
+      labels.recentConnections,
+      labels.recentKeys,
       visibleActionItems,
+      visibleDatabaseItems,
       visibleConnectionItems,
+      visibleRecentConnectionItems,
+      visibleRecentKeyItems,
       visibleKeyItems,
     ]
   );

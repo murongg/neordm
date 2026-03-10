@@ -9,13 +9,12 @@ use super::{
     format_statusbar_ttl, is_statusbar_key_pinned, load_statusbar_connections,
     load_statusbar_settings, pinned_statusbar_keys_for_connection,
     recent_statusbar_keys_for_connection, resolve_statusbar_selected_connection,
-    statusbar_menu_item, statusbar_pinned_keys_snapshot, truncate_statusbar_text,
-    StatusBarAction, StatusBarKeyEntry, StatusBarMenuContext, StoredStatusBarConnection,
-    STATUSBAR_TEXT_LIMIT, STATUSBAR_VALUE_PREVIEW_LIMIT, TRAY_BROWSE_KEYS_ID,
-    TRAY_CONNECTIONS_SUBMENU_ID, TRAY_CURRENT_SUBMENU_ID, TRAY_DISCONNECT_ID,
-    TRAY_HIDE_WINDOW_ID, TRAY_NEW_CONNECTION_ID, TRAY_OPEN_CLI_ID, TRAY_OPEN_PUBSUB_ID,
-    TRAY_OPEN_WINDOW_ID, TRAY_PINNED_KEYS_SUBMENU_ID, TRAY_QUICK_ACTIONS_SUBMENU_ID,
-    TRAY_QUIT_ID, TRAY_RECENT_KEYS_SUBMENU_ID, TRAY_REFRESH_KEYS_ID,
+    statusbar_menu_item, statusbar_pinned_keys_snapshot, truncate_statusbar_text, StatusBarAction,
+    StatusBarKeyEntry, StatusBarMenuContext, StoredStatusBarConnection, STATUSBAR_TEXT_LIMIT,
+    STATUSBAR_VALUE_PREVIEW_LIMIT, TRAY_BROWSE_KEYS_ID, TRAY_CONNECTIONS_SUBMENU_ID,
+    TRAY_CURRENT_SUBMENU_ID, TRAY_DISCONNECT_ID, TRAY_HIDE_WINDOW_ID, TRAY_NEW_CONNECTION_ID,
+    TRAY_OPEN_CLI_ID, TRAY_OPEN_PUBSUB_ID, TRAY_OPEN_WINDOW_ID, TRAY_PINNED_KEYS_SUBMENU_ID,
+    TRAY_QUICK_ACTIONS_SUBMENU_ID, TRAY_QUIT_ID, TRAY_RECENT_KEYS_SUBMENU_ID, TRAY_REFRESH_KEYS_ID,
 };
 
 fn build_statusbar_connections_submenu(
@@ -74,8 +73,7 @@ fn build_statusbar_current_submenu(
             "No active connection",
             false,
         )?;
-        let create_item =
-            statusbar_menu_item(app, TRAY_NEW_CONNECTION_ID, "New Connection", true)?;
+        let create_item = statusbar_menu_item(app, TRAY_NEW_CONNECTION_ID, "New Connection", true)?;
         builder = builder.item(&empty_item).separator().item(&create_item);
         return builder.build().map_err(|error| error.to_string());
     };
@@ -105,8 +103,7 @@ fn build_statusbar_current_submenu(
         false,
     )?;
     let browse_item = statusbar_menu_item(app, TRAY_BROWSE_KEYS_ID, "Browse Keys", true)?;
-    let refresh_item =
-        statusbar_menu_item(app, TRAY_REFRESH_KEYS_ID, "Refresh Current", true)?;
+    let refresh_item = statusbar_menu_item(app, TRAY_REFRESH_KEYS_ID, "Refresh Current", true)?;
     let disconnect_item = statusbar_menu_item(app, TRAY_DISCONNECT_ID, "Disconnect", true)?;
 
     builder = builder
@@ -354,7 +351,8 @@ pub(super) async fn build_statusbar_menu(
     let connections = load_statusbar_connections(app)?;
     let pinned_keys = statusbar_pinned_keys_snapshot(app);
     let settings = load_statusbar_settings(app).unwrap_or_default();
-    let selected_connection_id = resolve_statusbar_selected_connection(app, &connections, &settings);
+    let selected_connection_id =
+        resolve_statusbar_selected_connection(app, &connections, &settings);
     let selected_connection = selected_connection_id.as_ref().and_then(|connection_id| {
         connections
             .iter()

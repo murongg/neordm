@@ -196,7 +196,10 @@ export const en: Messages = {
   commandPalette: {
     placeholder: "Search commands, connections, or keys...",
     actions: "Actions",
+    recentConnections: "Recent Connections",
+    databases: "Databases",
     connections: "Connections",
+    recentKeys: "Recent Keys",
     keys: "Keys",
     loadMoreKeys: "Load more keys",
     newConnection: "New connection",
@@ -206,10 +209,14 @@ export const en: Messages = {
     hint: "Enter to run, arrows to navigate, Esc to close",
     active: "Active",
     panel: "Panel",
+    switchDb: "Switch DB",
+    currentDb: "Current DB",
   },
   keyBrowser: {
     title: "Keys",
     refresh: "Refresh",
+    loading: "Loading keys...",
+    refreshing: "Refreshing keys...",
     expandAll: "Expand all",
     collapseAll: "Collapse all",
     filterPlaceholder: "Filter keys...",
@@ -249,6 +256,7 @@ export const en: Messages = {
     confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
     loadMore: "Load more",
     loadingMore: "Loading...",
+    stopLoading: "Stop",
     loadedSummary: "{count} keys loaded",
   },
   ai: {
@@ -365,6 +373,9 @@ export const en: Messages = {
     insertHead: "Head",
     insertTail: "Tail",
     ttlBadge: "TTL",
+    loadMore: "Load more",
+    loadingMore: "Loading...",
+    loadedSummary: "{loaded}/{total} loaded",
     headers: {
       index: "#",
     },

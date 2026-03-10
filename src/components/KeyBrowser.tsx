@@ -59,6 +59,7 @@ interface KeyBrowserProps {
   isLoadingMoreKeys: boolean;
   onRefresh: () => void;
   onLoadMoreKeys: () => Promise<void>;
+  onCancelLoadMoreKeys: () => void;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
   confirmBeforeDelete: boolean;
   defaultTtl: string;
@@ -501,6 +502,7 @@ export function KeyBrowser({
   isLoadingMoreKeys,
   onRefresh,
   onLoadMoreKeys,
+  onCancelLoadMoreKeys,
   onCreateKey,
   confirmBeforeDelete,
   defaultTtl,
@@ -1592,6 +1594,9 @@ export function KeyBrowser({
       });
     }
   }, [onLoadMoreKeys, showToast]);
+  const handleCancelLoadMore = useCallback(() => {
+    onCancelLoadMoreKeys();
+  }, [onCancelLoadMoreKeys]);
   const handleRefreshFromContextMenu = useCallback(async () => {
     closeKeyContextMenu();
 
@@ -1887,8 +1892,32 @@ export function KeyBrowser({
               {messages.app.emptyState.title}
             </h3>
           </div>
+        ) : isRefreshing && keys.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-base-200">
+              <LoaderCircle size={18} className="animate-spin text-base-content/55" />
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-mono text-base-content/70">
+                {messages.keyBrowser.loading}
+              </p>
+              <p className="text-[11px] font-mono text-base-content/40">
+                {connection?.name}
+              </p>
+            </div>
+          </div>
         ) : (
           <>
+            {isRefreshing ? (
+              <div className="px-3 pb-2 pt-1">
+                <div className="flex items-center gap-2 rounded-xl border border-base-content/8 bg-base-100/50 px-3 py-2">
+                  <LoaderCircle size={12} className="animate-spin text-base-content/45" />
+                  <span className="text-[10px] font-mono text-base-content/45">
+                    {messages.keyBrowser.refreshing}
+                  </span>
+                </div>
+              </div>
+            ) : null}
             {topSpacerHeight > 0 ? (
               <div style={{ height: topSpacerHeight }} aria-hidden="true" />
             ) : null}
@@ -1954,6 +1983,7 @@ export function KeyBrowser({
               loadedCount={keys.length}
               loadMoreLabel={messages.keyBrowser.loadMore}
               loadingMoreLabel={messages.keyBrowser.loadingMore}
+              stopLoadingLabel={messages.keyBrowser.stopLoading}
               loadedSummaryLabel={replaceTemplate(
                 messages.keyBrowser.loadedSummary,
                 { count: keys.length }
@@ -1961,6 +1991,7 @@ export function KeyBrowser({
               onLoadMore={() => {
                 void handleLoadMore();
               }}
+              onStopLoadingMore={handleCancelLoadMore}
             />
           </>
         )}

@@ -1,7 +1,8 @@
 use crate::models::{
     RedisClusterTopologyInput, RedisClusterTopologyNode, RedisKeyLookupInput, RedisKeyRenameInput,
-    RedisKeyRenamePairInput, RedisKeySummary, RedisKeyValueResponse, RedisKeysListInput,
-    RedisKeysRenameInput, RedisKeysScanPageInput, RedisKeysScanPageResponse,
+    RedisKeyRenamePairInput, RedisKeySummary, RedisKeyValuePageInput, RedisKeyValuePageResponse,
+    RedisKeyValueResponse, RedisKeysListInput, RedisKeysRenameInput, RedisKeysScanPageInput,
+    RedisKeysScanPageResponse,
 };
 use crate::redis_support::{
     find_cluster_node_address_for_slot, format_cli_output, get_cluster_topology,
@@ -15,8 +16,10 @@ use std::collections::{HashMap, HashSet};
 
 const DEFAULT_SCAN_COUNT: u32 = 200;
 const DEFAULT_MAX_KEYS: u32 = 10_000;
+const DEFAULT_VALUE_PAGE_SIZE: u32 = 200;
 const MAX_SCAN_COUNT: u32 = 5_000;
 const MAX_TOTAL_KEYS: u32 = 50_000;
+const MAX_VALUE_PAGE_SIZE: u32 = 2_000;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,6 +60,12 @@ async fn scan_key_metadata(
 
 fn clamp_scan_page_size(value: Option<u32>) -> usize {
     value.unwrap_or(DEFAULT_SCAN_COUNT).clamp(1, MAX_TOTAL_KEYS) as usize
+}
+
+fn clamp_value_page_size(value: Option<u32>) -> u32 {
+    value
+        .unwrap_or(DEFAULT_VALUE_PAGE_SIZE)
+        .clamp(1, MAX_VALUE_PAGE_SIZE)
 }
 
 fn parse_direct_scan_cursor(cursor: Option<&str>) -> Result<u64, String> {
@@ -140,13 +149,9 @@ async fn scan_cluster_keys_page(
 
             for key in batch {
                 let slot = get_slot(key.as_bytes());
-                if let Some(summary) = scan_key_metadata(
-                    &mut connection,
-                    key,
-                    Some(slot),
-                    Some(node_address.clone()),
-                )
-                .await
+                if let Some(summary) =
+                    scan_key_metadata(&mut connection, key, Some(slot), Some(node_address.clone()))
+                        .await
                 {
                     collected.push(summary);
 
@@ -189,6 +194,19 @@ async fn scan_cluster_keys_page(
     })
 }
 
+async fn resolve_key_location(
+    connection: &crate::models::RedisConnectionTestInput,
+    key: &str,
+) -> Result<(Option<u16>, Option<String>), String> {
+    if connection.cluster.is_some() {
+        let slot = get_slot(key.as_bytes());
+        let node_address = find_cluster_node_address_for_slot(connection, slot).await?;
+        Ok((Some(slot), node_address))
+    } else {
+        Ok((None, None))
+    }
+}
+
 async fn scan_direct_keys_page(
     input: &RedisKeysScanPageInput,
     scan_count: u32,
@@ -208,9 +226,7 @@ async fn scan_direct_keys_page(
             .map_err(|error| format!("Failed to scan keys: {error}"))?;
 
         for key in batch {
-            if let Some(summary) =
-                scan_key_metadata(&mut connection, key, None, None).await
-            {
+            if let Some(summary) = scan_key_metadata(&mut connection, key, None, None).await {
                 keys.push(summary);
 
                 if keys.len() >= page_size {
@@ -355,9 +371,7 @@ pub async fn get_redis_cluster_topology(
 }
 
 #[tauri::command]
-pub async fn list_redis_keys(
-    input: RedisKeysListInput,
-) -> Result<Vec<RedisKeySummary>, String> {
+pub async fn list_redis_keys(input: RedisKeysListInput) -> Result<Vec<RedisKeySummary>, String> {
     let scan_count = input
         .scan_count
         .unwrap_or(DEFAULT_SCAN_COUNT)
@@ -565,13 +579,7 @@ pub async fn get_redis_key_value(
         _ => JsonValue::Null,
     };
 
-    let (slot, node_address) = if input.connection.cluster.is_some() {
-        let slot = get_slot(input.key.as_bytes());
-        let node_address = find_cluster_node_address_for_slot(&input.connection, slot).await?;
-        (Some(slot), node_address)
-    } else {
-        (None, None)
-    };
+    let (slot, node_address) = resolve_key_location(&input.connection, &input.key).await?;
 
     Ok(RedisKeyValueResponse {
         key: input.key,
@@ -580,6 +588,244 @@ pub async fn get_redis_key_value(
         slot,
         node_address,
         value,
+    })
+}
+
+#[tauri::command]
+pub async fn get_redis_key_value_page(
+    input: RedisKeyValuePageInput,
+) -> Result<RedisKeyValuePageResponse, String> {
+    let page_size = clamp_value_page_size(input.page_size);
+    let mut connection = open_connection(&input.connection).await?;
+    let (raw_type, ttl) = redis::pipe()
+        .cmd("TYPE")
+        .arg(&input.key)
+        .cmd("TTL")
+        .arg(&input.key)
+        .query_async::<(String, i64)>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to inspect key: {error}"))?;
+
+    if raw_type == "none" {
+        return Err("Key no longer exists".to_string());
+    }
+
+    let key_type = normalize_key_type(&raw_type);
+    let mut next_cursor = None;
+    let mut total_count = None;
+
+    let value = match key_type.as_str() {
+        "string" => {
+            let value: Option<String> = redis::cmd("GET")
+                .arg(&input.key)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to get string value: {error}"))?;
+
+            JsonValue::String(value.unwrap_or_default())
+        }
+        "hash" => {
+            let count: u64 = redis::cmd("HLEN")
+                .arg(&input.key)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to inspect hash size: {error}"))?;
+            total_count = Some(count);
+
+            let mut cursor = parse_direct_scan_cursor(input.cursor.as_deref())?;
+            let mut entries: Vec<(String, String)> = Vec::with_capacity(page_size as usize);
+
+            loop {
+                let (next, batch): (u64, Vec<(String, String)>) = redis::cmd("HSCAN")
+                    .arg(&input.key)
+                    .arg(cursor)
+                    .arg("COUNT")
+                    .arg(page_size)
+                    .query_async(&mut connection)
+                    .await
+                    .map_err(|error| format!("Failed to scan hash value: {error}"))?;
+
+                entries.extend(batch);
+                cursor = next;
+
+                if cursor == 0 || entries.len() >= page_size as usize {
+                    break;
+                }
+            }
+
+            entries.truncate(page_size as usize);
+            next_cursor = if cursor == 0 {
+                None
+            } else {
+                Some(cursor.to_string())
+            };
+
+            JsonValue::Object(
+                entries
+                    .into_iter()
+                    .map(|(field, value)| (field, JsonValue::String(value)))
+                    .collect(),
+            )
+        }
+        "list" => {
+            let count: u64 = redis::cmd("LLEN")
+                .arg(&input.key)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to inspect list size: {error}"))?;
+            total_count = Some(count);
+
+            let start = parse_direct_scan_cursor(input.cursor.as_deref())?;
+            let stop = start.saturating_add(page_size as u64).saturating_sub(1);
+            let items: Vec<String> = redis::cmd("LRANGE")
+                .arg(&input.key)
+                .arg(start as i64)
+                .arg(stop as i64)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to get list value page: {error}"))?;
+            let loaded = start.saturating_add(items.len() as u64);
+
+            next_cursor = if loaded < count {
+                Some(loaded.to_string())
+            } else {
+                None
+            };
+
+            JsonValue::Array(items.into_iter().map(JsonValue::String).collect())
+        }
+        "set" => {
+            let count: u64 = redis::cmd("SCARD")
+                .arg(&input.key)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to inspect set size: {error}"))?;
+            total_count = Some(count);
+
+            let mut cursor = parse_direct_scan_cursor(input.cursor.as_deref())?;
+            let mut items: Vec<String> = Vec::with_capacity(page_size as usize);
+
+            loop {
+                let (next, batch): (u64, Vec<String>) = redis::cmd("SSCAN")
+                    .arg(&input.key)
+                    .arg(cursor)
+                    .arg("COUNT")
+                    .arg(page_size)
+                    .query_async(&mut connection)
+                    .await
+                    .map_err(|error| format!("Failed to scan set value: {error}"))?;
+
+                items.extend(batch);
+                cursor = next;
+
+                if cursor == 0 || items.len() >= page_size as usize {
+                    break;
+                }
+            }
+
+            items.truncate(page_size as usize);
+            next_cursor = if cursor == 0 {
+                None
+            } else {
+                Some(cursor.to_string())
+            };
+
+            JsonValue::Array(items.into_iter().map(JsonValue::String).collect())
+        }
+        "zset" => {
+            let count: u64 = redis::cmd("ZCARD")
+                .arg(&input.key)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to inspect sorted set size: {error}"))?;
+            total_count = Some(count);
+
+            let start = parse_direct_scan_cursor(input.cursor.as_deref())?;
+            let stop = start.saturating_add(page_size as u64).saturating_sub(1);
+            let members: Vec<(String, f64)> = redis::cmd("ZRANGE")
+                .arg(&input.key)
+                .arg(start as i64)
+                .arg(stop as i64)
+                .arg("WITHSCORES")
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to get sorted set value page: {error}"))?;
+            let loaded = start.saturating_add(members.len() as u64);
+
+            next_cursor = if loaded < count {
+                Some(loaded.to_string())
+            } else {
+                None
+            };
+
+            JsonValue::Array(
+                members
+                    .into_iter()
+                    .map(|(member, score)| {
+                        JsonValue::Object(JsonMap::from_iter([
+                            ("member".to_string(), JsonValue::String(member)),
+                            (
+                                "score".to_string(),
+                                Number::from_f64(score)
+                                    .map(JsonValue::Number)
+                                    .unwrap_or_else(|| JsonValue::String(score.to_string())),
+                            ),
+                        ]))
+                    })
+                    .collect(),
+            )
+        }
+        "json" => {
+            let json_text = match redis::cmd("JSON.GET")
+                .arg(&input.key)
+                .query_async::<String>(&mut connection)
+                .await
+            {
+                Ok(value) => value,
+                Err(_) => redis::cmd("GET")
+                    .arg(&input.key)
+                    .query_async::<String>(&mut connection)
+                    .await
+                    .map_err(|error| format!("Failed to get JSON value: {error}"))?,
+            };
+
+            JsonValue::String(json_text)
+        }
+        "stream" => {
+            let stream_value: Value = redis::cmd("XRANGE")
+                .arg(&input.key)
+                .arg("-")
+                .arg("+")
+                .arg("COUNT")
+                .arg(100)
+                .query_async(&mut connection)
+                .await
+                .map_err(|error| format!("Failed to get stream value: {error}"))?;
+
+            JsonValue::String(format_cli_output(stream_value))
+        }
+        _ => JsonValue::Null,
+    };
+
+    let loaded_count = match &value {
+        JsonValue::Object(entries) => entries.len() as u64,
+        JsonValue::Array(items) => items.len() as u64,
+        JsonValue::Null => 0,
+        _ => 1,
+    };
+    let (slot, node_address) = resolve_key_location(&input.connection, &input.key).await?;
+
+    Ok(RedisKeyValuePageResponse {
+        key: input.key,
+        key_type,
+        ttl,
+        slot,
+        node_address,
+        value,
+        next_cursor,
+        total_count,
+        loaded_count,
+        page_size,
     })
 }
 

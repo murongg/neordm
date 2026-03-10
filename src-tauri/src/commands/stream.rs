@@ -1,9 +1,9 @@
 use crate::models::{
     RedisKeyCreateEntryInput, RedisKeyLookupInput, RedisStreamAckInput, RedisStreamClaimInput,
-    RedisStreamConsumer, RedisStreamConsumerDeleteInput, RedisStreamConsumerGroup, RedisStreamEntry,
-    RedisStreamEntryAppendInput, RedisStreamEntryDeleteInput, RedisStreamEntryField,
-    RedisStreamGroupCreateInput, RedisStreamGroupLookupInput, RedisStreamPendingEntriesInput,
-    RedisStreamPendingEntry,
+    RedisStreamConsumer, RedisStreamConsumerDeleteInput, RedisStreamConsumerGroup,
+    RedisStreamEntry, RedisStreamEntryAppendInput, RedisStreamEntryDeleteInput,
+    RedisStreamEntryField, RedisStreamGroupCreateInput, RedisStreamGroupLookupInput,
+    RedisStreamPendingEntriesInput, RedisStreamPendingEntry,
 };
 use crate::redis_support::{open_connection, redis_value_to_string};
 use redis::Value;
@@ -89,7 +89,11 @@ fn parse_stream_groups(value: Value) -> Result<Vec<RedisStreamConsumerGroup>, St
     let groups = match unwrap_attribute(value) {
         Value::Array(groups) => groups,
         Value::Nil => return Ok(Vec::new()),
-        other => return Err(format!("Redis returned an invalid stream groups response: {other:?}")),
+        other => {
+            return Err(format!(
+                "Redis returned an invalid stream groups response: {other:?}"
+            ))
+        }
     };
 
     groups
@@ -113,7 +117,11 @@ fn parse_stream_entries(value: Value) -> Result<Vec<RedisStreamEntry>, String> {
     let entries = match unwrap_attribute(value) {
         Value::Array(entries) => entries,
         Value::Nil => return Ok(Vec::new()),
-        other => return Err(format!("Redis returned an invalid stream entries response: {other:?}")),
+        other => {
+            return Err(format!(
+                "Redis returned an invalid stream entries response: {other:?}"
+            ))
+        }
     };
 
     entries
@@ -206,16 +214,17 @@ fn parse_stream_pending_entries(value: Value) -> Result<Vec<RedisStreamPendingEn
                         .ok_or_else(|| "Redis pending entry is missing idle time".to_string())?,
                 )?
                 .parse::<u64>()
-                .map_err(|error| format!("Redis returned an invalid pending idle value: {error}"))?;
-                let deliveries = redis_value_to_string(
-                    values
-                        .next()
-                        .ok_or_else(|| "Redis pending entry is missing delivery count".to_string())?,
-                )?
-                .parse::<u64>()
                 .map_err(|error| {
-                    format!("Redis returned an invalid pending delivery count: {error}")
+                    format!("Redis returned an invalid pending idle value: {error}")
                 })?;
+                let deliveries =
+                    redis_value_to_string(values.next().ok_or_else(|| {
+                        "Redis pending entry is missing delivery count".to_string()
+                    })?)?
+                    .parse::<u64>()
+                    .map_err(|error| {
+                        format!("Redis returned an invalid pending delivery count: {error}")
+                    })?;
 
                 Ok(RedisStreamPendingEntry {
                     id,
@@ -224,7 +233,9 @@ fn parse_stream_pending_entries(value: Value) -> Result<Vec<RedisStreamPendingEn
                     deliveries,
                 })
             }
-            other => Err(format!("Redis returned an invalid pending entry: {other:?}")),
+            other => Err(format!(
+                "Redis returned an invalid pending entry: {other:?}"
+            )),
         })
         .collect()
 }
@@ -273,7 +284,9 @@ fn parse_claimed_ids(value: Value) -> Result<Vec<String>, String> {
     match unwrap_attribute(value) {
         Value::Array(ids) => ids.into_iter().map(redis_value_to_string).collect(),
         Value::Nil => Ok(Vec::new()),
-        other => Err(format!("Redis returned an invalid claimed ids response: {other:?}")),
+        other => Err(format!(
+            "Redis returned an invalid claimed ids response: {other:?}"
+        )),
     }
 }
 

@@ -82,6 +82,13 @@ export interface ZSetMember {
   member: string;
 }
 
+export interface KeyValuePageState {
+  nextCursor: string | null;
+  totalCount: number | null;
+  loadedCount: number;
+  pageSize: number;
+}
+
 export interface RedisStreamConsumerGroup {
   name: string;
   consumers: number;
@@ -121,6 +128,7 @@ export interface KeyValue {
   ttl: number;
   slot?: number;
   nodeAddress?: string;
+  page?: KeyValuePageState | null;
   value:
     | string
     | Record<string, string>

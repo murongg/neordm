@@ -11,7 +11,9 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connections: state.connections,
+      isLoadingMoreKeyValue: state.isLoadingMoreKeyValue,
       keyValue: state.keyValue,
+      loadMoreKeyValue: state.loadMoreKeyValue,
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
       removeKeyFromState: state.removeKeyFromState,
@@ -30,6 +32,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
   const editor = useRedisValueEditorState({
     activeConnection,
     keyValue: workspace.keyValue,
+    onRefreshKeyValue: workspace.refreshKeyValue,
     notConnectedMessage: messages.app.status.notConnected,
     onRefreshKeys: workspace.refreshKeys,
     removeKeyFromState: workspace.removeKeyFromState,
@@ -43,6 +46,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       selectedDb={workspace.selectedDb}
       keyValue={workspace.keyValue}
       onRefreshKeyValue={workspace.refreshKeyValue}
+      onLoadMoreKeyValue={workspace.loadMoreKeyValue}
       onDeleteKey={editor.deleteKey}
       onJumpToClusterNode={workspace.selectClusterNode}
       onUpdateStringValue={editor.updateStringValue}
@@ -58,6 +62,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       onAddZSetEntry={editor.addZSetEntry}
       onUpdateZSetEntry={editor.updateZSetEntry}
       onDeleteZSetEntry={editor.deleteZSetEntry}
+      isLoadingMoreKeyValue={workspace.isLoadingMoreKeyValue}
     />
   );
 });
