@@ -37,6 +37,7 @@ export const hi: Messages = {
     settings: "सेटिंग्स",
     expand: "साइडबार फैलाएँ",
     collapse: "साइडबार समेटें",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "कीज़",
@@ -77,6 +78,7 @@ export const hi: Messages = {
     createSubmit: "बनाएँ",
     creating: "बनाया जा रहा है...",
     createSuccess: "`{key}` बनाई गई",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "Redis AI एजेंट",
@@ -178,6 +180,9 @@ export const hi: Messages = {
     persistent: "स्थायी",
     copyValue: "मान कॉपी करें",
     deleteKey: "key हटाएँ",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "सेकंड",
     field: "फ़ील्ड",

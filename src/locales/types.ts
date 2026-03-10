@@ -93,6 +93,7 @@ export interface Messages {
     settings: string;
     expand: string;
     collapse: string;
+    confirmDeleteConnection: string;
   };
   keyBrowser: {
     title: string;
@@ -133,6 +134,7 @@ export interface Messages {
     createSubmit: string;
     creating: string;
     createSuccess: string;
+    confirmDeleteGroup: string;
   };
   ai: {
     title: string;
@@ -227,6 +229,9 @@ export interface Messages {
     persistent: string;
     copyValue: string;
     deleteKey: string;
+    confirmDeleteKey: string;
+    confirmDeleteField: string;
+    confirmDeleteMember: string;
     browseNode: string;
     ttlInputPlaceholder: string;
     field: string;

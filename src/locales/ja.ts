@@ -41,6 +41,7 @@ export const ja: Messages = {
     settings: "設定",
     expand: "サイドバーを展開",
     collapse: "サイドバーを折りたたむ",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "キー",
@@ -81,6 +82,7 @@ export const ja: Messages = {
     createSubmit: "作成",
     creating: "作成中...",
     createSuccess: "`{key}` を作成しました",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "Redis AI エージェント",
@@ -181,6 +183,9 @@ export const ja: Messages = {
     persistent: "永続",
     copyValue: "値をコピー",
     deleteKey: "キーを削除",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "秒",
     field: "フィールド",

@@ -37,6 +37,7 @@ export const ko: Messages = {
     settings: "설정",
     expand: "사이드바 펼치기",
     collapse: "사이드바 접기",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "키",
@@ -77,6 +78,7 @@ export const ko: Messages = {
     createSubmit: "생성",
     creating: "생성 중...",
     createSuccess: "`{key}` 생성됨",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "Redis AI 에이전트",
@@ -178,6 +180,9 @@ export const ko: Messages = {
     persistent: "영구",
     copyValue: "값 복사",
     deleteKey: "키 삭제",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "초",
     field: "필드",

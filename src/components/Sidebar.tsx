@@ -6,6 +6,7 @@ import {
   useState,
   type MouseEvent,
 } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   Database,
   Plus,
@@ -71,6 +72,12 @@ const STATUS_BADGE_CLASSES: Record<RedisConnection["status"], string> = {
   connecting: "bg-warning/12 shadow-[0_0_0_1px_rgba(245,158,11,0.12)]",
   error: "bg-error/12 shadow-[0_0_0_1px_rgba(239,68,68,0.12)]",
 };
+
+function replaceTemplate(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : `{${key}}`
+  );
+}
 
 function toAnimatedConnections(
   connections: RedisConnection[]
@@ -202,9 +209,6 @@ export function Sidebar({
   const [renderedContextMenu, setRenderedContextMenu] =
     useState<ContextMenuState | null>(null);
   const [isContextMenuVisible, setIsContextMenuVisible] = useState(false);
-  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
-    null
-  );
   const [renderedConnections, setRenderedConnections] = useState<
     AnimatedConnectionItem[]
   >(() => toAnimatedConnections(connections));
@@ -235,7 +239,6 @@ export function Sidebar({
     connections.find(
       (connection) => connection.id === renderedContextMenu?.connectionId
     ) ?? null;
-  const isConfirmingDelete = confirmingDeleteId === contextConnection?.id;
   const showDisconnectContextConnection =
     contextConnection?.status === "connected";
   const hasActiveConnection = renderedConnections.some(
@@ -285,8 +288,6 @@ export function Sidebar({
   }, [isCollapsed]);
 
   const closeContextMenu = useCallback(() => {
-    setConfirmingDeleteId(null);
-
     if (!renderedContextMenu) return;
     if (contextMenuCloseTimerRef.current !== null) return;
 
@@ -296,6 +297,41 @@ export function Sidebar({
       setRenderedContextMenu(null);
     }, CONTEXT_MENU_TRANSITION_MS);
   }, [renderedContextMenu]);
+
+  const handleDeleteConnectionFromContextMenu = useCallback(async () => {
+    if (!contextConnection) {
+      return;
+    }
+
+    if (confirmBeforeDelete) {
+      const confirmed = await confirm(
+        replaceTemplate(messages.sidebar.confirmDeleteConnection, {
+          name: contextConnection.name,
+        }),
+        {
+          title: "NeoRDM",
+          kind: "warning",
+          okLabel: messages.common.delete,
+          cancelLabel: messages.common.cancel,
+        }
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    onDeleteConnection(contextConnection.id);
+    closeContextMenu();
+  }, [
+    closeContextMenu,
+    confirmBeforeDelete,
+    contextConnection,
+    messages.common.cancel,
+    messages.common.delete,
+    messages.sidebar.confirmDeleteConnection,
+    onDeleteConnection,
+  ]);
 
   useEffect(() => {
     setRenderedConnections((previous) => {
@@ -532,7 +568,6 @@ export function Sidebar({
       ),
     };
 
-    setConfirmingDeleteId(null);
     setRenderedContextMenu(nextContextMenu);
 
     if (contextMenuCloseTimerRef.current !== null) {
@@ -744,9 +779,7 @@ export function Sidebar({
           ref={contextMenuRef}
           role="menu"
           style={{ left: renderedContextMenu.x, top: renderedContextMenu.y }}
-          className={`fixed z-[70] rounded-xl border border-base-content/10 bg-base-200 p-1 shadow-2xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
-            isConfirmingDelete ? "w-40" : "w-11"
-          } ${
+          className={`fixed z-[70] w-11 rounded-xl border border-base-content/10 bg-base-200 p-1 shadow-2xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
             isContextMenuVisible
               ? "translate-y-0 scale-100 opacity-100"
               : "-translate-y-1 scale-95 opacity-0 pointer-events-none"
@@ -755,7 +788,6 @@ export function Sidebar({
           <button
             role="menuitem"
             onClick={() => {
-              setConfirmingDeleteId(null);
               onEditConnection(contextConnection.id);
               closeContextMenu();
             }}
@@ -766,50 +798,17 @@ export function Sidebar({
             <Pencil size={12} />
           </button>
 
-          {!isConfirmingDelete ? (
-            <button
-              role="menuitem"
-              onClick={() => {
-                if (!confirmBeforeDelete) {
-                  onDeleteConnection(contextConnection.id);
-                  closeContextMenu();
-                  return;
-                }
-
-                setConfirmingDeleteId(contextConnection.id);
-              }}
-              aria-label={messages.common.delete}
-              title={`${messages.common.delete} · ${contextConnection.name}`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/10 cursor-pointer"
-            >
-              <Trash2 size={12} />
-            </button>
-          ) : (
-            <div className="mt-1 rounded-lg bg-error/8 px-2.5 py-2">
-              <p className="truncate text-[11px] font-mono text-error/80">
-                {contextConnection.name}
-              </p>
-              <div className="mt-2 flex gap-1.5">
-                <button
-                  role="menuitem"
-                  onClick={() => setConfirmingDeleteId(null)}
-                  className="flex-1 rounded-md px-2 py-1.5 text-[11px] font-mono text-base-content/70 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
-                >
-                  {messages.common.cancel}
-                </button>
-                <button
-                  role="menuitem"
-                  onClick={() => {
-                    onDeleteConnection(contextConnection.id);
-                    closeContextMenu();
-                  }}
-                  className="flex-1 rounded-md bg-error/12 px-2 py-1.5 text-[11px] font-mono text-error transition-colors duration-150 hover:bg-error/18 cursor-pointer"
-                >
-                  {messages.common.delete}
-                </button>
-              </div>
-            </div>
-          )}
+          <button
+            role="menuitem"
+            onClick={() => {
+              void handleDeleteConnectionFromContextMenu();
+            }}
+            aria-label={messages.common.delete}
+            title={`${messages.common.delete} · ${contextConnection.name}`}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/10 cursor-pointer"
+          >
+            <Trash2 size={12} />
+          </button>
 
           {showDisconnectContextConnection ? (
             <button

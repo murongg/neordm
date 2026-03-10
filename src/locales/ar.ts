@@ -37,6 +37,7 @@ export const ar: Messages = {
     settings: "الإعدادات",
     expand: "توسيع الشريط الجانبي",
     collapse: "طي الشريط الجانبي",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "المفاتيح",
@@ -77,6 +78,7 @@ export const ar: Messages = {
     createSubmit: "إنشاء",
     creating: "جارٍ الإنشاء...",
     createSuccess: "تم إنشاء `{key}`",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "وكيل Redis الذكي",
@@ -178,6 +180,9 @@ export const ar: Messages = {
     persistent: "دائم",
     copyValue: "نسخ القيمة",
     deleteKey: "حذف المفتاح",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "ثوانٍ",
     field: "الحقل",

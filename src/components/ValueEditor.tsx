@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   Copy,
   Trash2,
@@ -69,6 +70,12 @@ interface EditorRuntimeSettings {
   maxValueSize: string;
   defaultTtl: string;
   hashDisplayMode: "table" | "json";
+}
+
+function replaceTemplate(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : `{${key}}`
+  );
 }
 
 export function ValueEditor({
@@ -182,11 +189,22 @@ export function ValueEditor({
       return;
     }
 
-    if (
-      appSettings.general.confirmDelete &&
-      !window.confirm(`${messages.valueEditor.deleteKey}: ${keyValue.key}?`)
-    ) {
-      return;
+    if (appSettings.general.confirmDelete) {
+      const confirmed = await confirm(
+        replaceTemplate(messages.valueEditor.confirmDeleteKey, {
+          key: keyValue.key,
+        }),
+        {
+          title: "NeoRDM",
+          kind: "warning",
+          okLabel: messages.common.delete,
+          cancelLabel: messages.common.cancel,
+        }
+      );
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsDeletingKey(true);
@@ -390,6 +408,7 @@ export function ValueEditor({
           <HashViewer
             value={keyValue.value as Record<string, string>}
             settings={editorSettings}
+            confirmDeleteEnabled={appSettings.general.confirmDelete}
             onCopy={copyText}
             onRefresh={onRefreshKeyValue}
             onEditRow={(field, value) => {
@@ -414,6 +433,7 @@ export function ValueEditor({
         {keyValue.type === "zset" && (
           <ZSetViewer
             value={keyValue.value as ZSetMember[]}
+            confirmDeleteEnabled={appSettings.general.confirmDelete}
             onCopy={copyText}
             onRefresh={onRefreshKeyValue}
             onEditRow={(member, score) => {
@@ -795,18 +815,21 @@ function TableRowActions({
   onRefresh,
   onEdit,
   onDelete,
+  confirmDeleteEnabled = false,
+  confirmDeleteMessage,
   onError,
 }: {
   onCopy: () => void | Promise<void>;
   onRefresh: () => Promise<void>;
   onEdit: () => void;
   onDelete: () => Promise<void>;
+  confirmDeleteEnabled?: boolean;
+  confirmDeleteMessage?: string;
   onError?: (error: unknown) => void;
 }) {
   const { messages } = useI18n();
   const [copied, setCopied] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
@@ -823,23 +846,7 @@ function TableRowActions({
     };
   }, [copied]);
 
-  useEffect(() => {
-    if (!isDeleteConfirming) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setIsDeleteConfirming(false);
-    }, 2200);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [isDeleteConfirming]);
-
   const handleCopy = () => {
-    setIsDeleteConfirming(false);
-
     Promise.resolve()
       .then(() => onCopy())
       .then(() => {
@@ -852,7 +859,6 @@ function TableRowActions({
 
   const handleRefresh = () => {
     setCopied(false);
-    setIsDeleteConfirming(false);
     setIsRefreshing(true);
 
     void Promise.resolve()
@@ -865,90 +871,74 @@ function TableRowActions({
       });
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     setCopied(false);
 
-    if (!isDeleteConfirming) {
-      setIsDeleteConfirming(true);
-      return;
+    if (confirmDeleteEnabled && confirmDeleteMessage) {
+      const confirmed = await confirm(confirmDeleteMessage, {
+        title: "NeoRDM",
+        kind: "warning",
+        okLabel: messages.common.delete,
+        cancelLabel: messages.common.cancel,
+      });
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     setIsDeleting(true);
 
-    void Promise.resolve()
+    await Promise.resolve()
       .then(() => onDelete())
       .catch((error) => {
         onError?.(error);
       })
       .finally(() => {
         setIsDeleting(false);
-        setIsDeleteConfirming(false);
       });
   };
 
   const handleEdit = () => {
     setCopied(false);
-    setIsDeleteConfirming(false);
     onEdit();
   };
 
   return (
     <div
-      className={`flex w-28 items-center justify-end gap-0.5 transition-opacity duration-150 motion-reduce:transition-none ${
-        isDeleteConfirming
-          ? "opacity-100"
-          : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-      }`}
+      className="flex w-28 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100"
     >
-      {isDeleteConfirming ? (
-        <>
-          <RowActionButton
-            label={messages.common.cancel}
-            onClick={() => setIsDeleteConfirming(false)}
-          >
-            <X size={10} />
-          </RowActionButton>
-          <RowActionButton
-            label={messages.common.delete}
-            onClick={handleDelete}
-            tone="danger"
-            disabled={isDeleting}
-          >
-            {isDeleting ? (
-              <LoaderCircle size={10} className="animate-spin" />
-            ) : (
-              <Trash2 size={10} />
-            )}
-          </RowActionButton>
-        </>
-      ) : (
-        <>
-          <RowActionButton label={messages.common.copy} onClick={handleCopy}>
-            {copied ? <Check size={10} /> : <Copy size={10} />}
-          </RowActionButton>
-          <RowActionButton
-            label={messages.common.refresh}
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <LoaderCircle size={10} className="animate-spin" />
-            ) : (
-              <RotateCw size={10} />
-            )}
-          </RowActionButton>
-          <RowActionButton label={messages.common.edit} onClick={handleEdit}>
-            <Edit3 size={10} />
-          </RowActionButton>
-          <RowActionButton
-            label={messages.common.delete}
-            onClick={handleDelete}
-            tone="danger"
-          >
-            <Trash2 size={10} />
-          </RowActionButton>
-        </>
-      )}
+      <RowActionButton label={messages.common.copy} onClick={handleCopy}>
+        {copied ? <Check size={10} /> : <Copy size={10} />}
+      </RowActionButton>
+      <RowActionButton
+        label={messages.common.refresh}
+        onClick={handleRefresh}
+        disabled={isRefreshing}
+      >
+        {isRefreshing ? (
+          <LoaderCircle size={10} className="animate-spin" />
+        ) : (
+          <RotateCw size={10} />
+        )}
+      </RowActionButton>
+      <RowActionButton label={messages.common.edit} onClick={handleEdit}>
+        <Edit3 size={10} />
+      </RowActionButton>
+      <RowActionButton
+        label={messages.common.delete}
+        onClick={() => {
+          void handleDelete();
+        }}
+        tone="danger"
+        disabled={isDeleting}
+      >
+        {isDeleting ? (
+          <LoaderCircle size={10} className="animate-spin" />
+        ) : (
+          <Trash2 size={10} />
+        )}
+      </RowActionButton>
     </div>
   );
 }
@@ -956,6 +946,7 @@ function TableRowActions({
 function HashViewer({
   value,
   settings,
+  confirmDeleteEnabled,
   onCopy,
   onRefresh,
   onEditRow,
@@ -963,6 +954,7 @@ function HashViewer({
 }: {
   value: Record<string, string>;
   settings: EditorRuntimeSettings;
+  confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onEditRow: (field: string, value: string) => void;
@@ -1066,6 +1058,11 @@ function HashViewer({
                       setActionError("");
                       await onDeleteRow(field);
                     }}
+                    confirmDeleteEnabled={confirmDeleteEnabled}
+                    confirmDeleteMessage={replaceTemplate(
+                      messages.valueEditor.confirmDeleteField,
+                      { field }
+                    )}
                     onError={(error) => {
                       setActionError(getRedisErrorMessage(error));
                     }}
@@ -1193,12 +1190,14 @@ function SetViewer({
 
 function ZSetViewer({
   value,
+  confirmDeleteEnabled,
   onCopy,
   onRefresh,
   onEditRow,
   onDeleteRow,
 }: {
   value: ZSetMember[];
+  confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
   onRefresh: () => Promise<void>;
   onEditRow: (member: string, score: number) => void;
@@ -1297,6 +1296,11 @@ function ZSetViewer({
                       setActionError("");
                       await onDeleteRow(item.member);
                     }}
+                    confirmDeleteEnabled={confirmDeleteEnabled}
+                    confirmDeleteMessage={replaceTemplate(
+                      messages.valueEditor.confirmDeleteMember,
+                      { member: item.member }
+                    )}
                     onError={(error) => {
                       setActionError(getRedisErrorMessage(error));
                     }}

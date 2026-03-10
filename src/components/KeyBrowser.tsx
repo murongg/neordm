@@ -9,6 +9,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   Search,
   Copy,
@@ -112,6 +113,12 @@ type VisibleTreeRow =
 const KEY_BROWSER_REORDER_ANIMATION_LIMIT = 240;
 const KEY_BROWSER_ROW_HEIGHT = 32;
 const KEY_BROWSER_VIRTUAL_OVERSCAN = 10;
+
+function replaceTemplate(template: string, values: Record<string, string | number>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : `{${key}}`
+  );
+}
 
 type ContextMenuTarget =
   | {
@@ -531,9 +538,6 @@ export function KeyBrowser({
   const [deletingContextTargetId, setDeletingContextTargetId] = useState<
     string | null
   >(null);
-  const [confirmingContextTargetId, setConfirmingContextTargetId] = useState<
-    string | null
-  >(null);
   const [groupMotionIds, setGroupMotionIds] = useState<Record<string, string>>(
     {}
   );
@@ -571,8 +575,6 @@ export function KeyBrowser({
     setEditingKeyName(null);
   }, []);
   const closeKeyContextMenu = useCallback(() => {
-    setConfirmingContextTargetId(null);
-
     if (!renderedKeyContextMenu) {
       return;
     }
@@ -1414,7 +1416,6 @@ export function KeyBrowser({
 
       setEditingGroupId(null);
       setEditingKeyName(null);
-      setConfirmingContextTargetId(null);
       setRenderedKeyContextMenu(nextContextMenu);
 
       if (keyContextMenuCloseTimerRef.current !== null) {
@@ -1459,7 +1460,6 @@ export function KeyBrowser({
 
       setEditingGroupId(null);
       setEditingKeyName(null);
-      setConfirmingContextTargetId(null);
       setRenderedKeyContextMenu(nextContextMenu);
 
       if (keyContextMenuCloseTimerRef.current !== null) {
@@ -1487,9 +1487,26 @@ export function KeyBrowser({
       return;
     }
 
-    if (confirmBeforeDelete && confirmingContextTargetId !== targetId) {
-      setConfirmingContextTargetId(targetId);
-      return;
+    if (confirmBeforeDelete) {
+      const confirmed = await confirm(
+        target.kind === "key"
+          ? replaceTemplate(messages.valueEditor.confirmDeleteKey, {
+              key: target.redisKey.key,
+            })
+          : replaceTemplate(messages.keyBrowser.confirmDeleteGroup, {
+              group: target.group.id,
+            }),
+        {
+          title: "NeoRDM",
+          kind: "warning",
+          okLabel: messages.common.delete,
+          cancelLabel: messages.common.cancel,
+        }
+      );
+
+      if (!confirmed) {
+        return;
+      }
     }
 
     setDeletingContextTargetId(targetId);
@@ -1513,9 +1530,12 @@ export function KeyBrowser({
   }, [
     closeKeyContextMenu,
     confirmBeforeDelete,
-    confirmingContextTargetId,
     deletingContextTargetId,
     keySeparator,
+    messages.common.cancel,
+    messages.common.delete,
+    messages.keyBrowser.confirmDeleteGroup,
+    messages.valueEditor.confirmDeleteKey,
     onDeleteGroup,
     onDeleteKey,
     renderedKeyContextMenu,
@@ -1871,153 +1891,96 @@ export function KeyBrowser({
             left: renderedKeyContextMenu.x,
             top: renderedKeyContextMenu.y,
           }}
-          className={`fixed z-[70] max-w-[calc(100vw-1rem)] rounded-xl border border-base-content/10 bg-base-200/95 p-1 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] backdrop-blur-xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
-            confirmingContextTargetId ===
-            getContextMenuTargetId(renderedKeyContextMenu.target)
-              ? "w-44"
-              : "w-11"
-          } ${
+          className={`fixed z-[70] max-w-[calc(100vw-1rem)] w-11 rounded-xl border border-base-content/10 bg-base-200/95 p-1 shadow-[0_16px_36px_-24px_rgba(0,0,0,0.55)] backdrop-blur-xl origin-top-left transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none ${
             isKeyContextMenuVisible
               ? "translate-y-0 scale-100 opacity-100"
               : "-translate-y-1 scale-95 opacity-0 pointer-events-none"
           }`}
         >
-          {confirmingContextTargetId ===
-          getContextMenuTargetId(renderedKeyContextMenu.target) ? (
-            <div className="rounded-lg border border-error/12 bg-base-100/70 px-2.5 py-2.5 shadow-sm">
-              <div className="flex items-center gap-1.5 text-[10px] font-mono text-error/80">
-                <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-error/10">
-                  <TriangleAlert size={10} />
-                </span>
-                <span>
-                  {renderedKeyContextMenu.target.kind === "group"
-                    ? messages.common.delete
-                    : messages.valueEditor.deleteKey}
-                </span>
-              </div>
-              <p className="mt-1.5 truncate text-[11px] font-mono text-base-content/78">
-                {renderedKeyContextMenu.target.kind === "group"
-                  ? renderedKeyContextMenu.target.group.id
-                  : renderedKeyContextMenu.target.redisKey.key}
-              </p>
-              <p className="mt-0.5 text-[9px] font-mono leading-4 text-base-content/45">
-                {renderedKeyContextMenu.target.kind === "group"
-                  ? messages.app.status.keysCount.replace(
-                      "{count}",
-                      String(renderedKeyContextMenu.target.group.keyCount)
-                    )
-                  : messages.valueEditor.deleteKey}
-              </p>
-              <div className="mt-2 flex gap-1">
+          <div className="flex flex-col items-center gap-0.5">
+            {renderedKeyContextMenu.target.kind === "group" ? (
+              <>
                 <button
                   role="menuitem"
-                  onClick={() => setConfirmingContextTargetId(null)}
-                  className="flex h-7 flex-1 items-center justify-center rounded-lg border border-base-content/8 bg-base-200/80 px-2 text-[10px] font-mono text-base-content/70 transition-colors duration-150 hover:bg-base-100 cursor-pointer"
+                  onClick={handleCreateChildKeyFromContextMenu}
+                  aria-label={messages.keyBrowser.create}
+                  title={`${messages.keyBrowser.create} · ${getChildKeyPrefix(
+                    renderedKeyContextMenu.target.group.id,
+                    keySeparator
+                  )}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
                 >
-                  {messages.common.cancel}
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                    <Plus size={12} />
+                  </span>
                 </button>
                 <button
                   role="menuitem"
                   onClick={() => {
-                    void handleDeleteFromContextMenu();
+                    void handleRefreshFromContextMenu();
                   }}
-                  disabled={
-                    deletingContextTargetId ===
-                    getContextMenuTargetId(renderedKeyContextMenu.target)
-                  }
-                  className="flex h-7 flex-1 items-center justify-center gap-1 rounded-lg bg-error/12 px-2 text-[10px] font-mono text-error transition-colors duration-150 hover:bg-error/18 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isRefreshing}
+                  aria-label={messages.common.refresh}
+                  title={`${messages.common.refresh} · DB ${selectedDb}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <Trash2 size={10} />
-                  {messages.common.delete}
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                    <RefreshCw
+                      size={12}
+                      className={isRefreshing ? "animate-spin" : ""}
+                    />
+                  </span>
                 </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-0.5">
-              {renderedKeyContextMenu.target.kind === "group" ? (
-                <>
-                  <button
-                    role="menuitem"
-                    onClick={handleCreateChildKeyFromContextMenu}
-                    aria-label={messages.keyBrowser.create}
-                    title={`${messages.keyBrowser.create} · ${getChildKeyPrefix(
-                      renderedKeyContextMenu.target.group.id,
-                      keySeparator
-                    )}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Plus size={12} />
-                    </span>
-                  </button>
-                  <button
-                    role="menuitem"
-                    onClick={() => {
-                      void handleRefreshFromContextMenu();
-                    }}
-                    disabled={isRefreshing}
-                    aria-label={messages.common.refresh}
-                    title={`${messages.common.refresh} · DB ${selectedDb}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
-                      <RefreshCw
-                        size={12}
-                        className={isRefreshing ? "animate-spin" : ""}
-                      />
-                    </span>
-                  </button>
-                </>
-              ) : null}
-              <button
-                role="menuitem"
-                onClick={() => {
-                  void handleCopyFromContextMenu();
-                }}
-                aria-label={messages.common.copy}
-                title={`${messages.common.copy} · ${getContextMenuCopyValue(
-                  renderedKeyContextMenu.target
-                )}`}
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
-                  <Copy size={12} />
-                </span>
-              </button>
-              <div className="my-0.5 h-px w-7 bg-base-content/6" />
-              <button
-                role="menuitem"
-                onClick={() => {
-                  void handleDeleteFromContextMenu();
-                }}
-                disabled={
-                  deletingContextTargetId ===
-                  getContextMenuTargetId(renderedKeyContextMenu.target)
-                }
-                title={
-                  `${
-                    renderedKeyContextMenu.target.kind === "group"
-                      ? messages.common.delete
-                      : messages.valueEditor.deleteKey
-                  } · ${
-                    renderedKeyContextMenu.target.kind === "group"
-                      ? renderedKeyContextMenu.target.group.id
-                      : renderedKeyContextMenu.target.redisKey.key
-                  }`
-                }
-                aria-label={
+              </>
+            ) : null}
+            <button
+              role="menuitem"
+              onClick={() => {
+                void handleCopyFromContextMenu();
+              }}
+              aria-label={messages.common.copy}
+              title={`${messages.common.copy} · ${getContextMenuCopyValue(
+                renderedKeyContextMenu.target
+              )}`}
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                <Copy size={12} />
+              </span>
+            </button>
+            <div className="my-0.5 h-px w-7 bg-base-content/6" />
+            <button
+              role="menuitem"
+              onClick={() => {
+                void handleDeleteFromContextMenu();
+              }}
+              disabled={
+                deletingContextTargetId ===
+                getContextMenuTargetId(renderedKeyContextMenu.target)
+              }
+              title={
+                `${
                   renderedKeyContextMenu.target.kind === "group"
                     ? messages.common.delete
                     : messages.valueEditor.deleteKey
-                }
-                className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/8 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-error/10">
-                  <Trash2 size={12} />
-                </span>
-              </button>
-            </div>
-          )}
+                } · ${
+                  renderedKeyContextMenu.target.kind === "group"
+                    ? renderedKeyContextMenu.target.group.id
+                    : renderedKeyContextMenu.target.redisKey.key
+                }`
+              }
+              aria-label={
+                renderedKeyContextMenu.target.kind === "group"
+                  ? messages.common.delete
+                  : messages.valueEditor.deleteKey
+              }
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-error transition-colors duration-150 hover:bg-error/8 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-error/10">
+                <Trash2 size={12} />
+              </span>
+            </button>
+          </div>
         </div>
       ) : null}
     </>

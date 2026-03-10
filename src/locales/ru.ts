@@ -37,6 +37,7 @@ export const ru: Messages = {
     settings: "Настройки",
     expand: "Развернуть боковую панель",
     collapse: "Свернуть боковую панель",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "Ключи",
@@ -77,6 +78,7 @@ export const ru: Messages = {
     createSubmit: "Создать",
     creating: "Создание...",
     createSuccess: "Ключ `{key}` создан",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "Redis AI-агент",
@@ -178,6 +180,9 @@ export const ru: Messages = {
     persistent: "постоянный",
     copyValue: "Скопировать значение",
     deleteKey: "Удалить ключ",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "секунды",
     field: "Поле",

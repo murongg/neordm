@@ -37,6 +37,7 @@ export const fr: Messages = {
     settings: "Paramètres",
     expand: "Développer la barre latérale",
     collapse: "Réduire la barre latérale",
+    confirmDeleteConnection: "Delete connection `{name}`?",
   },
   keyBrowser: {
     title: "Clés",
@@ -77,6 +78,7 @@ export const fr: Messages = {
     createSubmit: "Créer",
     creating: "Création...",
     createSuccess: "`{key}` créée",
+    confirmDeleteGroup: "Delete group `{group}` and all nested keys?",
   },
   ai: {
     title: "Agent IA Redis",
@@ -178,6 +180,9 @@ export const fr: Messages = {
     persistent: "persistante",
     copyValue: "Copier la valeur",
     deleteKey: "Supprimer la clé",
+    confirmDeleteKey: "Delete key `{key}`?",
+    confirmDeleteField: "Delete field `{field}`?",
+    confirmDeleteMember: "Delete member `{member}`?",
     browseNode: "Browse this node",
     ttlInputPlaceholder: "secondes",
     field: "Champ",

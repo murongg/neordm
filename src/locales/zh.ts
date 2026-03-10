@@ -41,6 +41,7 @@ export const zh: Messages = {
     settings: "设置",
     expand: "展开侧栏",
     collapse: "收起侧栏",
+    confirmDeleteConnection: "确定删除连接 `{name}` 吗？",
   },
   keyBrowser: {
     title: "键",
@@ -81,6 +82,7 @@ export const zh: Messages = {
     createSubmit: "创建",
     creating: "创建中...",
     createSuccess: "已创建 `{key}`",
+    confirmDeleteGroup: "确定删除分组 `{group}` 及其下所有 key 吗？",
   },
   ai: {
     title: "Redis AI 助手",
@@ -180,6 +182,9 @@ export const zh: Messages = {
     persistent: "持久",
     copyValue: "复制值",
     deleteKey: "删除键",
+    confirmDeleteKey: "确定删除键 `{key}` 吗？",
+    confirmDeleteField: "确定删除字段 `{field}` 吗？",
+    confirmDeleteMember: "确定删除成员 `{member}` 吗？",
     browseNode: "浏览此节点",
     ttlInputPlaceholder: "秒",
     field: "字段",
