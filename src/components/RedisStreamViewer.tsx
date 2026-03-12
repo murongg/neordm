@@ -1,7 +1,6 @@
 import {
   ArrowRightLeft,
   CheckCheck,
-  Copy,
   LoaderCircle,
   Plus,
   RotateCw,
@@ -9,7 +8,7 @@ import {
   Users,
 } from "lucide-react";
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import {
   appendRedisStreamEntry,
@@ -33,9 +32,25 @@ import type {
   RedisStreamEntryField,
   RedisStreamPendingEntry,
 } from "../types";
+import {
+  DATA_TABLE_CELL_CLASS,
+  DATA_TABLE_HEADER_CLASS,
+  DATA_TABLE_INDEX_CELL_CLASS,
+  DATA_TABLE_INDEX_HEADER_CLASS,
+  DATA_TABLE_PANEL_CLASS,
+  DATA_TABLE_ROW_CLASS,
+  DataTable,
+} from "./DataTable";
+import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 import { useToast } from "./ToastProvider";
+import {
+  HeaderToolbar,
+  type HeaderToolbarConfig,
+  useSyncHeaderToolbar,
+} from "./value-editor/HeaderToolbar";
 
 const STREAM_PENDING_LIMIT = 100;
+const STREAM_ENTRIES_PAGE_SIZE = 100;
 
 interface StreamEntryDraftField {
   id: number;
@@ -234,24 +249,23 @@ interface RedisStreamViewerProps {
   activeConnection?: RedisConnection;
   selectedDb: number;
   keyName: string;
-  rawValue: string;
   onCopy: (text: string) => Promise<void>;
   onRefreshStream: () => Promise<void>;
+  onHeaderToolbarChange?: (config: HeaderToolbarConfig | null) => void;
 }
 
 export function RedisStreamViewer({
   activeConnection,
   selectedDb,
   keyName,
-  rawValue,
   onCopy,
   onRefreshStream,
+  onHeaderToolbarChange,
 }: RedisStreamViewerProps) {
   const { messages } = useI18n();
   const { showToast } = useToast();
   const text = messages.streamViewer;
-  const panelClass =
-    "min-w-0 overflow-hidden rounded-2xl border border-base-content/8 bg-base-200/55 shadow-[0_14px_34px_-28px_rgba(0,0,0,0.55)]";
+  const panelClass = DATA_TABLE_PANEL_CLASS;
   const eyebrowClass =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-base-content/45";
   const emptyClass =
@@ -260,7 +274,6 @@ export function RedisStreamViewer({
     "input input-sm h-8 min-h-8 rounded-xl border-base-content/10 bg-base-100/80 text-xs font-mono";
   const selectClass =
     "select select-sm h-8 min-h-8 rounded-xl border-base-content/10 bg-base-100/80 text-xs font-mono";
-
   const connection = useMemo(
     () =>
       activeConnection
@@ -274,11 +287,14 @@ export function RedisStreamViewer({
 
   const [groups, setGroups] = useState<RedisStreamConsumerGroup[]>([]);
   const [streamEntries, setStreamEntries] = useState<RedisStreamEntry[]>([]);
+  const [streamEntriesTotalCount, setStreamEntriesTotalCount] = useState(0);
+  const [streamEntriesNextCursor, setStreamEntriesNextCursor] = useState<string | null>(null);
   const [entryDrafts, setEntryDrafts] = useState<StreamEntryDraftField[]>([
     createStreamEntryDraftField(1),
   ]);
   const [nextEntryDraftId, setNextEntryDraftId] = useState(2);
   const [isEntryFormOpen, setIsEntryFormOpen] = useState(false);
+  const [entrySearchQuery, setEntrySearchQuery] = useState("");
   const [consumers, setConsumers] = useState<RedisStreamConsumer[]>([]);
   const [pendingEntries, setPendingEntries] = useState<RedisStreamPendingEntry[]>([]);
   const [activeTab, setActiveTab] = useState<"entries" | "groups">("entries");
@@ -290,6 +306,7 @@ export function RedisStreamViewer({
   const [claimMinIdle, setClaimMinIdle] = useState("0");
   const [pendingConsumerFilter, setPendingConsumerFilter] = useState("");
   const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+  const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
   const [isLoadingGroups, setIsLoadingGroups] = useState(false);
   const [isLoadingGroupDetails, setIsLoadingGroupDetails] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
@@ -300,10 +317,53 @@ export function RedisStreamViewer({
   const [busyEntryId, setBusyEntryId] = useState<string | null>(null);
   const [busyGroupName, setBusyGroupName] = useState<string | null>(null);
   const [busyConsumerName, setBusyConsumerName] = useState<string | null>(null);
+  const deferredEntrySearchQuery = useDeferredValue(entrySearchQuery);
+  const setWorkspaceKeyValue = useRedisWorkspaceStore((state) => state.setKeyValue);
 
   const activeGroup = useMemo(
     () => groups.find((group) => group.name === selectedGroupName) ?? null,
     [groups, selectedGroupName]
+  );
+  const filteredStreamEntries = useMemo(() => {
+    const normalizedQuery = deferredEntrySearchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return streamEntries;
+    }
+
+    return streamEntries.filter((entry) => {
+      if (entry.id.toLocaleLowerCase().includes(normalizedQuery)) {
+        return true;
+      }
+
+      return entry.fields.some(
+        (field) =>
+          field.field.toLocaleLowerCase().includes(normalizedQuery) ||
+          field.value.toLocaleLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [deferredEntrySearchQuery, streamEntries]);
+  const hasMoreEntries =
+    streamEntries.length < streamEntriesTotalCount && Boolean(streamEntriesNextCursor);
+  const syncStreamPageState = useCallback(
+    (loadedCount: number, totalCount: number, nextCursor: string | null) => {
+      setWorkspaceKeyValue((current) => {
+        if (!current || current.key !== keyName || current.type !== "stream") {
+          return current;
+        }
+
+        return {
+          ...current,
+          page: {
+            nextCursor,
+            totalCount,
+            loadedCount,
+            pageSize: STREAM_ENTRIES_PAGE_SIZE,
+          },
+        };
+      });
+    },
+    [keyName, setWorkspaceKeyValue]
   );
 
   const refreshEntries = useCallback(async () => {
@@ -314,8 +374,17 @@ export function RedisStreamViewer({
     setIsLoadingEntries(true);
 
     try {
-      const nextEntries = await getRedisStreamEntries(connection, keyName);
-      setStreamEntries(nextEntries);
+      const nextEntries = await getRedisStreamEntries(connection, keyName, {
+        pageSize: STREAM_ENTRIES_PAGE_SIZE,
+      });
+      setStreamEntries(nextEntries.entries);
+      setStreamEntriesTotalCount(nextEntries.totalCount);
+      setStreamEntriesNextCursor(nextEntries.nextCursor);
+      syncStreamPageState(
+        nextEntries.entries.length,
+        nextEntries.totalCount,
+        nextEntries.nextCursor
+      );
     } catch (error) {
       showToast({
         message: getRedisErrorMessage(error),
@@ -325,7 +394,55 @@ export function RedisStreamViewer({
     } finally {
       setIsLoadingEntries(false);
     }
-  }, [connection, keyName, showToast]);
+  }, [connection, keyName, showToast, syncStreamPageState]);
+
+  const handleLoadMoreEntries = useCallback(async () => {
+    if (
+      !connection ||
+      isLoadingEntries ||
+      isLoadingMoreEntries ||
+      !streamEntriesNextCursor ||
+      streamEntries.length >= streamEntriesTotalCount
+    ) {
+      return;
+    }
+
+    setIsLoadingMoreEntries(true);
+
+    try {
+      const nextEntries = await getRedisStreamEntries(connection, keyName, {
+        pageSize: STREAM_ENTRIES_PAGE_SIZE,
+        cursor: streamEntriesNextCursor,
+      });
+      const mergedEntries = [...streamEntries, ...nextEntries.entries];
+      setStreamEntries(mergedEntries);
+      setStreamEntriesTotalCount(nextEntries.totalCount);
+      setStreamEntriesNextCursor(nextEntries.nextCursor);
+      syncStreamPageState(
+        mergedEntries.length,
+        nextEntries.totalCount,
+        nextEntries.nextCursor
+      );
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 2200,
+      });
+    } finally {
+      setIsLoadingMoreEntries(false);
+    }
+  }, [
+    connection,
+    isLoadingEntries,
+    isLoadingMoreEntries,
+    keyName,
+    showToast,
+    streamEntries,
+    streamEntriesNextCursor,
+    streamEntriesTotalCount,
+    syncStreamPageState,
+  ]);
 
   const refreshGroups = useCallback(async () => {
     if (!connection) {
@@ -388,9 +505,12 @@ export function RedisStreamViewer({
   useEffect(() => {
     setGroups([]);
     setStreamEntries([]);
+    setStreamEntriesTotalCount(0);
+    setStreamEntriesNextCursor(null);
     setEntryDrafts([createStreamEntryDraftField(1)]);
     setNextEntryDraftId(2);
     setIsEntryFormOpen(false);
+    setEntrySearchQuery("");
     setConsumers([]);
     setPendingEntries([]);
     setActiveTab("entries");
@@ -402,6 +522,7 @@ export function RedisStreamViewer({
     setClaimMinIdle("0");
     setPendingConsumerFilter("");
     setIsAddingEntry(false);
+    setIsLoadingMoreEntries(false);
     setBusyEntryId(null);
 
     if (!connection) {
@@ -535,6 +656,52 @@ export function RedisStreamViewer({
       text.confirmDeleteEntry,
       text.deleteEntrySuccess,
     ]
+  );
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig>(
+    () => ({
+      search:
+        activeTab === "entries"
+          ? {
+              value: entrySearchQuery,
+              onChange: setEntrySearchQuery,
+              placeholder: `${text.entryId} / ${text.entryContent}`,
+            }
+          : undefined,
+      createAction:
+        activeTab === "entries"
+          ? {
+              label: text.addEntry,
+              onClick: () => {
+                setIsEntryFormOpen((current) => !current);
+              },
+            }
+          : undefined,
+      refreshAction: {
+        label: text.refreshAll,
+        onClick: () => {
+          void handleRefreshAll();
+        },
+        disabled: isRefreshingAll,
+        isLoading: isRefreshingAll,
+      },
+    }),
+    [
+      activeTab,
+      entrySearchQuery,
+      handleRefreshAll,
+      isRefreshingAll,
+      text.addEntry,
+      text.entryContent,
+      text.entryId,
+      text.refreshAll,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localHeaderToolbar = onHeaderToolbarChange ? undefined : (
+    <HeaderToolbar config={headerToolbarConfig} />
   );
 
   const handleAppendEntry = useCallback(async () => {
@@ -876,47 +1043,7 @@ export function RedisStreamViewer({
           </button>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {activeTab === "entries" ? (
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsEntryFormOpen((current) => !current);
-                }}
-                className="btn btn-ghost btn-xs h-7 min-h-7 gap-1 cursor-pointer"
-              >
-                <Plus size={11} />
-                {text.addEntry}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  void onCopy(rawValue);
-                }}
-                className="btn btn-ghost btn-xs h-7 min-h-7 gap-1 cursor-pointer"
-              >
-                <Copy size={11} />
-                {messages.common.copy}
-              </button>
-            </>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => {
-              void handleRefreshAll();
-            }}
-            disabled={isRefreshingAll}
-            className={compactActionClass(isRefreshingAll)}
-          >
-            {isRefreshingAll ? (
-              <LoaderCircle size={11} className="animate-spin" />
-            ) : (
-              <RotateCw size={11} />
-            )}
-            {text.refreshAll}
-          </button>
-        </div>
+        {localHeaderToolbar ? <div className="flex">{localHeaderToolbar}</div> : null}
       </div>
 
       {activeTab === "entries" ? (
@@ -1031,91 +1158,103 @@ export function RedisStreamViewer({
               </div>
             </div>
           ) : null}
-          <div className="min-h-[240px] h-full overflow-auto">
+          <div className="h-full overflow-hidden">
             {isLoadingEntries ? (
               <div className={`${emptyClass} m-3 gap-2`}>
                 <LoaderCircle size={16} className="animate-spin" />
                 <span>{text.loading}</span>
               </div>
-            ) : streamEntries.length ? (
-              <div className="min-h-0 h-full overflow-y-auto overflow-x-hidden rounded-xl border border-base-200/50">
-                <table
-                  className="table table-xs table-pin-rows table-fixed w-full"
-                  style={{ tableLayout: "fixed" }}
-                >
-                  <colgroup>
-                    <col className="w-12" />
-                    <col className="w-[26%]" />
-                    <col />
-                    <col className="w-16" />
-                  </colgroup>
-                  <thead>
-                    <tr className="bg-base-200/80">
-                      <th className="w-12 text-center font-mono text-base-content/50 whitespace-nowrap">
-                        #
-                      </th>
-                      <th className="font-mono text-base-content/50 whitespace-nowrap">
-                        {text.entryId}
-                      </th>
-                      <th className="font-mono text-base-content/50 whitespace-nowrap">
-                        {text.entryContent}
-                      </th>
-                      <th className="w-16" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {streamEntries.map((entry, index) => (
-                      <tr key={entry.id} className="group hover:bg-base-200/30">
-                        <td className="text-center font-mono text-[10px] text-base-content/30 whitespace-nowrap align-top">
-                          {index + 1}
-                        </td>
-                        <td className="max-w-0 align-top">
-                          <StreamCopyableCellValue
-                            displayValue={entry.id}
-                            className="text-primary"
-                            onCopy={onCopy}
-                          />
-                        </td>
-                        <td className="max-w-0 align-top">
-                          <div className="py-0.5">
-                            <StreamEntryFieldsCell fields={entry.fields} onCopy={onCopy} />
-                          </div>
-                        </td>
-                        <td className="w-16 whitespace-nowrap align-top">
-                          <div
-                            className={`flex justify-end transition-opacity duration-150 motion-reduce:transition-none ${
-                              busyEntryId === entry.id
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleDeleteEntry(entry.id);
-                              }}
-                              disabled={busyEntryId === entry.id}
-                              aria-label={text.deleteEntry}
-                              title={text.deleteEntry}
-                              className={`btn btn-ghost btn-xs h-6 min-h-6 w-6 rounded-md border-0 p-0 transition-colors duration-150 motion-reduce:transition-none ${
-                                "text-base-content/50 hover:bg-error/10 hover:text-error"
-                              } disabled:cursor-not-allowed disabled:opacity-50`}
-                            >
-                              {busyEntryId === entry.id ? (
-                                <LoaderCircle size={11} className="animate-spin" />
-                              ) : (
-                                <Trash2 size={11} />
-                              )}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            ) : filteredStreamEntries.length ? (
+              <DataTable
+                rows={filteredStreamEntries}
+                getRowKey={(entry) => entry.id}
+                rowClassName={DATA_TABLE_ROW_CLASS}
+                loadMore={{
+                  hasMore: hasMoreEntries,
+                  isLoading: isLoadingMoreEntries,
+                  label: messages.valueEditor.loadMore,
+                  loadingLabel: messages.valueEditor.loadingMore,
+                  onLoadMore: () => {
+                    void handleLoadMoreEntries();
+                  },
+                }}
+                columns={[
+                  {
+                    id: "index",
+                    header: "#",
+                    colClassName: "w-12",
+                    headerClassName: DATA_TABLE_INDEX_HEADER_CLASS,
+                    cellClassName: DATA_TABLE_INDEX_CELL_CLASS,
+                    renderCell: (_, index) => index + 1,
+                  },
+                  {
+                    id: "id",
+                    header: text.entryId,
+                    colClassName: "w-[26%]",
+                    headerClassName: DATA_TABLE_HEADER_CLASS,
+                    cellClassName: DATA_TABLE_CELL_CLASS,
+                    renderCell: (entry) => (
+                      <StreamCopyableCellValue
+                        displayValue={entry.id}
+                        className="text-primary"
+                        onCopy={onCopy}
+                      />
+                    ),
+                  },
+                  {
+                    id: "content",
+                    header: text.entryContent,
+                    headerClassName: DATA_TABLE_HEADER_CLASS,
+                    cellClassName: DATA_TABLE_CELL_CLASS,
+                    renderCell: (entry) => (
+                      <div className="py-0.5">
+                        <StreamEntryFieldsCell fields={entry.fields} onCopy={onCopy} />
+                      </div>
+                    ),
+                  },
+                  {
+                    id: "actions",
+                    header: null,
+                    colClassName: "w-16",
+                    headerClassName: "w-16 whitespace-nowrap",
+                    cellClassName: "w-16 whitespace-nowrap align-top",
+                    renderCell: (entry) => (
+                      <div
+                        className={`flex justify-end transition-opacity duration-150 motion-reduce:transition-none ${
+                          busyEntryId === entry.id
+                            ? "opacity-100"
+                            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleDeleteEntry(entry.id);
+                          }}
+                          disabled={busyEntryId === entry.id}
+                          aria-label={text.deleteEntry}
+                          title={text.deleteEntry}
+                          className={`btn btn-ghost btn-xs h-6 min-h-6 w-6 rounded-md border-0 p-0 transition-colors duration-150 motion-reduce:transition-none ${
+                            "text-base-content/50 hover:bg-error/10 hover:text-error"
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
+                        >
+                          {busyEntryId === entry.id ? (
+                            <LoaderCircle size={11} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={11} />
+                          )}
+                        </button>
+                      </div>
+                    ),
+                  },
+                ]}
+              />
             ) : (
-              <div className={`${emptyClass} m-3`}>{text.rawPreviewEmpty}</div>
+              <div className={`${emptyClass} m-3`}>
+                {streamEntries.length && deferredEntrySearchQuery.trim()
+                  ? messages.commandPalette.noResults
+                  : text.rawPreviewEmpty}
+              </div>
             )}
           </div>
         </section>
@@ -1435,97 +1574,129 @@ export function RedisStreamViewer({
                 {!selectedGroupName ? (
                   <div className={emptyClass}>{text.selectGroup}</div>
                 ) : pendingEntries.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="table table-sm table-fixed w-full">
-                      <thead>
-                        <tr className="text-[10px] uppercase tracking-[0.16em] text-base-content/45">
-                          <th className="w-8">
+                  <DataTable
+                    rows={pendingEntries}
+                    size="sm"
+                    getRowKey={(entry) => entry.id}
+                    rowClassName={DATA_TABLE_ROW_CLASS}
+                    headerRowClassName="bg-base-200/80"
+                    columns={[
+                      {
+                        id: "selected",
+                        header: (
+                          <input
+                            type="checkbox"
+                            checked={allPendingSelected}
+                            onChange={(event) =>
+                              setSelectedPendingIds(
+                                event.target.checked
+                                  ? pendingEntries.map((entry) => entry.id)
+                                  : []
+                              )
+                            }
+                            className="checkbox checkbox-xs"
+                          />
+                        ),
+                        colClassName: "w-8",
+                        headerClassName: "w-8",
+                        cellClassName: "align-top",
+                        renderCell: (entry) => {
+                          const checked = selectedPendingIds.includes(entry.id);
+
+                          return (
                             <input
                               type="checkbox"
-                              checked={allPendingSelected}
+                              checked={checked}
                               onChange={(event) =>
-                                setSelectedPendingIds(
+                                setSelectedPendingIds((current) =>
                                   event.target.checked
-                                    ? pendingEntries.map((entry) => entry.id)
-                                    : []
+                                    ? [...current, entry.id]
+                                    : current.filter((id) => id !== entry.id)
                                 )
                               }
                               className="checkbox checkbox-xs"
                             />
-                          </th>
-                          <th className="w-[45%]">ID</th>
-                          <th className="w-[24%]">{text.consumers}</th>
-                          <th className="w-[14%]">{text.idle}</th>
-                          <th className="w-[9%]">{text.deliveries}</th>
-                          <th className="w-20 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {pendingEntries.map((entry) => {
-                          const checked = selectedPendingIds.includes(entry.id);
-
-                          return (
-                            <tr key={entry.id} className="hover">
-                              <td>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(event) =>
-                                    setSelectedPendingIds((current) =>
-                                      event.target.checked
-                                        ? [...current, entry.id]
-                                        : current.filter((id) => id !== entry.id)
-                                    )
-                                  }
-                                  className="checkbox checkbox-xs"
-                                />
-                              </td>
-                              <td className="font-mono text-[11px] text-base-content/78">
-                                <div className="truncate" title={entry.id}>
-                                  {entry.id}
-                                </div>
-                              </td>
-                              <td className="font-mono text-[11px] text-base-content/62">
-                                <div className="truncate" title={entry.consumer}>
-                                  {entry.consumer}
-                                </div>
-                              </td>
-                              <td className="font-mono text-[11px] text-base-content/62">
-                                {formatDuration(entry.idle)}
-                              </td>
-                              <td className="font-mono text-[11px] text-base-content/62">
-                                {entry.deliveries}
-                              </td>
-                              <td>
-                                <div className="flex justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void handleAck([entry.id]);
-                                    }}
-                                    title="Ack"
-                                    className="btn btn-ghost btn-xs h-6 min-h-6 w-6 p-0 cursor-pointer"
-                                  >
-                                    <CheckCheck size={11} />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      void handleClaim([entry.id]);
-                                    }}
-                                    title="Claim"
-                                    className="btn btn-ghost btn-xs h-6 min-h-6 w-6 p-0 cursor-pointer"
-                                  >
-                                    <ArrowRightLeft size={11} />
-                                  </button>
-                                </div>
-                              </td>
-                            </tr>
                           );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+                        },
+                      },
+                      {
+                        id: "id",
+                        header: "ID",
+                        colClassName: "w-[45%]",
+                        headerClassName:
+                          "w-[45%] font-mono text-[10px] uppercase tracking-[0.16em] text-base-content/45 whitespace-nowrap",
+                        cellClassName: "font-mono text-[11px] text-base-content/78 align-top",
+                        renderCell: (entry) => (
+                          <div className="truncate" title={entry.id}>
+                            {entry.id}
+                          </div>
+                        ),
+                      },
+                      {
+                        id: "consumer",
+                        header: text.consumers,
+                        colClassName: "w-[24%]",
+                        headerClassName:
+                          "w-[24%] font-mono text-[10px] uppercase tracking-[0.16em] text-base-content/45 whitespace-nowrap",
+                        cellClassName: "font-mono text-[11px] text-base-content/62 align-top",
+                        renderCell: (entry) => (
+                          <div className="truncate" title={entry.consumer}>
+                            {entry.consumer}
+                          </div>
+                        ),
+                      },
+                      {
+                        id: "idle",
+                        header: text.idle,
+                        colClassName: "w-[14%]",
+                        headerClassName:
+                          "w-[14%] font-mono text-[10px] uppercase tracking-[0.16em] text-base-content/45 whitespace-nowrap",
+                        cellClassName: "font-mono text-[11px] text-base-content/62 align-top",
+                        renderCell: (entry) => formatDuration(entry.idle),
+                      },
+                      {
+                        id: "deliveries",
+                        header: text.deliveries,
+                        colClassName: "w-[9%]",
+                        headerClassName:
+                          "w-[9%] font-mono text-[10px] uppercase tracking-[0.16em] text-base-content/45 whitespace-nowrap",
+                        cellClassName: "font-mono text-[11px] text-base-content/62 align-top",
+                        renderCell: (entry) => entry.deliveries,
+                      },
+                      {
+                        id: "actions",
+                        header: "Actions",
+                        colClassName: "w-20",
+                        headerClassName:
+                          "w-20 text-right font-mono text-[10px] uppercase tracking-[0.16em] text-base-content/45 whitespace-nowrap",
+                        cellClassName: "align-top",
+                        renderCell: (entry) => (
+                          <div className="flex justify-end gap-1">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleAck([entry.id]);
+                              }}
+                              title="Ack"
+                              className="btn btn-ghost btn-xs h-6 min-h-6 w-6 p-0 cursor-pointer"
+                            >
+                              <CheckCheck size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleClaim([entry.id]);
+                              }}
+                              title="Claim"
+                              className="btn btn-ghost btn-xs h-6 min-h-6 w-6 p-0 cursor-pointer"
+                            >
+                              <ArrowRightLeft size={11} />
+                            </button>
+                          </div>
+                        ),
+                      },
+                    ]}
+                  />
                 ) : (
                   <div className={emptyClass}>{text.noPending}</div>
                 )}

@@ -108,6 +108,12 @@ export interface RedisStreamEntry {
   fields: RedisStreamEntryField[];
 }
 
+export interface RedisStreamEntriesResult {
+  totalCount: number;
+  nextCursor: string | null;
+  entries: RedisStreamEntry[];
+}
+
 export interface RedisStreamConsumer {
   name: string;
   pending: number;

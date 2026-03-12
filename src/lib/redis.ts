@@ -9,7 +9,7 @@ import type {
   RedisKeyType,
   RedisStreamConsumer,
   RedisStreamConsumerGroup,
-  RedisStreamEntry,
+  RedisStreamEntriesResult,
   RedisStreamPendingEntry,
 } from "../types";
 
@@ -115,6 +115,11 @@ export interface RedisKeysScanPage {
 }
 
 export interface RedisKeyValuePageOptions {
+  pageSize?: number;
+  cursor?: string | null;
+}
+
+export interface RedisStreamEntriesOptions {
   pageSize?: number;
   cursor?: string | null;
 }
@@ -410,12 +415,15 @@ export type { RedisPubSubEvent };
 
 export async function getRedisStreamEntries(
   connection: RedisConnectionInvokeInput,
-  key: string
-): Promise<RedisStreamEntry[]> {
+  key: string,
+  options: RedisStreamEntriesOptions = {}
+): Promise<RedisStreamEntriesResult> {
   return invoke("get_redis_stream_entries", {
     input: {
       connection: toConnectionInput(connection),
       key,
+      pageSize: options.pageSize,
+      cursor: options.cursor ?? null,
     },
   });
 }

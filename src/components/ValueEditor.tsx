@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useState,
 } from "react";
@@ -13,7 +14,6 @@ import {
   Save,
   ChevronRight,
   LoaderCircle,
-  Plus,
 } from "lucide-react";
 import type { KeyValue, RedisConnection, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
@@ -42,6 +42,10 @@ import {
   replaceTemplate,
   TYPE_BADGE,
 } from "./value-editor/shared";
+import {
+  HeaderToolbar,
+  type HeaderToolbarConfig,
+} from "./value-editor/HeaderToolbar";
 
 interface ValueEditorProps {
   activeConnection?: RedisConnection;
@@ -109,6 +113,8 @@ export function ValueEditor({
   const { showToast } = useToast();
   const [copied, setCopied] = useState(false);
   const [isDeletingKey, setIsDeletingKey] = useState(false);
+  const [headerToolbarConfig, setHeaderToolbarConfig] =
+    useState<HeaderToolbarConfig | null>(null);
   const [editingTTL, setEditingTTL] = useState(false);
   const [ttlInput, setTtlInput] = useState("");
   const [isUpdatingTTL, setIsUpdatingTTL] = useState(false);
@@ -135,18 +141,71 @@ export function ValueEditor({
     setTtlInput("");
     setIsDeletingKey(false);
     setIsUpdatingTTL(false);
+    setHeaderToolbarConfig(null);
     setHashEditorState(null);
     setZSetEditorState(null);
     setSingleValueEditorState(null);
   }, [keyValue?.key, keyValue?.type]);
 
-  const copyText = async (text: string) => {
+  const copyText = useCallback(async (text: string) => {
     await navigator.clipboard.writeText(text);
     showToast({
       message: messages.common.copied,
       tone: "success",
     });
-  };
+  }, [messages.common.copied, showToast]);
+
+  const handleCopy = useCallback(() => {
+    if (!keyValue) {
+      return;
+    }
+
+    const text =
+      typeof keyValue.value === "string"
+        ? keyValue.value
+        : JSON.stringify(keyValue.value, null, 2);
+    void copyText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    });
+  }, [copyText, keyValue]);
+
+  const keyType = keyValue?.type;
+
+  const handleOpenCreateEditor = useCallback(() => {
+    if (keyType === "hash") {
+      setHashEditorState({
+        mode: "create",
+        field: "",
+        value: "",
+      });
+      setZSetEditorState(null);
+      setSingleValueEditorState(null);
+      return;
+    }
+
+    if (keyType === "zset") {
+      setZSetEditorState({
+        mode: "create",
+        member: "",
+        score: 0,
+      });
+      setHashEditorState(null);
+      setSingleValueEditorState(null);
+      return;
+    }
+
+    if (keyType === "list" || keyType === "set") {
+      setSingleValueEditorState({
+        kind: keyType,
+        mode: "create",
+        value: "",
+        insertPosition: keyType === "list" ? "tail" : undefined,
+      });
+      setHashEditorState(null);
+      setZSetEditorState(null);
+    }
+  }, [keyType]);
 
   if (!keyValue) {
     return (
@@ -158,17 +217,6 @@ export function ValueEditor({
       </div>
     );
   }
-
-  const handleCopy = () => {
-    const text =
-      typeof keyValue.value === "string"
-        ? keyValue.value
-        : JSON.stringify(keyValue.value, null, 2);
-    void copyText(text).then(() => {
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
-    });
-  };
 
   const handleSaveTtl = async () => {
     if (isUpdatingTTL) {
@@ -258,65 +306,47 @@ export function ValueEditor({
       keyValue.type === "zset") &&
     Boolean(keyValue.page);
   const editorSettings: EditorRuntimeSettings = appSettings.editor;
-  const headerAddLabel =
-    keyValue.type === "hash"
-      ? messages.keyBrowser.addEntry
-      : keyValue.type === "list"
-      ? messages.keyBrowser.addValue
-      : keyValue.type === "set" || keyValue.type === "zset"
-      ? messages.keyBrowser.addMember
-      : "";
-  const canOpenCreateEditor =
-    keyValue.type === "hash" ||
-    keyValue.type === "list" ||
-    keyValue.type === "set" ||
-    keyValue.type === "zset";
-  const loadedSummaryLabel = keyValue.page
-    ? replaceTemplate(messages.valueEditor.loadedSummary, {
-        loaded: keyValue.page.loadedCount,
-        total: keyValue.page.totalCount ?? keyValue.page.loadedCount,
-      })
-    : "";
-
-  const handleOpenCreateEditor = () => {
-    if (keyValue.type === "hash") {
-      setHashEditorState({
-        mode: "create",
-        field: "",
-        value: "",
-      });
-      setZSetEditorState(null);
-      setSingleValueEditorState(null);
-      return;
-    }
-
-    if (keyValue.type === "zset") {
-      setZSetEditorState({
-        mode: "create",
-        member: "",
-        score: 0,
-      });
-      setHashEditorState(null);
-      setSingleValueEditorState(null);
-      return;
-    }
-
-    if (keyValue.type === "list" || keyValue.type === "set") {
-      setSingleValueEditorState({
-        kind: keyValue.type,
-        mode: "create",
-        value: "",
-        insertPosition: keyValue.type === "list" ? "tail" : undefined,
-      });
-      setHashEditorState(null);
-      setZSetEditorState(null);
-    }
-  };
+  const viewerLoadMoreState =
+    supportsPagedValue && keyValue.page?.nextCursor
+      ? {
+          hasMore: true,
+          isLoadingMore: isLoadingMoreKeyValue,
+          onLoadMore: () => {
+            void onLoadMoreKeyValue();
+          },
+        }
+      : undefined;
+  const headerTrailingActions = [
+    {
+      key: "copy",
+      label: messages.valueEditor.copyValue,
+      onClick: handleCopy,
+      icon: copied ? (
+        <Check size={12} className="text-success" />
+      ) : (
+        <Copy size={12} />
+      ),
+    },
+    {
+      key: "delete",
+      label: messages.valueEditor.deleteKey,
+      onClick: () => {
+        void handleDeleteKey();
+      },
+      icon: isDeletingKey ? (
+        <LoaderCircle size={12} className="animate-spin" />
+      ) : (
+        <Trash2 size={12} />
+      ),
+      disabled: isDeletingKey,
+      tone: "danger" as const,
+    },
+  ];
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0">
       <div className="px-4 py-3 border-b border-base-200/50 shrink-0">
-        <div className="flex items-start justify-between gap-3">
+        <div className="grid items-start gap-3 max-sm:grid-cols-1 sm:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 mb-1">
               <span
@@ -356,114 +386,80 @@ export function ValueEditor({
             <h2 className="text-sm font-mono font-semibold text-base-content truncate">
               {keyValue.key}
             </h2>
-          </div>
-
-          <div className="flex items-center gap-1 shrink-0">
-            {canOpenCreateEditor ? (
-              <button
-                type="button"
-                onClick={handleOpenCreateEditor}
-                className="btn btn-ghost btn-xs gap-1 cursor-pointer"
-                aria-label={headerAddLabel}
-                title={headerAddLabel}
-              >
-                <Plus size={12} />
-              </button>
-            ) : null}
-            <button
-              onClick={handleCopy}
-              className="btn btn-ghost btn-xs gap-1 cursor-pointer"
-              aria-label={messages.valueEditor.copyValue}
-            >
-              {copied ? (
-                <Check size={12} className="text-success" />
-              ) : (
-                <Copy size={12} />
-              )}
-            </button>
-            <button
-              onClick={() => {
-                void handleDeleteKey();
-              }}
-              disabled={isDeletingKey}
-              className="btn btn-ghost btn-xs cursor-pointer text-error hover:bg-error/10"
-              aria-label={messages.valueEditor.deleteKey}
-            >
-              {isDeletingKey ? (
-                <LoaderCircle size={12} className="animate-spin" />
-              ) : (
-                <Trash2 size={12} />
-              )}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 mt-2">
-          <Clock size={11} className="text-base-content/40" />
-          {editingTTL ? (
-            <div className="flex items-center gap-1">
-              <input
-                type="number"
-                value={ttlInput}
-                onChange={(e) => setTtlInput(e.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void handleSaveTtl();
-                  } else if (event.key === "Escape") {
-                    setEditingTTL(false);
-                  }
-                }}
-                className="input input-xs w-24 font-mono bg-base-200 user-select-text"
-                placeholder={
-                  editorSettings.defaultTtl !== "-1"
-                    ? editorSettings.defaultTtl
-                    : messages.valueEditor.ttlInputPlaceholder
-                }
-                autoFocus
-              />
-              <button
-                className="btn btn-ghost btn-xs text-primary cursor-pointer"
-                onClick={() => void handleSaveTtl()}
-                disabled={isUpdatingTTL}
-              >
-                {isUpdatingTTL ? (
-                  <LoaderCircle size={11} className="animate-spin" />
-                ) : (
-                  <Save size={11} />
-                )}
-              </button>
-              <button
-                className="btn btn-ghost btn-xs cursor-pointer"
-                onClick={() => {
-                  setEditingTTL(false);
-                  setTtlInput("");
-                }}
-                disabled={isUpdatingTTL}
-              >
-                <X size={11} />
-              </button>
-            </div>
-          ) : (
-              <button
-                onClick={() => {
-                  setTtlInput(
-                    String(
-                      keyValue.ttl > 0
-                        ? keyValue.ttl
-                        : editorSettings.defaultTtl !== "-1"
+            <div className="mt-2 flex items-center gap-2">
+              <Clock size={11} className="text-base-content/40" />
+              {editingTTL ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    value={ttlInput}
+                    onChange={(e) => setTtlInput(e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleSaveTtl();
+                      } else if (event.key === "Escape") {
+                        setEditingTTL(false);
+                      }
+                    }}
+                    className="input input-xs w-24 font-mono bg-base-200 user-select-text"
+                    placeholder={
+                      editorSettings.defaultTtl !== "-1"
                         ? editorSettings.defaultTtl
-                        : ""
-                    )
-                  );
-                  setEditingTTL(true);
-                }}
-              className="text-xs font-mono text-base-content/50 hover:text-base-content cursor-pointer flex items-center gap-1 transition-colors duration-150"
-            >
-              {ttlDisplay}
-              <Edit3 size={9} className="opacity-0 group-hover:opacity-100" />
-            </button>
-          )}
+                        : messages.valueEditor.ttlInputPlaceholder
+                    }
+                    autoFocus
+                  />
+                  <button
+                    className="btn btn-ghost btn-xs text-primary cursor-pointer"
+                    onClick={() => void handleSaveTtl()}
+                    disabled={isUpdatingTTL}
+                  >
+                    {isUpdatingTTL ? (
+                      <LoaderCircle size={11} className="animate-spin" />
+                    ) : (
+                      <Save size={11} />
+                    )}
+                  </button>
+                  <button
+                    className="btn btn-ghost btn-xs cursor-pointer"
+                    onClick={() => {
+                      setEditingTTL(false);
+                      setTtlInput("");
+                    }}
+                    disabled={isUpdatingTTL}
+                  >
+                    <X size={11} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => {
+                    setTtlInput(
+                      String(
+                        keyValue.ttl > 0
+                          ? keyValue.ttl
+                          : editorSettings.defaultTtl !== "-1"
+                            ? editorSettings.defaultTtl
+                            : ""
+                      )
+                    );
+                    setEditingTTL(true);
+                  }}
+                  className="flex items-center gap-1 cursor-pointer text-xs font-mono text-base-content/50 transition-colors duration-150 hover:text-base-content"
+                >
+                  {ttlDisplay}
+                  <Edit3 size={9} className="opacity-0 group-hover:opacity-100" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="min-w-0 max-w-full self-start max-sm:w-full sm:min-w-[18rem]">
+            <HeaderToolbar
+              config={headerToolbarConfig}
+              trailingActions={headerTrailingActions}
+            />
+          </div>
         </div>
       </div>
 
@@ -497,18 +493,22 @@ export function ValueEditor({
                 activeConnection={activeConnection}
                 selectedDb={selectedDb}
                 keyName={keyValue.key}
-                rawValue={keyValue.value as string}
                 onCopy={copyText}
                 onRefreshStream={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
               />
             )}
             {keyValue.type === "hash" && (
               <HashViewer
+                key={`${keyValue.type}:${keyValue.key}`}
                 value={keyValue.value as Record<string, string>}
                 settings={editorSettings}
                 confirmDeleteEnabled={appSettings.general.confirmDelete}
+                loadMoreState={viewerLoadMoreState}
                 onCopy={copyText}
+                onCreate={handleOpenCreateEditor}
                 onRefresh={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
                 onEditRow={(field, value) => {
                   setZSetEditorState(null);
                   setSingleValueEditorState(null);
@@ -523,9 +523,13 @@ export function ValueEditor({
             )}
             {keyValue.type === "list" && (
               <ListViewer
+                key={`${keyValue.type}:${keyValue.key}`}
                 value={keyValue.value as string[]}
                 confirmDeleteEnabled={appSettings.general.confirmDelete}
+                loadMoreState={viewerLoadMoreState}
                 onCopy={copyText}
+                onCreate={handleOpenCreateEditor}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
                 onEditValue={(index, value) => {
                   setHashEditorState(null);
                   setZSetEditorState(null);
@@ -542,16 +546,25 @@ export function ValueEditor({
             )}
             {keyValue.type === "set" && (
               <SetViewer
+                key={`${keyValue.type}:${keyValue.key}`}
                 value={keyValue.value as string[]}
+                loadMoreState={viewerLoadMoreState}
                 onCopy={copyText}
+                onCreate={handleOpenCreateEditor}
+                onRefresh={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
               />
             )}
             {keyValue.type === "zset" && (
               <ZSetViewer
+                key={`${keyValue.type}:${keyValue.key}`}
                 value={keyValue.value as ZSetMember[]}
                 confirmDeleteEnabled={appSettings.general.confirmDelete}
+                loadMoreState={viewerLoadMoreState}
                 onCopy={copyText}
+                onCreate={handleOpenCreateEditor}
                 onRefresh={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
                 onEditRow={(member, score) => {
                   setHashEditorState(null);
                   setSingleValueEditorState(null);
@@ -566,27 +579,6 @@ export function ValueEditor({
             )}
           </div>
 
-          {supportsPagedValue && keyValue.page ? (
-            <div className="flex items-center justify-between rounded-xl border border-base-content/8 bg-base-100/60 px-3 py-2">
-              <span className="text-[11px] font-mono text-base-content/45">
-                {loadedSummaryLabel}
-              </span>
-              {keyValue.page.nextCursor ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    void onLoadMoreKeyValue();
-                  }}
-                  disabled={isLoadingMoreKeyValue}
-                  className="btn btn-ghost btn-xs h-7 px-2 font-mono text-[10px]"
-                >
-                  {isLoadingMoreKeyValue
-                    ? messages.valueEditor.loadingMore
-                    : messages.valueEditor.loadMore}
-                </button>
-              ) : null}
-            </div>
-          ) : null}
         </div>
       </div>
 

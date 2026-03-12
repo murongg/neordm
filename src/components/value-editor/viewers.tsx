@@ -1,4 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import {
   Check,
@@ -12,6 +19,20 @@ import {
 import { useI18n } from "../../i18n";
 import { getRedisErrorMessage } from "../../lib/redis";
 import type { ZSetMember } from "../../types";
+import {
+  DATA_TABLE_CELL_CLASS,
+  DATA_TABLE_HEADER_CLASS,
+  DATA_TABLE_INDEX_CELL_CLASS,
+  DATA_TABLE_INDEX_HEADER_CLASS,
+  DATA_TABLE_PANEL_CLASS,
+  DATA_TABLE_ROW_CLASS,
+  DataTable,
+} from "../DataTable";
+import {
+  HeaderToolbar,
+  type HeaderToolbarConfig,
+  useSyncHeaderToolbar,
+} from "./HeaderToolbar";
 import {
   compactJsonDraft,
   EditorRuntimeSettings,
@@ -306,6 +327,7 @@ function CopyableCellValue({
           setCopied(true);
         });
       }}
+      title={displayValue}
       className={`block w-full cursor-copy truncate text-left font-mono text-xs transition-colors duration-150 motion-reduce:transition-none ${
         copied ? "text-success" : ""
       } ${className ?? ""}`}
@@ -313,6 +335,29 @@ function CopyableCellValue({
       {displayValue}
     </button>
   );
+}
+
+const TABLE_PANEL_CLASS = `${DATA_TABLE_PANEL_CLASS} flex`;
+const TABLE_ACTION_COLUMN_CLASS = "w-24";
+const TABLE_ACTION_CELL_CLASS = `${TABLE_ACTION_COLUMN_CLASS} whitespace-nowrap align-top`;
+
+type HeaderToolbarChangeHandler = (config: HeaderToolbarConfig | null) => void;
+
+interface ViewerLoadMoreState {
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  onLoadMore: () => void;
+}
+
+interface IndexedValueRow {
+  index: number;
+  value: string;
+}
+
+interface RankedZSetRow {
+  rank: number;
+  member: string;
+  score: number;
 }
 
 function RowActionButton({
@@ -333,7 +378,7 @@ function RowActionButton({
       ? "text-error hover:bg-error/10 hover:text-error"
       : tone === "success"
         ? "text-success hover:bg-success/10 hover:text-success"
-        : "text-base-content/50 hover:bg-base-100 hover:text-base-content";
+        : "text-base-content/45 hover:bg-base-100/90 hover:text-base-content/82";
 
   return (
     <button
@@ -445,7 +490,7 @@ function TableRowActions({
   };
 
   return (
-    <div className="flex w-28 items-center justify-end gap-0.5 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100">
+    <div className="flex w-24 items-center justify-end gap-0 opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover:opacity-100 group-focus-within:opacity-100">
       {showCopyAction ? (
         <RowActionButton label={messages.common.copy} onClick={handleCopy}>
           {copied ? <Check size={10} /> : <Copy size={10} />}
@@ -483,30 +528,130 @@ function TableRowActions({
   );
 }
 
+function TableViewerFrame({
+  error,
+  toolbar,
+  children,
+}: {
+  error?: string;
+  toolbar?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-0 max-h-full flex-col gap-2">
+      <TableActionError error={error ?? ""} />
+      {toolbar ? <div className="flex shrink-0">{toolbar}</div> : null}
+      <div className={TABLE_PANEL_CLASS}>{children}</div>
+    </div>
+  );
+}
+
 export function HashViewer({
   value,
   settings,
   confirmDeleteEnabled,
   onCopy,
+  onCreate,
   onRefresh,
   onEditRow,
   onDeleteRow,
+  loadMoreState,
+  onHeaderToolbarChange,
 }: {
   value: Record<string, string>;
   settings: EditorRuntimeSettings;
   confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
+  onCreate: () => void;
   onRefresh: () => Promise<void>;
   onEditRow: (field: string, value: string) => void;
   onDeleteRow: (field: string) => Promise<void>;
+  loadMoreState?: ViewerLoadMoreState;
+  onHeaderToolbarChange?: HeaderToolbarChangeHandler;
 }) {
   const { messages } = useI18n();
   const entries = Object.entries(value);
   const [actionError, setActionError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const filteredEntries = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return entries;
+    }
+
+    return entries.filter(([field, entryValue]) => {
+      return (
+        field.toLocaleLowerCase().includes(normalizedQuery) ||
+        entryValue.toLocaleLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [deferredSearchQuery, entries]);
 
   useEffect(() => {
     setActionError("");
   }, [value]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setActionError("");
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } catch (error) {
+      setActionError(getRedisErrorMessage(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig>(
+    () => ({
+      search:
+        settings.hashDisplayMode === "json"
+          ? undefined
+          : {
+              value: searchQuery,
+              onChange: setSearchQuery,
+              placeholder: `${messages.valueEditor.field} / ${messages.valueEditor.value}`,
+            },
+      createAction: {
+        label: messages.keyBrowser.addEntry,
+        onClick: onCreate,
+      },
+      refreshAction: {
+        label: messages.common.refresh,
+        onClick: () => {
+          void handleRefresh();
+        },
+        disabled: isRefreshing,
+        isLoading: isRefreshing,
+      },
+    }),
+    [
+      handleRefresh,
+      isRefreshing,
+      messages.common.refresh,
+      messages.keyBrowser.addEntry,
+      messages.valueEditor.field,
+      messages.valueEditor.value,
+      onCreate,
+      searchQuery,
+      settings.hashDisplayMode,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : (
+    <HeaderToolbar config={headerToolbarConfig} />
+  );
 
   if (settings.hashDisplayMode === "json") {
     const jsonText = truncateTextByBytes(
@@ -516,6 +661,7 @@ export function HashViewer({
 
     return (
       <div className="flex h-full min-h-0 flex-col gap-2">
+        {localToolbar ? <div className="flex shrink-0">{localToolbar}</div> : null}
         <TableActionError error={actionError} />
         <pre
           className={`rounded-xl border border-base-200/50 bg-base-200/40 p-4 text-xs font-mono leading-relaxed user-select-text ${
@@ -535,87 +681,107 @@ export function HashViewer({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <TableActionError error={actionError} />
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-base-200/50">
-        <table className="table table-xs table-pin-rows table-fixed w-full">
-          <thead>
-            <tr className="bg-base-200/80">
-              <th className="w-12 font-mono text-base-content/50 text-center whitespace-nowrap">
-                {messages.valueEditor.headers.index}
-              </th>
-              <th className="w-[28%] font-mono text-base-content/50 whitespace-nowrap">
-                {messages.valueEditor.field}
-              </th>
-              <th className="font-mono text-base-content/50 whitespace-nowrap">
-                {messages.valueEditor.value}
-              </th>
-              <th className="w-28 whitespace-nowrap" />
-            </tr>
-          </thead>
-          <tbody>
-            {entries.map(([field, val], index) => (
-              <tr key={field} className="hover:bg-base-200/30 group">
-                <td className="font-mono text-base-content/30 text-center text-[10px] whitespace-nowrap align-top">
-                  {index + 1}
-                </td>
-                <td className="max-w-0 align-top">
-                  <CopyableCellValue
-                    displayValue={field}
-                    className="text-primary"
-                    onCopy={onCopy}
-                  />
-                </td>
-                <td className="max-w-0 align-top">
-                  <CopyableCellValue
-                    displayValue={val}
-                    className="text-base-content/80"
-                    onCopy={onCopy}
-                  />
-                </td>
-                <td className="whitespace-nowrap align-top">
-                  <TableRowActions
-                    onCopy={() => {
-                      setActionError("");
-                      return onCopy(
-                        JSON.stringify(
-                          {
-                            field,
-                            value: val,
-                          },
-                          null,
-                          2
-                        )
-                      );
-                    }}
-                    onRefresh={async () => {
-                      setActionError("");
-                      await onRefresh();
-                    }}
-                    onEdit={() => {
-                      setActionError("");
-                      onEditRow(field, val);
-                    }}
-                    onDelete={async () => {
-                      setActionError("");
-                      await onDeleteRow(field);
-                    }}
-                    confirmDeleteEnabled={confirmDeleteEnabled}
-                    confirmDeleteMessage={replaceTemplate(
-                      messages.valueEditor.confirmDeleteField,
-                      { field }
-                    )}
-                    onError={(error) => {
-                      setActionError(getRedisErrorMessage(error));
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <TableViewerFrame
+      error={actionError}
+      toolbar={localToolbar}
+    >
+      <DataTable
+        rows={filteredEntries}
+        getRowKey={([field]) => field}
+        rowClassName={DATA_TABLE_ROW_CLASS}
+        loadMore={
+          loadMoreState
+            ? {
+                hasMore: loadMoreState.hasMore,
+                isLoading: loadMoreState.isLoadingMore,
+                label: messages.valueEditor.loadMore,
+                loadingLabel: messages.valueEditor.loadingMore,
+                onLoadMore: loadMoreState.onLoadMore,
+              }
+            : undefined
+        }
+        columns={[
+          {
+            id: "index",
+            header: messages.valueEditor.headers.index,
+            colClassName: "w-12",
+            headerClassName: DATA_TABLE_INDEX_HEADER_CLASS,
+            cellClassName: DATA_TABLE_INDEX_CELL_CLASS,
+            renderCell: (_, index) => index + 1,
+          },
+          {
+            id: "field",
+            header: messages.valueEditor.field,
+            colClassName: "w-[28%]",
+            headerClassName: DATA_TABLE_HEADER_CLASS,
+            cellClassName: DATA_TABLE_CELL_CLASS,
+            renderCell: ([field]) => (
+              <CopyableCellValue
+                displayValue={field}
+                className="text-primary/85"
+                onCopy={onCopy}
+              />
+            ),
+          },
+          {
+            id: "value",
+            header: messages.valueEditor.value,
+            headerClassName: DATA_TABLE_HEADER_CLASS,
+            cellClassName: DATA_TABLE_CELL_CLASS,
+            renderCell: ([, val]) => (
+              <CopyableCellValue
+                displayValue={val}
+                className="text-base-content/70"
+                onCopy={onCopy}
+              />
+            ),
+          },
+          {
+            id: "actions",
+            header: null,
+            colClassName: TABLE_ACTION_COLUMN_CLASS,
+            headerClassName: `${TABLE_ACTION_COLUMN_CLASS} whitespace-nowrap`,
+            cellClassName: TABLE_ACTION_CELL_CLASS,
+            renderCell: ([field, val]) => (
+              <TableRowActions
+                onCopy={() => {
+                  setActionError("");
+                  return onCopy(
+                    JSON.stringify(
+                      {
+                        field,
+                        value: val,
+                      },
+                      null,
+                      2
+                    )
+                  );
+                }}
+                onRefresh={async () => {
+                  await handleRefresh();
+                }}
+                onEdit={() => {
+                  setActionError("");
+                  onEditRow(field, val);
+                }}
+                onDelete={async () => {
+                  setActionError("");
+                  await onDeleteRow(field);
+                }}
+                confirmDeleteEnabled={confirmDeleteEnabled}
+                confirmDeleteMessage={replaceTemplate(
+                  messages.valueEditor.confirmDeleteField,
+                  { field }
+                )}
+                onError={(error) => {
+                  setActionError(getRedisErrorMessage(error));
+                }}
+              />
+            ),
+          },
+        ]}
+      />
+    </TableViewerFrame>
   );
 }
 
@@ -623,125 +789,320 @@ export function ListViewer({
   value,
   confirmDeleteEnabled,
   onCopy,
+  onCreate,
   onRefresh,
   onEditValue,
   onDeleteValue,
+  loadMoreState,
+  onHeaderToolbarChange,
 }: {
   value: string[];
   confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
+  onCreate: () => void;
   onRefresh: () => Promise<void>;
   onEditValue: (index: number, value: string) => void;
   onDeleteValue: (index: number) => Promise<void>;
+  loadMoreState?: ViewerLoadMoreState;
+  onHeaderToolbarChange?: HeaderToolbarChangeHandler;
 }) {
   const { messages } = useI18n();
   const [actionError, setActionError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const valueRows = useMemo<IndexedValueRow[]>(
+    () => value.map((item, index) => ({ index, value: item })),
+    [value]
+  );
+  const filteredValue = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return valueRows;
+    }
+
+    return valueRows.filter((row) => {
+      return (
+        String(row.index).includes(normalizedQuery) ||
+        row.value.toLocaleLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [deferredSearchQuery, valueRows]);
+
+  useEffect(() => {
+    setActionError("");
+  }, [value]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setActionError("");
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } catch (error) {
+      setActionError(getRedisErrorMessage(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig>(
+    () => ({
+      search: {
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: messages.valueEditor.value,
+      },
+      createAction: {
+        label: messages.keyBrowser.addValue,
+        onClick: onCreate,
+      },
+      refreshAction: {
+        label: messages.common.refresh,
+        onClick: () => {
+          void handleRefresh();
+        },
+        disabled: isRefreshing,
+        isLoading: isRefreshing,
+      },
+    }),
+    [
+      handleRefresh,
+      isRefreshing,
+      messages.common.refresh,
+      messages.keyBrowser.addValue,
+      messages.valueEditor.value,
+      onCreate,
+      searchQuery,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : (
+    <HeaderToolbar config={headerToolbarConfig} />
+  );
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <TableActionError error={actionError} />
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
-        {value.map((item, index) => (
-          <div
-            key={index}
-            className="group flex w-full items-start gap-2 rounded-lg bg-base-200/50 p-2.5 transition-colors duration-150 hover:bg-base-200"
-          >
-            <div className="flex min-w-0 flex-1 items-start gap-3 text-left">
-              <span className="mt-0.5 w-5 shrink-0 text-right font-mono text-[10px] text-base-content/30">
-                {index}
-              </span>
-              <span className="min-w-0 flex-1 break-all font-mono text-xs text-base-content/80">
-                {item}
-              </span>
-            </div>
-            <div className="shrink-0">
+    <TableViewerFrame
+      error={actionError}
+      toolbar={localToolbar}
+    >
+      <DataTable
+        rows={filteredValue}
+        getRowKey={(row) => `${row.index}:${row.value}`}
+        rowClassName={DATA_TABLE_ROW_CLASS}
+        loadMore={
+          loadMoreState
+            ? {
+                hasMore: loadMoreState.hasMore,
+                isLoading: loadMoreState.isLoadingMore,
+                label: messages.valueEditor.loadMore,
+                loadingLabel: messages.valueEditor.loadingMore,
+                onLoadMore: loadMoreState.onLoadMore,
+              }
+            : undefined
+        }
+        columns={[
+          {
+            id: "index",
+            header: messages.valueEditor.headers.index,
+            colClassName: "w-12",
+            headerClassName: DATA_TABLE_INDEX_HEADER_CLASS,
+            cellClassName: DATA_TABLE_INDEX_CELL_CLASS,
+            renderCell: (row) => row.index,
+          },
+          {
+            id: "value",
+            header: messages.valueEditor.value,
+            headerClassName: DATA_TABLE_HEADER_CLASS,
+            cellClassName: DATA_TABLE_CELL_CLASS,
+            renderCell: (row) => (
+              <CopyableCellValue
+                displayValue={row.value}
+                className="text-base-content/70"
+                onCopy={onCopy}
+              />
+            ),
+          },
+          {
+            id: "actions",
+            header: null,
+            colClassName: TABLE_ACTION_COLUMN_CLASS,
+            headerClassName: `${TABLE_ACTION_COLUMN_CLASS} whitespace-nowrap`,
+            cellClassName: TABLE_ACTION_CELL_CLASS,
+            renderCell: (row) => (
               <TableRowActions
                 onCopy={() => {
                   setActionError("");
-                  return onCopy(item);
+                  return onCopy(row.value);
                 }}
                 onRefresh={async () => {
-                  setActionError("");
-                  await onRefresh();
+                  await handleRefresh();
                 }}
                 onEdit={() => {
                   setActionError("");
-                  onEditValue(index, item);
+                  onEditValue(row.index, row.value);
                 }}
                 onDelete={async () => {
                   setActionError("");
-                  await onDeleteValue(index);
+                  await onDeleteValue(row.index);
                 }}
                 confirmDeleteEnabled={confirmDeleteEnabled}
                 confirmDeleteMessage={replaceTemplate(
                   messages.valueEditor.confirmDeleteListItem,
-                  { index }
+                  { index: row.index }
                 )}
                 onError={(error) => {
                   setActionError(getRedisErrorMessage(error));
                 }}
               />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+            ),
+          },
+        ]}
+      />
+    </TableViewerFrame>
   );
 }
 
 export function SetViewer({
   value,
   onCopy,
+  onCreate,
+  onRefresh,
+  loadMoreState,
+  onHeaderToolbarChange,
 }: {
   value: string[];
   onCopy: (text: string) => Promise<void>;
+  onCreate: () => void;
+  onRefresh: () => Promise<void>;
+  loadMoreState?: ViewerLoadMoreState;
+  onHeaderToolbarChange?: HeaderToolbarChangeHandler;
 }) {
   const { messages } = useI18n();
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const filteredValue = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return value;
+    }
+
+    return value.filter((item) => item.toLocaleLowerCase().includes(normalizedQuery));
+  }, [deferredSearchQuery, value]);
 
   useEffect(() => {
-    if (copiedIndex === null) {
+    setActionError("");
+  }, [value]);
+
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setCopiedIndex(null);
-    }, 900);
+    setActionError("");
+    setIsRefreshing(true);
 
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [copiedIndex]);
+    try {
+      await onRefresh();
+    } catch (error) {
+      setActionError(getRedisErrorMessage(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig>(
+    () => ({
+      search: {
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: messages.valueEditor.member,
+      },
+      createAction: {
+        label: messages.keyBrowser.addMember,
+        onClick: onCreate,
+      },
+      refreshAction: {
+        label: messages.common.refresh,
+        onClick: () => {
+          void handleRefresh();
+        },
+        disabled: isRefreshing,
+        isLoading: isRefreshing,
+      },
+    }),
+    [
+      handleRefresh,
+      isRefreshing,
+      messages.common.refresh,
+      messages.keyBrowser.addMember,
+      messages.valueEditor.member,
+      onCreate,
+      searchQuery,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : (
+    <HeaderToolbar config={headerToolbarConfig} />
+  );
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto pr-1">
-      <div className="flex flex-wrap gap-2">
-        {value.map((item, index) => (
-          <button
-            type="button"
-            key={index}
-            onClick={() => {
-              void onCopy(item).then(() => {
-                setCopiedIndex(index);
-              });
-            }}
-            className="flex max-w-full cursor-copy items-center gap-1.5 rounded-full bg-base-200 px-3 py-1.5 transition-colors duration-150 group hover:bg-base-200/80"
-            aria-label={`${messages.common.copy} ${item}`}
-          >
-            <span className="min-w-0 truncate text-xs font-mono text-base-content/80">
-              {item}
-            </span>
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center text-base-content/35 transition-colors duration-150 group-hover:text-base-content/60">
-              {copiedIndex === index ? (
-                <Check size={9} className="text-success" />
-              ) : (
-                <Copy size={9} />
-              )}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <TableViewerFrame
+      error={actionError}
+      toolbar={localToolbar}
+    >
+      <DataTable
+        rows={filteredValue}
+        getRowKey={(item, index) => `${index}:${item}`}
+        rowClassName={DATA_TABLE_ROW_CLASS}
+        loadMore={
+          loadMoreState
+            ? {
+                hasMore: loadMoreState.hasMore,
+                isLoading: loadMoreState.isLoadingMore,
+                label: messages.valueEditor.loadMore,
+                loadingLabel: messages.valueEditor.loadingMore,
+                onLoadMore: loadMoreState.onLoadMore,
+              }
+            : undefined
+        }
+        columns={[
+          {
+            id: "index",
+            header: messages.valueEditor.headers.index,
+            colClassName: "w-12",
+            headerClassName: DATA_TABLE_INDEX_HEADER_CLASS,
+            cellClassName: DATA_TABLE_INDEX_CELL_CLASS,
+            renderCell: (_, index) => index + 1,
+          },
+          {
+            id: "member",
+            header: messages.valueEditor.member,
+            headerClassName: DATA_TABLE_HEADER_CLASS,
+            cellClassName: DATA_TABLE_CELL_CLASS,
+            renderCell: (item) => (
+              <CopyableCellValue
+                displayValue={item}
+                className="text-base-content/70"
+                onCopy={onCopy}
+              />
+            ),
+          },
+        ]}
+      />
+    </TableViewerFrame>
   );
 }
 
@@ -749,125 +1110,216 @@ export function ZSetViewer({
   value,
   confirmDeleteEnabled,
   onCopy,
+  onCreate,
   onRefresh,
   onEditRow,
   onDeleteRow,
+  loadMoreState,
+  onHeaderToolbarChange,
 }: {
   value: ZSetMember[];
   confirmDeleteEnabled: boolean;
   onCopy: (text: string) => Promise<void>;
+  onCreate: () => void;
   onRefresh: () => Promise<void>;
   onEditRow: (member: string, score: number) => void;
   onDeleteRow: (member: string) => Promise<void>;
+  loadMoreState?: ViewerLoadMoreState;
+  onHeaderToolbarChange?: HeaderToolbarChangeHandler;
 }) {
   const { messages } = useI18n();
   const [actionError, setActionError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const valueRows = useMemo<RankedZSetRow[]>(
+    () =>
+      value.map((item, index) => ({
+        rank: index + 1,
+        member: item.member,
+        score: item.score,
+      })),
+    [value]
+  );
+  const filteredValue = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLocaleLowerCase();
+
+    if (!normalizedQuery) {
+      return valueRows;
+    }
+
+    return valueRows.filter((item) => {
+      return (
+        item.member.toLocaleLowerCase().includes(normalizedQuery) ||
+        String(item.score).toLocaleLowerCase().includes(normalizedQuery) ||
+        item.score.toLocaleString().toLocaleLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [deferredSearchQuery, valueRows]);
 
   useEffect(() => {
     setActionError("");
   }, [value]);
 
+  const handleRefresh = useCallback(async () => {
+    if (isRefreshing) {
+      return;
+    }
+
+    setActionError("");
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } catch (error) {
+      setActionError(getRedisErrorMessage(error));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig>(
+    () => ({
+      search: {
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: `${messages.valueEditor.member} / ${messages.valueEditor.score}`,
+      },
+      createAction: {
+        label: messages.keyBrowser.addMember,
+        onClick: onCreate,
+      },
+      refreshAction: {
+        label: messages.common.refresh,
+        onClick: () => {
+          void handleRefresh();
+        },
+        disabled: isRefreshing,
+        isLoading: isRefreshing,
+      },
+    }),
+    [
+      handleRefresh,
+      isRefreshing,
+      messages.common.refresh,
+      messages.keyBrowser.addMember,
+      messages.valueEditor.member,
+      messages.valueEditor.score,
+      onCreate,
+      searchQuery,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : (
+    <HeaderToolbar config={headerToolbarConfig} />
+  );
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
-      <TableActionError error={actionError} />
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-xl border border-base-200/50">
-        <table
-          className="table table-xs table-pin-rows w-full"
-          style={{ tableLayout: "fixed" }}
-        >
-          <colgroup>
-            <col className="w-16" />
-            <col />
-            <col className="w-28" />
-            <col className="w-28" />
-          </colgroup>
-          <thead>
-            <tr className="bg-base-200/80">
-              <th className="w-16 font-mono text-base-content/50 text-center whitespace-nowrap">
-                {messages.valueEditor.rank}
-              </th>
-              <th className="font-mono text-base-content/50 whitespace-nowrap">
-                {messages.valueEditor.member}
-              </th>
-              <th className="w-28 font-mono text-base-content/50 text-right whitespace-nowrap">
-                {messages.valueEditor.score}
-              </th>
-              <th className="w-28 whitespace-nowrap" />
-            </tr>
-          </thead>
-          <tbody>
-            {value.map((item, index) => (
-              <tr key={item.member} className="hover:bg-base-200/30 group">
-                <td className="font-mono text-center whitespace-nowrap align-top">
-                  <span
-                    className={`badge badge-xs font-mono ${
-                      index === 0
-                        ? "badge-warning"
-                        : index === 1
-                          ? "badge-ghost"
-                          : "badge-ghost opacity-50"
-                    }`}
-                  >
-                    #{index + 1}
-                  </span>
-                </td>
-                <td className="max-w-0 align-top">
-                  <CopyableCellValue
-                    displayValue={item.member}
-                    className="text-base-content/80"
-                    onCopy={onCopy}
-                  />
-                </td>
-                <td className="w-28 max-w-0 align-top text-right">
-                  <CopyableCellValue
-                    displayValue={item.score.toLocaleString()}
-                    copyValue={String(item.score)}
-                    className="text-right whitespace-nowrap text-primary"
-                    onCopy={onCopy}
-                  />
-                </td>
-                <td className="w-28 whitespace-nowrap align-top">
-                  <TableRowActions
-                    onCopy={() => {
-                      setActionError("");
-                      return onCopy(
-                        JSON.stringify(
-                          {
-                            member: item.member,
-                            score: item.score,
-                          },
-                          null,
-                          2
-                        )
-                      );
-                    }}
-                    onRefresh={async () => {
-                      setActionError("");
-                      await onRefresh();
-                    }}
-                    onEdit={() => {
-                      setActionError("");
-                      onEditRow(item.member, item.score);
-                    }}
-                    onDelete={async () => {
-                      setActionError("");
-                      await onDeleteRow(item.member);
-                    }}
-                    confirmDeleteEnabled={confirmDeleteEnabled}
-                    confirmDeleteMessage={replaceTemplate(
-                      messages.valueEditor.confirmDeleteMember,
-                      { member: item.member }
-                    )}
-                    onError={(error) => {
-                      setActionError(getRedisErrorMessage(error));
-                    }}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <TableViewerFrame
+      error={actionError}
+      toolbar={localToolbar}
+    >
+      <DataTable
+        rows={filteredValue}
+        getRowKey={(item) => item.member}
+        rowClassName={DATA_TABLE_ROW_CLASS}
+        loadMore={
+          loadMoreState
+            ? {
+                hasMore: loadMoreState.hasMore,
+                isLoading: loadMoreState.isLoadingMore,
+                label: messages.valueEditor.loadMore,
+                loadingLabel: messages.valueEditor.loadingMore,
+                onLoadMore: loadMoreState.onLoadMore,
+              }
+            : undefined
+        }
+        columns={[
+          {
+            id: "rank",
+            header: messages.valueEditor.rank,
+            colClassName: "w-16",
+            headerClassName:
+              "w-16 text-center font-mono text-base-content/50 whitespace-nowrap",
+            cellClassName: DATA_TABLE_INDEX_CELL_CLASS,
+            renderCell: (item) => item.rank,
+          },
+          {
+            id: "member",
+            header: messages.valueEditor.member,
+            headerClassName: DATA_TABLE_HEADER_CLASS,
+            cellClassName: DATA_TABLE_CELL_CLASS,
+            renderCell: (item) => (
+              <CopyableCellValue
+                displayValue={item.member}
+                className="text-base-content/70"
+                onCopy={onCopy}
+              />
+            ),
+          },
+          {
+            id: "score",
+            header: messages.valueEditor.score,
+            colClassName: "w-28",
+            headerClassName:
+              "w-28 text-right font-mono text-base-content/50 whitespace-nowrap",
+            cellClassName: "w-28 max-w-0 align-top text-right",
+            renderCell: (item) => (
+              <CopyableCellValue
+                displayValue={item.score.toLocaleString()}
+                copyValue={String(item.score)}
+                className="text-right whitespace-nowrap text-primary/85"
+                onCopy={onCopy}
+              />
+            ),
+          },
+          {
+            id: "actions",
+            header: null,
+            colClassName: TABLE_ACTION_COLUMN_CLASS,
+            headerClassName: `${TABLE_ACTION_COLUMN_CLASS} whitespace-nowrap`,
+            cellClassName: TABLE_ACTION_CELL_CLASS,
+            renderCell: (item) => (
+              <TableRowActions
+                onCopy={() => {
+                  setActionError("");
+                  return onCopy(
+                    JSON.stringify(
+                      {
+                        member: item.member,
+                        score: item.score,
+                      },
+                      null,
+                      2
+                    )
+                  );
+                }}
+                onRefresh={async () => {
+                  await handleRefresh();
+                }}
+                onEdit={() => {
+                  setActionError("");
+                  onEditRow(item.member, item.score);
+                }}
+                onDelete={async () => {
+                  setActionError("");
+                  await onDeleteRow(item.member);
+                }}
+                confirmDeleteEnabled={confirmDeleteEnabled}
+                confirmDeleteMessage={replaceTemplate(
+                  messages.valueEditor.confirmDeleteMember,
+                  { member: item.member }
+                )}
+                onError={(error) => {
+                  setActionError(getRedisErrorMessage(error));
+                }}
+              />
+            ),
+          },
+        ]}
+      />
+    </TableViewerFrame>
   );
 }

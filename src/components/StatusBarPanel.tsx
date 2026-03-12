@@ -8,18 +8,29 @@ import { Tooltip } from "./Tooltip";
 
 export const StatusBarPanel = memo(function StatusBarPanel() {
   const { messages, format } = useI18n();
-  const { keysCount, selectedKey } = useRedisWorkspaceStore(
+  const { keysCount, selectedKey, keyValue } = useRedisWorkspaceStore(
     useShallow((state) => ({
       keysCount: state.keys.length,
       selectedKey: state.selectedKey,
+      keyValue: state.keyValue,
     }))
   );
+  const countLabel =
+    keyValue &&
+    selectedKey &&
+    keyValue.key === selectedKey.key &&
+    typeof keyValue.page?.totalCount === "number"
+      ? format(messages.valueEditor.loadedSummary, {
+          loaded: keyValue.page.loadedCount,
+          total: keyValue.page.totalCount,
+        })
+      : format(messages.app.status.keysCount, { count: keysCount });
 
   return (
     <div className="flex items-center justify-between px-4 h-7 border-t border-base-100/50 shrink-0">
       <div className="flex min-w-0 flex-1 items-center gap-4">
         <span className="shrink-0 text-[10px] font-mono text-base-content/30">
-          {format(messages.app.status.keysCount, { count: keysCount })}
+          {countLabel}
         </span>
         {selectedKey && (
           <>

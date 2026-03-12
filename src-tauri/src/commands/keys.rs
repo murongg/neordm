@@ -613,6 +613,7 @@ pub async fn get_redis_key_value_page(
     let key_type = normalize_key_type(&raw_type);
     let mut next_cursor = None;
     let mut total_count = None;
+    let mut loaded_count_override = None;
 
     let value = match key_type.as_str() {
         "string" => {
@@ -792,7 +793,10 @@ pub async fn get_redis_key_value_page(
             JsonValue::String(json_text)
         }
         "stream" => {
-            let stream_value: Value = redis::cmd("XRANGE")
+            let (count, stream_value): (u64, Value) = redis::pipe()
+                .cmd("XLEN")
+                .arg(&input.key)
+                .cmd("XRANGE")
                 .arg(&input.key)
                 .arg("-")
                 .arg("+")
@@ -802,17 +806,20 @@ pub async fn get_redis_key_value_page(
                 .await
                 .map_err(|error| format!("Failed to get stream value: {error}"))?;
 
+            total_count = Some(count);
+            loaded_count_override = Some(count.min(100));
+
             JsonValue::String(format_cli_output(stream_value))
         }
         _ => JsonValue::Null,
     };
 
-    let loaded_count = match &value {
+    let loaded_count = loaded_count_override.unwrap_or_else(|| match &value {
         JsonValue::Object(entries) => entries.len() as u64,
         JsonValue::Array(items) => items.len() as u64,
         JsonValue::Null => 0,
         _ => 1,
-    };
+    });
     let (slot, node_address) = resolve_key_location(&input.connection, &input.key).await?;
 
     Ok(RedisKeyValuePageResponse {

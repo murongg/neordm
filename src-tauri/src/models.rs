@@ -133,6 +133,15 @@ pub(crate) struct RedisStreamEntryAppendInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntriesLookupInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) key: String,
+    pub(crate) page_size: Option<u32>,
+    pub(crate) cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisStreamPendingEntriesInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) key: String,
@@ -456,6 +465,14 @@ pub(crate) struct RedisStreamEntryField {
 pub(crate) struct RedisStreamEntry {
     pub(crate) id: String,
     pub(crate) fields: Vec<RedisStreamEntryField>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisStreamEntriesResponse {
+    pub(crate) total_count: u64,
+    pub(crate) next_cursor: Option<String>,
+    pub(crate) entries: Vec<RedisStreamEntry>,
 }
 
 #[derive(Clone, Debug, Serialize)]

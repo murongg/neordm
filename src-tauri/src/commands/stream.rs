@@ -1,15 +1,17 @@
 use crate::models::{
     RedisKeyCreateEntryInput, RedisKeyLookupInput, RedisStreamAckInput, RedisStreamClaimInput,
     RedisStreamConsumer, RedisStreamConsumerDeleteInput, RedisStreamConsumerGroup,
-    RedisStreamEntry, RedisStreamEntryAppendInput, RedisStreamEntryDeleteInput,
-    RedisStreamEntryField, RedisStreamGroupCreateInput, RedisStreamGroupLookupInput,
-    RedisStreamPendingEntriesInput, RedisStreamPendingEntry,
+    RedisStreamEntriesLookupInput, RedisStreamEntriesResponse, RedisStreamEntry,
+    RedisStreamEntryAppendInput, RedisStreamEntryDeleteInput, RedisStreamEntryField,
+    RedisStreamGroupCreateInput, RedisStreamGroupLookupInput, RedisStreamPendingEntriesInput,
+    RedisStreamPendingEntry,
 };
 use crate::redis_support::{open_connection, redis_value_to_string};
 use redis::Value;
 
 const DEFAULT_STREAM_PENDING_COUNT: u32 = 100;
 const DEFAULT_STREAM_ENTRIES_COUNT: u32 = 100;
+const MAX_STREAM_ENTRIES_COUNT: u32 = 500;
 
 fn unwrap_attribute(value: Value) -> Value {
     match value {
@@ -292,21 +294,46 @@ fn parse_claimed_ids(value: Value) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn get_redis_stream_entries(
-    input: RedisKeyLookupInput,
-) -> Result<Vec<RedisStreamEntry>, String> {
+    input: RedisStreamEntriesLookupInput,
+) -> Result<RedisStreamEntriesResponse, String> {
     let key = normalize_non_empty(input.key, "Key")?;
+    let page_size = input
+        .page_size
+        .unwrap_or(DEFAULT_STREAM_ENTRIES_COUNT)
+        .clamp(1, MAX_STREAM_ENTRIES_COUNT);
+    let cursor = input
+        .cursor
+        .map(|cursor| cursor.trim().to_string())
+        .filter(|cursor| !cursor.is_empty());
+    let start = cursor
+        .as_ref()
+        .map(|cursor| format!("({cursor}"))
+        .unwrap_or_else(|| "-".to_string());
     let mut connection = open_connection(&input.connection).await?;
-    let response: Value = redis::cmd("XRANGE")
+    let (total_count, response): (u64, Value) = redis::pipe()
+        .cmd("XLEN")
         .arg(&key)
-        .arg("-")
+        .cmd("XRANGE")
+        .arg(&key)
+        .arg(start)
         .arg("+")
         .arg("COUNT")
-        .arg(DEFAULT_STREAM_ENTRIES_COUNT)
+        .arg(page_size)
         .query_async(&mut connection)
         .await
         .map_err(|error| format!("Failed to load stream entries: {error}"))?;
+    let entries = parse_stream_entries(response)?;
+    let next_cursor = if entries.len() < page_size as usize {
+        None
+    } else {
+        entries.last().map(|entry| entry.id.clone())
+    };
 
-    parse_stream_entries(response)
+    Ok(RedisStreamEntriesResponse {
+        total_count,
+        next_cursor,
+        entries,
+    })
 }
 
 #[tauri::command]

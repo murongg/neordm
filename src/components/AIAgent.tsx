@@ -1,4 +1,6 @@
 import {
+  Children,
+  isValidElement,
   memo,
   useCallback,
   useDeferredValue,
@@ -7,6 +9,8 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactElement,
+  type ReactNode,
 } from "react";
 import {
   AlertTriangle,
@@ -31,7 +35,10 @@ import type {
   PendingAiCommandConfirmation,
 } from "../types";
 import { useI18n } from "../i18n";
+import { DataTable } from "./DataTable";
 import { useToast } from "./ToastProvider";
+
+type MarkdownTableCell = ReactElement<{ children?: ReactNode }>;
 
 type ProcessBlock =
   | {
@@ -985,6 +992,16 @@ const MessageContent = memo(function MessageContent({
   const blockCodeToneClass = subtle
     ? "block overflow-x-auto rounded-lg bg-base-300/80 px-3 py-2 text-[11px] text-base-content/65"
     : "block overflow-x-auto rounded-lg bg-base-300 px-3 py-2 text-[11px] text-primary";
+  const parseTableSectionRows = (sectionChildren: ReactNode) =>
+    Children.toArray(sectionChildren).filter(
+      (child): child is ReactElement<{ children?: ReactNode }> =>
+        isValidElement(child) && child.type === "tr"
+    );
+  const parseTableCells = (rowChildren: ReactNode) =>
+    Children.toArray(rowChildren).filter(
+      (child): child is ReactElement<{ children?: ReactNode }> =>
+        isValidElement(child) && (child.type === "th" || child.type === "td")
+    );
 
   return (
     <Markdown
@@ -1055,24 +1072,50 @@ const MessageContent = memo(function MessageContent({
           </h3>
         ),
         hr: () => <hr className="my-2 border-base-content/10" />,
-        table: ({ children }) => (
-          <div className="my-2 overflow-x-auto rounded-lg border border-base-content/10">
-            <table className={`min-w-full border-collapse text-[11px] ${textToneClass}`}>
-              {children}
-            </table>
-          </div>
-        ),
-        thead: ({ children }) => <thead className="bg-base-300/80">{children}</thead>,
-        th: ({ children }) => (
-          <th className="border-b border-base-content/10 px-2 py-1.5 text-left font-semibold text-base-content">
-            {children}
-          </th>
-        ),
-        td: ({ children }) => (
-          <td className="border-b border-base-content/5 px-2 py-1.5 align-top">
-            {children}
-          </td>
-        ),
+        table: ({ children }) => {
+          const sections = Children.toArray(children).filter(
+            (child): child is ReactElement<{ children?: ReactNode }> =>
+              isValidElement(child) &&
+              (child.type === "thead" || child.type === "tbody")
+          );
+          const thead = sections.find((section) => section.type === "thead");
+          const tbody = sections.find((section) => section.type === "tbody");
+          const headerRow = thead
+            ? parseTableSectionRows(thead.props.children)[0] ?? null
+            : null;
+          const headerCells = headerRow ? parseTableCells(headerRow.props.children) : [];
+          const bodyRows = tbody ? parseTableSectionRows(tbody.props.children) : [];
+          const rows: MarkdownTableCell[][] = bodyRows.map((row) =>
+            parseTableCells(row.props.children)
+          );
+
+          if (!headerCells.length) {
+            return (
+              <div className="my-2 overflow-x-auto rounded-lg border border-base-content/10">
+                {children}
+              </div>
+            );
+          }
+
+          return (
+            <DataTable
+              rows={rows}
+              columns={headerCells.map((cell, index) => ({
+                id: `markdown-col-${index}`,
+                header: cell.props.children,
+                headerClassName: "text-left font-semibold text-base-content",
+                cellClassName: "align-top",
+                renderCell: (row: MarkdownTableCell[]) => row[index]?.props.children ?? null,
+              }))}
+              getRowKey={(_, index) => `markdown-row-${index}`}
+              size="sm"
+              containerClassName="my-2 overflow-hidden rounded-lg border border-base-content/10"
+              scrollAreaClassName="overflow-x-auto"
+              tableClassName={`min-w-full ${textToneClass}`}
+              headerRowClassName="bg-base-300/80"
+            />
+          );
+        },
       }}
     >
       {content}
