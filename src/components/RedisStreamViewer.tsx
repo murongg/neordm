@@ -101,12 +101,6 @@ function replaceTemplate(template: string, values: Record<string, string | numbe
   );
 }
 
-function compactActionClass(disabled: boolean) {
-  return `btn btn-ghost btn-xs h-7 min-h-7 gap-1 ${
-    disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-  }`;
-}
-
 function smallIconButtonClass(disabled: boolean, tone?: "danger") {
   return `btn btn-ghost btn-xs h-6 min-h-6 w-6 p-0 ${
     tone === "danger" ? "text-error " : ""
@@ -268,6 +262,8 @@ export function RedisStreamViewer({
   const panelClass = DATA_TABLE_PANEL_CLASS;
   const eyebrowClass =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-base-content/45";
+  const sectionTitleClass = "text-sm font-medium text-base-content";
+  const cardTitleClass = "truncate text-[13px] font-medium text-base-content";
   const emptyClass =
     "flex min-h-[96px] items-center justify-center rounded-xl border border-dashed border-base-content/10 bg-base-100/45 px-3 py-4 text-center text-sm text-base-content/42";
   const inputClass =
@@ -1262,7 +1258,7 @@ export function RedisStreamViewer({
         <div className="grid min-h-0 min-w-0 flex-1 gap-3 sm:grid-cols-[260px_minmax(0,1fr)]">
           <section className={`${panelClass} min-h-0 self-start`}>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-base-content/8 px-3 py-2.5">
-              <div className="flex items-center gap-2 text-sm font-semibold text-base-content">
+              <div className={`flex items-center gap-2 ${sectionTitleClass}`}>
                 <Users size={14} className="text-primary" />
                 {text.groups}
               </div>
@@ -1272,14 +1268,15 @@ export function RedisStreamViewer({
                   void refreshGroups();
                 }}
                 disabled={isLoadingGroups}
-                className={compactActionClass(isLoadingGroups)}
+                aria-label={text.refreshGroups}
+                title={text.refreshGroups}
+                className={smallIconButtonClass(isLoadingGroups)}
               >
                 {isLoadingGroups ? (
                   <LoaderCircle size={11} className="animate-spin" />
                 ) : (
                   <RotateCw size={11} />
                 )}
-                {text.refreshGroups}
               </button>
             </div>
 
@@ -1343,7 +1340,7 @@ export function RedisStreamViewer({
                       >
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
-                            <div className="truncate text-[13px] font-semibold text-base-content">
+                            <div className={cardTitleClass}>
                               {group.name}
                             </div>
                             <div className="mt-1 truncate text-[10px] font-mono text-base-content/42">
@@ -1394,7 +1391,7 @@ export function RedisStreamViewer({
           <div className="grid min-h-0 min-w-0 gap-3 xl:grid-cols-[220px_minmax(0,1fr)]">
             <section className={`${panelClass} min-h-0`}>
               <div className="flex items-center justify-between gap-3 border-b border-base-content/8 px-3 py-2.5">
-                <div className="text-sm font-semibold text-base-content">{text.consumers}</div>
+                <div className={sectionTitleClass}>{text.consumers}</div>
                 {activeGroup ? (
                   <span className="badge badge-ghost badge-xs font-mono">
                     {activeGroup.name}
@@ -1416,7 +1413,7 @@ export function RedisStreamViewer({
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="truncate text-[13px] font-semibold text-base-content">
+                              <div className={cardTitleClass}>
                                 {consumer.name}
                               </div>
                               <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-base-content/62">
@@ -1463,7 +1460,7 @@ export function RedisStreamViewer({
             <section className={`${panelClass} min-h-0`}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-base-content/8 px-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm font-semibold text-base-content">{text.pending}</div>
+                  <div className={sectionTitleClass}>{text.pending}</div>
                   <div className="mt-0.5 text-[10px] font-mono text-base-content/38">
                     {activeGroup
                       ? replaceTemplate(text.pendingCount, {
@@ -1480,7 +1477,9 @@ export function RedisStreamViewer({
                     }
                   }}
                   disabled={!selectedGroupName || isLoadingGroupDetails}
-                  className={compactActionClass(
+                  aria-label={text.refreshPending}
+                  title={text.refreshPending}
+                  className={smallIconButtonClass(
                     !selectedGroupName || isLoadingGroupDetails
                   )}
                 >
@@ -1489,7 +1488,6 @@ export function RedisStreamViewer({
                   ) : (
                     <RotateCw size={11} />
                   )}
-                  {text.refreshPending}
                 </button>
               </div>
 
