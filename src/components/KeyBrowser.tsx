@@ -58,6 +58,7 @@ interface KeyBrowserProps {
   hasMoreKeys: boolean;
   isLoadingMoreKeys: boolean;
   onRefresh: () => void;
+  onClearSelection: () => void;
   onLoadMoreKeys: () => Promise<void>;
   onCancelLoadMoreKeys: () => void;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
@@ -501,6 +502,7 @@ export function KeyBrowser({
   hasMoreKeys,
   isLoadingMoreKeys,
   onRefresh,
+  onClearSelection,
   onLoadMoreKeys,
   onCancelLoadMoreKeys,
   onCreateKey,
@@ -1646,6 +1648,27 @@ export function KeyBrowser({
       });
     }
   }, [closeKeyContextMenu, messages.common.copied, renderedKeyContextMenu, showToast]);
+  const handleBlankAreaClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      const target = event.target;
+
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const clickedBlankArea =
+        target === event.currentTarget ||
+        target.closest("[data-key-browser-blank='true']") !== null;
+
+      if (!clickedBlankArea || !selectedKey) {
+        return;
+      }
+
+      clearPendingKeySelection();
+      onClearSelection();
+    },
+    [clearPendingKeySelection, onClearSelection, selectedKey]
+  );
 
   const activeSelectedKeyName =
     editingKeyName ?? pendingSelectedKeyName ?? selectedKey?.key ?? null;
@@ -1881,6 +1904,7 @@ export function KeyBrowser({
 
       <div
         ref={scrollContainerRef}
+        onClick={handleBlankAreaClick}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto py-1"
         style={{ scrollbarGutter: "stable" }}
@@ -1919,7 +1943,11 @@ export function KeyBrowser({
               </div>
             ) : null}
             {topSpacerHeight > 0 ? (
-              <div style={{ height: topSpacerHeight }} aria-hidden="true" />
+              <div
+                data-key-browser-blank="true"
+                style={{ height: topSpacerHeight }}
+                aria-hidden="true"
+              />
             ) : null}
             {virtualRows.map((row) =>
               row.kind === "group" ? (
@@ -1975,7 +2003,11 @@ export function KeyBrowser({
               )
             )}
             {bottomSpacerHeight > 0 ? (
-              <div style={{ height: bottomSpacerHeight }} aria-hidden="true" />
+              <div
+                data-key-browser-blank="true"
+                style={{ height: bottomSpacerHeight }}
+                aria-hidden="true"
+              />
             ) : null}
             <LoadMoreSection
               hasMore={hasMoreKeys}

@@ -283,6 +283,7 @@ interface RedisWorkspaceStoreState {
   selectDb: (db: number) => Promise<void>;
   refreshKeys: () => Promise<void>;
   refreshKeyValue: () => Promise<void>;
+  clearSelectedKey: () => void;
   selectClusterNode: (nodeAddress: string | null) => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
   createKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
@@ -1055,6 +1056,14 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         }
       );
     },
+    clearSelectedKey: () => {
+      keyValueRequestId += 1;
+      set({
+        selectedKey: null,
+        keyValue: null,
+        isLoadingMoreKeyValue: false,
+      });
+    },
     selectClusterNode: async (nodeAddress) => {
       const state = get();
       const activeConnection = getActiveConnectionFromState(state);
@@ -1541,6 +1550,7 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       createKey: state.createKey,
       deleteKey: state.deleteKey,
       deleteGroup: state.deleteGroup,
+      clearSelectedKey: state.clearSelectedKey,
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
       removeKeyFromState: state.removeKeyFromState,

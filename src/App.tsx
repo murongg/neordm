@@ -72,6 +72,22 @@ function isMacOSPlatform() {
   return /mac/i.test(navigator.platform || navigator.userAgent);
 }
 
+function isPrimaryShortcut(event: KeyboardEvent, key: string) {
+  return (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === key;
+}
+
+function isRefreshShortcut(event: KeyboardEvent) {
+  if (event.key === "F5") {
+    return true;
+  }
+
+  return (
+    isPrimaryShortcut(event, "r") &&
+    !event.shiftKey &&
+    !event.altKey
+  );
+}
+
 function App() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
@@ -156,16 +172,30 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "k") {
+      if (event.isComposing || event.repeat) {
         return;
       }
 
-      if (!event.metaKey && !event.ctrlKey) {
+      if (isPrimaryShortcut(event, "k")) {
+        event.preventDefault();
+        setShowCommandPalette((currentValue) => !currentValue);
+        return;
+      }
+
+      if (!isRefreshShortcut(event)) {
         return;
       }
 
       event.preventDefault();
-      setShowCommandPalette((currentValue) => !currentValue);
+
+      const workspace = useRedisWorkspaceStore.getState();
+
+      if (workspace.selectedKey) {
+        void workspace.refreshKeyValue();
+        return;
+      }
+
+      void workspace.refreshKeys();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);

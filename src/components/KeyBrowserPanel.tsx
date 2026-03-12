@@ -18,6 +18,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connections: state.connections,
+      clearSelectedKey: state.clearSelectedKey,
       createKey: state.createKey,
       cancelLoadMoreKeys: state.cancelLoadMoreKeys,
       deleteKey: state.deleteKey,
@@ -55,6 +56,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       onSelectDb={workspace.selectDb}
       isRefreshing={workspace.isLoadingKeys}
       onRefresh={workspace.refreshKeys}
+      onClearSelection={workspace.clearSelectedKey}
       onCreateKey={workspace.createKey}
       onCancelLoadMoreKeys={workspace.cancelLoadMoreKeys}
       confirmBeforeDelete={preferences.confirmBeforeDelete}
