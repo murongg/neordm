@@ -103,7 +103,6 @@ export function AIAgent({
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messageStreamRef = useRef<HTMLDivElement>(null);
-  const bottomAnchorRef = useRef<HTMLDivElement>(null);
   const scrollFrameRef = useRef<number | null>(null);
   const autoScrollPinnedRef = useRef(true);
   const lastAutoScrollAtRef = useRef(0);
@@ -127,15 +126,7 @@ export function AIAgent({
   }, []);
 
   const scrollToBottom = useCallback(() => {
-    const anchor = bottomAnchorRef.current;
     const container = scrollContainerRef.current;
-
-    if (anchor) {
-      anchor.scrollIntoView({
-        block: "end",
-      });
-      return;
-    }
 
     if (container) {
       container.scrollTop = container.scrollHeight;
@@ -210,11 +201,26 @@ export function AIAgent({
     };
   }, []);
 
+  const sendMessage = useCallback(
+    (content: string) => {
+      const trimmed = content.trim();
+
+      if (!trimmed || isResponding) {
+        return;
+      }
+
+      autoScrollPinnedRef.current = true;
+      scheduleScrollToBottom(true);
+      onSend(trimmed);
+    },
+    [isResponding, onSend, scheduleScrollToBottom]
+  );
+
   const handleSend = useCallback(() => {
     if (!input.trim() || isResponding) return;
-    onSend(input.trim());
+    sendMessage(input);
     setInput("");
-  }, [input, isResponding, onSend]);
+  }, [input, isResponding, sendMessage]);
 
   const handleCopyCmd = useCallback((cmd: string) => {
     void navigator.clipboard.writeText(cmd).then(() => {
@@ -278,7 +284,6 @@ export function AIAgent({
               assistantEvents={deferredActiveAssistantEvents}
             />
           )}
-          <div ref={bottomAnchorRef} aria-hidden="true" className="h-px w-full" />
         </div>
       </div>
 
@@ -293,7 +298,7 @@ export function AIAgent({
               <button
                 key={s}
                 disabled={isResponding}
-                onClick={() => onSend(s)}
+                onClick={() => sendMessage(s)}
                 className="px-2.5 py-1 rounded-lg text-[10px] font-mono bg-base-200 hover:bg-base-100 text-base-content/60 hover:text-base-content transition-colors duration-150 cursor-pointer border border-base-content/5"
               >
                 {s}
