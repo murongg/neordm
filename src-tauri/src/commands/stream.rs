@@ -87,6 +87,33 @@ fn get_optional_u64_field(pairs: &[(String, Value)], field: &str) -> Result<Opti
     }
 }
 
+fn get_optional_u64_field_lossy(
+    pairs: &[(String, Value)],
+    field: &str,
+) -> Result<Option<u64>, String> {
+    let Some(value) = pairs
+        .iter()
+        .find(|(key, _)| key == field)
+        .map(|(_, value)| value.clone())
+    else {
+        return Ok(None);
+    };
+
+    match value {
+        Value::Nil => Ok(None),
+        other => {
+            let raw = redis_value_to_string(other)?;
+            let trimmed = raw.trim();
+
+            if trimmed.is_empty() {
+                return Ok(None);
+            }
+
+            Ok(trimmed.parse::<u64>().ok())
+        }
+    }
+}
+
 fn parse_stream_groups(value: Value) -> Result<Vec<RedisStreamConsumerGroup>, String> {
     let groups = match unwrap_attribute(value) {
         Value::Array(groups) => groups,
@@ -177,10 +204,51 @@ fn parse_stream_consumers(value: Value) -> Result<Vec<RedisStreamConsumer>, Stri
                 name: get_required_string_field(&pairs, "name")?,
                 pending: get_required_u64_field(&pairs, "pending")?,
                 idle: get_required_u64_field(&pairs, "idle")?,
-                inactive: get_optional_u64_field(&pairs, "inactive")?,
+                // Some Redis-compatible servers return a placeholder instead of a number
+                // for `inactive` when the consumer has not processed messages yet.
+                inactive: get_optional_u64_field_lossy(&pairs, "inactive")?,
             })
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn bulk(value: &str) -> Value {
+        Value::BulkString(value.as_bytes().to_vec())
+    }
+
+    #[test]
+    fn parse_stream_consumers_keeps_numeric_inactive() {
+        let consumers = parse_stream_consumers(Value::Array(vec![Value::Map(vec![
+            (bulk("name"), bulk("worker-1")),
+            (bulk("pending"), Value::Int(0)),
+            (bulk("idle"), Value::Int(42)),
+            (bulk("inactive"), Value::Int(128)),
+        ])]))
+        .expect("stream consumers should parse");
+
+        assert_eq!(consumers.len(), 1);
+        assert_eq!(consumers[0].name, "worker-1");
+        assert_eq!(consumers[0].inactive, Some(128));
+    }
+
+    #[test]
+    fn parse_stream_consumers_ignores_invalid_inactive() {
+        let consumers = parse_stream_consumers(Value::Array(vec![Value::Map(vec![
+            (bulk("name"), bulk("worker-1")),
+            (bulk("pending"), Value::Int(0)),
+            (bulk("idle"), Value::Int(42)),
+            (bulk("inactive"), bulk("N/A")),
+        ])]))
+        .expect("invalid optional inactive should be ignored");
+
+        assert_eq!(consumers.len(), 1);
+        assert_eq!(consumers[0].name, "worker-1");
+        assert_eq!(consumers[0].inactive, None);
+    }
 }
 
 fn parse_stream_pending_entries(value: Value) -> Result<Vec<RedisStreamPendingEntry>, String> {
