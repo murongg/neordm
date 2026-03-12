@@ -62,6 +62,7 @@ interface KeyBrowserProps {
   onLoadMoreKeys: () => Promise<void>;
   onCancelLoadMoreKeys: () => void;
   onCreateKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
+  onDeleteKeys: (keys: RedisKey[]) => Promise<number>;
   confirmBeforeDelete: boolean;
   defaultTtl: string;
   keySeparator: string;
@@ -450,6 +451,45 @@ function collectTreeGroupIds(nodes: KeyTreeNode[]): string[] {
   );
 }
 
+function collectGroupRedisKeys(node: KeyTreeGroupNode): RedisKey[] {
+  return node.children.flatMap((childNode) =>
+    childNode.kind === "group"
+      ? collectGroupRedisKeys(childNode)
+      : [childNode.redisKey]
+  );
+}
+
+function getSelectionRowId(row: VisibleTreeRow) {
+  return row.kind === "group" ? `group:${row.group.id}` : `key:${row.redisKey.key}`;
+}
+
+function collectKeysFromVisibleRows(rows: VisibleTreeRow[]): RedisKey[] {
+  const collectedKeys: RedisKey[] = [];
+  const seenKeys = new Set<string>();
+
+  rows.forEach((row) => {
+    const rowKeys =
+      row.kind === "group" ? collectGroupRedisKeys(row.group) : [row.redisKey];
+
+    rowKeys.forEach((redisKey) => {
+      if (seenKeys.has(redisKey.key)) {
+        return;
+      }
+
+      seenKeys.add(redisKey.key);
+      collectedKeys.push(redisKey);
+    });
+  });
+
+  return collectedKeys;
+}
+
+function isMultiSelectModifierPressed(
+  event: ReactMouseEvent<HTMLElement>
+) {
+  return event.metaKey || event.ctrlKey;
+}
+
 function hasGroupId(nodes: KeyTreeNode[], groupId: string): boolean {
   return nodes.some((node) => {
     if (node.kind !== "group") return false;
@@ -506,6 +546,7 @@ export function KeyBrowser({
   onLoadMoreKeys,
   onCancelLoadMoreKeys,
   onCreateKey,
+  onDeleteKeys,
   confirmBeforeDelete,
   defaultTtl,
   keySeparator,
@@ -523,7 +564,7 @@ export function KeyBrowser({
   onSelectClusterNode,
   onSearchChange,
 }: KeyBrowserProps) {
-  const { messages } = useI18n();
+  const { messages, format } = useI18n();
   const { showToast } = useToast();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -549,6 +590,13 @@ export function KeyBrowser({
   const [deletingContextTargetId, setDeletingContextTargetId] = useState<
     string | null
   >(null);
+  const [multiSelectedKeyNames, setMultiSelectedKeyNames] = useState<Set<string>>(
+    new Set()
+  );
+  const [selectionAnchorRowId, setSelectionAnchorRowId] = useState<string | null>(
+    null
+  );
+  const [isDeletingSelectedKeys, setIsDeletingSelectedKeys] = useState(false);
   const [groupMotionIds, setGroupMotionIds] = useState<Record<string, string>>(
     {}
   );
@@ -575,6 +623,16 @@ export function KeyBrowser({
     viewportHeight: 0,
   });
   const deferredSearchQuery = useDeferredValue(searchQuery);
+  const clearMultiSelection = useCallback(() => {
+    setSelectionAnchorRowId(null);
+    setMultiSelectedKeyNames((previous) => {
+      if (previous.size === 0) {
+        return previous;
+      }
+
+      return new Set();
+    });
+  }, []);
 
   const closeCreateForm = useCallback(() => {
     setIsCreateOpen(false);
@@ -814,6 +872,33 @@ export function KeyBrowser({
     (totalRows - visibleEndIndex) * KEY_BROWSER_ROW_HEIGHT
   );
   const virtualRows = visibleRows.slice(visibleStartIndex, visibleEndIndex);
+  const selectedKeysForDelete = useMemo(
+    () => keys.filter((item) => multiSelectedKeyNames.has(item.key)),
+    [keys, multiSelectedKeyNames]
+  );
+  const multiSelectedKeyCount = selectedKeysForDelete.length;
+  const multiSelectedKeysLabel = format(messages.app.status.keysCount, {
+    count: multiSelectedKeyCount,
+  });
+  const groupSelectionState = useMemo(() => {
+    const state = new Map<string, boolean>();
+
+    visibleRows.forEach((row) => {
+      if (row.kind !== "group") {
+        return;
+      }
+
+      const groupKeys = collectGroupRedisKeys(row.group);
+
+      state.set(
+        row.group.id,
+        groupKeys.length > 0 &&
+          groupKeys.every((redisKey) => multiSelectedKeyNames.has(redisKey.key))
+      );
+    });
+
+    return state;
+  }, [multiSelectedKeyNames, visibleRows]);
 
   const clearPendingKeySelection = useCallback(() => {
     if (pendingKeySelectTimerRef.current) {
@@ -823,6 +908,34 @@ export function KeyBrowser({
 
     setPendingSelectedKeyName(null);
   }, []);
+
+  useEffect(() => {
+    setMultiSelectedKeyNames((previous) => {
+      if (previous.size === 0) {
+        return previous;
+      }
+
+      const validKeys = new Set(keys.map((item) => item.key));
+      let didChange = false;
+      const next = new Set<string>();
+
+      previous.forEach((keyName) => {
+        if (validKeys.has(keyName)) {
+          next.add(keyName);
+          return;
+        }
+
+        didChange = true;
+      });
+
+      return didChange ? next : previous;
+    });
+  }, [keys]);
+
+  useEffect(() => {
+    clearPendingKeySelection();
+    clearMultiSelection();
+  }, [clearMultiSelection, clearPendingKeySelection, connection?.id, selectedDb]);
 
   const cancelRename = useCallback(() => {
     clearPendingKeySelection();
@@ -1408,9 +1521,89 @@ export function KeyBrowser({
     placeInputCursorAtEnd(input);
   }, [editingGroupId, editingKeyName]);
 
+  const selectRangeFromRow = useCallback(
+    (currentRowId: string) => {
+      const anchorRowId =
+        selectionAnchorRowId ??
+        (selectedKey ? `key:${selectedKey.key}` : currentRowId);
+      const anchorIndex = visibleRows.findIndex(
+        (row) => getSelectionRowId(row) === anchorRowId
+      );
+      const currentIndex = visibleRows.findIndex(
+        (row) => getSelectionRowId(row) === currentRowId
+      );
+
+      if (currentIndex === -1) {
+        return;
+      }
+
+      const startIndex =
+        anchorIndex === -1 ? currentIndex : Math.min(anchorIndex, currentIndex);
+      const endIndex =
+        anchorIndex === -1 ? currentIndex : Math.max(anchorIndex, currentIndex);
+      const rangeKeys = collectKeysFromVisibleRows(
+        visibleRows.slice(startIndex, endIndex + 1)
+      );
+
+      setMultiSelectedKeyNames(new Set(rangeKeys.map((redisKey) => redisKey.key)));
+
+      if (selectedKey) {
+        onClearSelection();
+      }
+
+      setSelectionAnchorRowId(anchorRowId);
+      clearPendingKeySelection();
+    },
+    [
+      clearPendingKeySelection,
+      onClearSelection,
+      selectedKey,
+      selectionAnchorRowId,
+      visibleRows,
+    ]
+  );
+
   const handleKeyClick = useCallback(
-    (key: RedisKey) => {
+    (event: ReactMouseEvent<HTMLButtonElement>, key: RedisKey) => {
       if (editingKeyName === key.key) return;
+
+      if (event.shiftKey) {
+        selectRangeFromRow(`key:${key.key}`);
+        return;
+      }
+
+      if (isMultiSelectModifierPressed(event)) {
+        clearPendingKeySelection();
+        let nextSelectionSize = 0;
+
+        setMultiSelectedKeyNames((previous) => {
+          const next = new Set(previous);
+
+          if (previous.size === 0 && selectedKey?.key) {
+            next.add(selectedKey.key);
+          }
+
+          if (next.has(key.key)) {
+            next.delete(key.key);
+          } else {
+            next.add(key.key);
+          }
+
+          nextSelectionSize = next.size;
+          return next;
+        });
+
+        if (selectedKey) {
+          onClearSelection();
+        }
+
+        setSelectionAnchorRowId(nextSelectionSize > 0 ? `key:${key.key}` : null);
+
+        return;
+      }
+
+      clearMultiSelection();
+      setSelectionAnchorRowId(`key:${key.key}`);
 
       if (selectedKey?.key === key.key) {
         clearPendingKeySelection();
@@ -1419,14 +1612,75 @@ export function KeyBrowser({
       }
 
       clearPendingKeySelection();
-      setPendingSelectedKeyName(key.key);
-
-      pendingKeySelectTimerRef.current = window.setTimeout(() => {
-        pendingKeySelectTimerRef.current = null;
-        void onSelectKey(key);
-      }, 180);
+      void onSelectKey(key);
     },
-    [clearPendingKeySelection, editingKeyName, onSelectKey, selectedKey?.key]
+    [
+      clearMultiSelection,
+      clearPendingKeySelection,
+      editingKeyName,
+      onClearSelection,
+      onSelectKey,
+      selectedKey,
+      selectRangeFromRow,
+    ]
+  );
+  const handleGroupClick = useCallback(
+    (event: ReactMouseEvent<HTMLButtonElement>, group: KeyTreeGroupNode) => {
+      const groupRowId = `group:${group.id}`;
+
+      if (event.shiftKey) {
+        selectRangeFromRow(groupRowId);
+        return;
+      }
+
+      if (isMultiSelectModifierPressed(event)) {
+        const groupKeys = collectGroupRedisKeys(group);
+
+        if (!groupKeys.length) {
+          return;
+        }
+
+        clearPendingKeySelection();
+        let nextSelectionSize = 0;
+
+        setMultiSelectedKeyNames((previous) => {
+          const next = new Set(previous);
+          const isGroupFullySelected = groupKeys.every((redisKey) =>
+            next.has(redisKey.key)
+          );
+
+          if (previous.size === 0 && selectedKey?.key) {
+            next.add(selectedKey.key);
+          }
+
+          groupKeys.forEach((redisKey) => {
+            if (isGroupFullySelected) {
+              next.delete(redisKey.key);
+            } else {
+              next.add(redisKey.key);
+            }
+          });
+
+          nextSelectionSize = next.size;
+          return next;
+        });
+
+        if (selectedKey) {
+          onClearSelection();
+        }
+
+        setSelectionAnchorRowId(nextSelectionSize > 0 ? groupRowId : null);
+        return;
+      }
+
+      toggleGroup(group.id);
+    },
+    [
+      clearPendingKeySelection,
+      onClearSelection,
+      selectRangeFromRow,
+      selectedKey,
+    ]
   );
   const openKeyContextMenu = useCallback(
     (event: ReactMouseEvent<HTMLElement>, key: RedisKey) => {
@@ -1518,7 +1772,23 @@ export function KeyBrowser({
   );
   const handleDeleteFromContextMenu = useCallback(async () => {
     const target = renderedKeyContextMenu?.target;
-    const targetId = target ? getContextMenuTargetId(target) : null;
+    const targetGroupHasSelectedKeys =
+      target?.kind === "group" &&
+      collectGroupRedisKeys(target.group).some((redisKey) =>
+        multiSelectedKeyNames.has(redisKey.key)
+      );
+    const deletesMultipleSelectedKeys =
+      multiSelectedKeyCount > 1 &&
+      (
+        (target?.kind === "key" &&
+          multiSelectedKeyNames.has(target.redisKey.key)) ||
+        Boolean(targetGroupHasSelectedKeys)
+      );
+    const targetId = deletesMultipleSelectedKeys
+      ? "keys:multi"
+      : target
+        ? getContextMenuTargetId(target)
+        : null;
 
     if (!target || (targetId && deletingContextTargetId === targetId)) {
       return;
@@ -1526,7 +1796,9 @@ export function KeyBrowser({
 
     if (confirmBeforeDelete) {
       const confirmed = await confirm(
-        target.kind === "key"
+        deletesMultipleSelectedKeys
+          ? `${messages.common.delete} ${multiSelectedKeysLabel}?`
+          : target.kind === "key"
           ? replaceTemplate(messages.valueEditor.confirmDeleteKey, {
               key: target.redisKey.key,
             })
@@ -1549,7 +1821,11 @@ export function KeyBrowser({
     setDeletingContextTargetId(targetId);
 
     try {
-      if (target.kind === "key") {
+      if (deletesMultipleSelectedKeys) {
+        await onDeleteKeys(selectedKeysForDelete);
+        clearPendingKeySelection();
+        clearMultiSelection();
+      } else if (target.kind === "key") {
         await onDeleteKey(target.redisKey);
       } else {
         await onDeleteGroup(target.group.id, keySeparator);
@@ -1569,13 +1845,20 @@ export function KeyBrowser({
     confirmBeforeDelete,
     deletingContextTargetId,
     keySeparator,
+    clearMultiSelection,
+    clearPendingKeySelection,
     messages.common.cancel,
     messages.common.delete,
     messages.keyBrowser.confirmDeleteGroup,
+    multiSelectedKeyCount,
+    multiSelectedKeyNames,
+    multiSelectedKeysLabel,
+    onDeleteKeys,
     messages.valueEditor.confirmDeleteKey,
     onDeleteGroup,
     onDeleteKey,
     renderedKeyContextMenu,
+    selectedKeysForDelete,
     showToast,
   ]);
   const handleRefresh = useCallback(async () => {
@@ -1648,6 +1931,57 @@ export function KeyBrowser({
       });
     }
   }, [closeKeyContextMenu, messages.common.copied, renderedKeyContextMenu, showToast]);
+  const handleDeleteSelectedKeys = useCallback(async () => {
+    if (!selectedKeysForDelete.length || isDeletingSelectedKeys) {
+      return;
+    }
+
+    if (confirmBeforeDelete) {
+      const confirmed = await confirm(
+        `${messages.common.delete} ${multiSelectedKeysLabel}?`,
+        {
+          title: messages.ui.appName,
+          kind: "warning",
+          okLabel: messages.common.delete,
+          cancelLabel: messages.common.cancel,
+        }
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setIsDeletingSelectedKeys(true);
+
+    try {
+      await onDeleteKeys(selectedKeysForDelete);
+      clearPendingKeySelection();
+      clearMultiSelection();
+      closeKeyContextMenu();
+    } catch (error) {
+      showToast({
+        message: getRedisErrorMessage(error),
+        tone: "error",
+        duration: 1800,
+      });
+    } finally {
+      setIsDeletingSelectedKeys(false);
+    }
+  }, [
+    clearMultiSelection,
+    clearPendingKeySelection,
+    closeKeyContextMenu,
+    confirmBeforeDelete,
+    isDeletingSelectedKeys,
+    messages.common.cancel,
+    messages.common.delete,
+    messages.ui.appName,
+    multiSelectedKeysLabel,
+    onDeleteKeys,
+    selectedKeysForDelete,
+    showToast,
+  ]);
   const handleBlankAreaClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
       const target = event.target;
@@ -1660,18 +1994,31 @@ export function KeyBrowser({
         target === event.currentTarget ||
         target.closest("[data-key-browser-blank='true']") !== null;
 
-      if (!clickedBlankArea || !selectedKey) {
+      if (!clickedBlankArea) {
         return;
       }
 
       clearPendingKeySelection();
-      onClearSelection();
+      clearMultiSelection();
+
+      if (selectedKey) {
+        onClearSelection();
+      }
     },
-    [clearPendingKeySelection, onClearSelection, selectedKey]
+    [clearMultiSelection, clearPendingKeySelection, onClearSelection, selectedKey]
   );
 
   const activeSelectedKeyName =
     editingKeyName ?? pendingSelectedKeyName ?? selectedKey?.key ?? null;
+  const contextMenuDeletesMultipleKeys =
+    multiSelectedKeyCount > 1 &&
+    (renderedKeyContextMenu?.target.kind === "key"
+      ? multiSelectedKeyNames.has(renderedKeyContextMenu.target.redisKey.key)
+      : renderedKeyContextMenu?.target.kind === "group"
+        ? collectGroupRedisKeys(renderedKeyContextMenu.target.group).some(
+            (redisKey) => multiSelectedKeyNames.has(redisKey.key)
+          )
+        : false);
 
   const typeConfig = TYPE_CONFIG;
 
@@ -1722,6 +2069,14 @@ export function KeyBrowser({
             <span className="badge badge-xs badge-ghost font-mono">
               {filtered.length}
             </span>
+            {multiSelectedKeyCount > 0 ? (
+              <span
+                className="badge badge-xs badge-error badge-outline font-mono"
+                title={multiSelectedKeysLabel}
+              >
+                {multiSelectedKeyCount}
+              </span>
+            ) : null}
           </div>
           <div className="flex items-center gap-0.5">
             <button
@@ -1738,6 +2093,28 @@ export function KeyBrowser({
             >
               <Plus size={12} strokeWidth={2.25} />
             </button>
+            {multiSelectedKeyCount > 0 ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void handleDeleteSelectedKeys();
+                }}
+                disabled={!hasConnection || isDeletingSelectedKeys}
+                className={`btn btn-ghost btn-xs h-6 w-6 p-0 text-error hover:bg-error/8 hover:text-error ${
+                  hasConnection && !isDeletingSelectedKeys
+                    ? "cursor-pointer"
+                    : "cursor-not-allowed opacity-40"
+                }`}
+                aria-label={messages.common.delete}
+                title={`${messages.common.delete} · ${multiSelectedKeysLabel}`}
+              >
+                {isDeletingSelectedKeys ? (
+                  <LoaderCircle size={11} className="animate-spin" />
+                ) : (
+                  <Trash2 size={11} />
+                )}
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={toggleAllGroups}
@@ -1957,12 +2334,14 @@ export function KeyBrowser({
                   setMotionElement={setMotionElement}
                   group={row.group}
                   isExpanded={row.isExpanded}
+                  isSelected={groupSelectionState.get(row.group.id) ?? false}
                   isEditing={editingGroupId === row.group.id}
                   renameDraft={renameDraft}
                   renameError={renameError}
                   isRenaming={isRenaming}
                   renameInputRef={renameInputRef}
                   onToggle={() => toggleGroup(row.group.id)}
+                  onClick={(event) => handleGroupClick(event, row.group)}
                   onStartRename={() => startGroupRename(row.group)}
                   onRenameDraftChange={handleRenameDraftChange}
                   onCancelRename={cancelRename}
@@ -1980,7 +2359,10 @@ export function KeyBrowser({
                   redisKey={row.redisKey}
                   label={row.label}
                   depth={row.depth}
-                  isSelected={activeSelectedKeyName === row.redisKey.key}
+                  isSelected={
+                    activeSelectedKeyName === row.redisKey.key ||
+                    multiSelectedKeyNames.has(row.redisKey.key)
+                  }
                   isEditing={editingKeyName === row.redisKey.key}
                   renameDraft={renameDraft}
                   renameError={renameError}
@@ -1990,7 +2372,7 @@ export function KeyBrowser({
                   onRenameDraftChange={handleRenameDraftChange}
                   onCancelRename={cancelRename}
                   onSubmitRename={() => submitRename(row.redisKey)}
-                  onClick={() => handleKeyClick(row.redisKey)}
+                  onClick={(event) => handleKeyClick(event, row.redisKey)}
                   onContextMenu={(event) =>
                     openKeyContextMenu(event, row.redisKey)
                   }
@@ -2053,7 +2435,8 @@ export function KeyBrowser({
           }`}
         >
           <div className="flex flex-col items-center gap-0.5">
-            {renderedKeyContextMenu.target.kind === "group" ? (
+            {renderedKeyContextMenu.target.kind === "group" &&
+            !contextMenuDeletesMultipleKeys ? (
               <>
                 <button
                   role="menuitem"
@@ -2088,22 +2471,26 @@ export function KeyBrowser({
                 </button>
               </>
             ) : null}
-            <button
-              role="menuitem"
-              onClick={() => {
-                void handleCopyFromContextMenu();
-              }}
-              aria-label={messages.common.copy}
-              title={`${messages.common.copy} · ${getContextMenuCopyValue(
-                renderedKeyContextMenu.target
-              )}`}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
-            >
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
-                <Copy size={12} />
-              </span>
-            </button>
-            <div className="my-0.5 h-px w-7 bg-base-content/6" />
+            {!contextMenuDeletesMultipleKeys ? (
+              <>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    void handleCopyFromContextMenu();
+                  }}
+                  aria-label={messages.common.copy}
+                  title={`${messages.common.copy} · ${getContextMenuCopyValue(
+                    renderedKeyContextMenu.target
+                  )}`}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-base-content/80 transition-colors duration-150 hover:bg-base-100/80"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
+                    <Copy size={12} />
+                  </span>
+                </button>
+                <div className="my-0.5 h-px w-7 bg-base-content/6" />
+              </>
+            ) : null}
             <button
               role="menuitem"
               onClick={() => {
@@ -2111,21 +2498,27 @@ export function KeyBrowser({
               }}
               disabled={
                 deletingContextTargetId ===
-                getContextMenuTargetId(renderedKeyContextMenu.target)
+                (contextMenuDeletesMultipleKeys
+                  ? "keys:multi"
+                  : getContextMenuTargetId(renderedKeyContextMenu.target))
               }
               title={
-                `${
-                  renderedKeyContextMenu.target.kind === "group"
-                    ? messages.common.delete
-                    : messages.valueEditor.deleteKey
-                } · ${
-                  renderedKeyContextMenu.target.kind === "group"
-                    ? renderedKeyContextMenu.target.group.id
-                    : renderedKeyContextMenu.target.redisKey.key
-                }`
+                contextMenuDeletesMultipleKeys
+                  ? `${messages.common.delete} · ${multiSelectedKeysLabel}`
+                  : `${
+                      renderedKeyContextMenu.target.kind === "group"
+                        ? messages.common.delete
+                        : messages.valueEditor.deleteKey
+                    } · ${
+                      renderedKeyContextMenu.target.kind === "group"
+                        ? renderedKeyContextMenu.target.group.id
+                        : renderedKeyContextMenu.target.redisKey.key
+                    }`
               }
               aria-label={
-                renderedKeyContextMenu.target.kind === "group"
+                contextMenuDeletesMultipleKeys
+                  ? messages.common.delete
+                  : renderedKeyContextMenu.target.kind === "group"
                   ? messages.common.delete
                   : messages.valueEditor.deleteKey
               }

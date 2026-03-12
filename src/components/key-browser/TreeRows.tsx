@@ -24,12 +24,14 @@ interface GroupRowProps<Group> {
     keyCount: number;
   };
   isExpanded: boolean;
+  isSelected: boolean;
   isEditing: boolean;
   renameDraft: string;
   renameError: string;
   isRenaming: boolean;
   renameInputRef: RefObject<HTMLInputElement | null>;
   onToggle: () => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onStartRename: () => void;
   onRenameDraftChange: (value: string) => void;
   onCancelRename: () => void;
@@ -43,12 +45,14 @@ function GroupRow<Group>({
   setMotionElement,
   group,
   isExpanded,
+  isSelected,
   isEditing,
   renameDraft,
   renameError,
   isRenaming,
   renameInputRef,
   onToggle,
+  onClick,
   onStartRename,
   onRenameDraftChange,
   onCancelRename,
@@ -81,7 +85,11 @@ function GroupRow<Group>({
     return (
       <div
         ref={(element) => setMotionElement(motionId, element)}
-        className="flex h-8 w-full items-center gap-1.5 px-3 py-1.5 text-left bg-base-100/40 text-base-content/80 transition-colors duration-150"
+        className={`flex h-8 w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors duration-150 ${
+          isSelected
+            ? "bg-primary/10 text-primary"
+            : "bg-base-100/40 text-base-content/80"
+        }`}
         style={{ paddingLeft: `${12 + group.depth * 12}px` }}
       >
         <span className="flex h-5 w-5 shrink-0 items-center justify-center text-base-content/40">
@@ -133,13 +141,21 @@ function GroupRow<Group>({
   return (
     <div
       ref={(element) => setMotionElement(motionId, element)}
-      className="flex h-8 w-full items-center gap-1.5 px-3 py-1.5 text-left hover:bg-base-100/40 transition-colors duration-150 group"
+      className={`flex h-8 w-full items-center gap-1.5 px-3 py-1.5 text-left transition-colors duration-150 group ${
+        isSelected
+          ? "bg-primary/10 text-primary"
+          : "hover:bg-base-100/40"
+      }`}
       style={{ paddingLeft: `${12 + group.depth * 12}px` }}
     >
       <button
         type="button"
         onClick={onToggle}
-        className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-base-content/40 transition-colors duration-150 hover:text-base-content/70 cursor-pointer"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors duration-150 cursor-pointer ${
+          isSelected
+            ? "text-primary hover:text-primary"
+            : "text-base-content/40 hover:text-base-content/70"
+        }`}
         aria-label={
           isExpanded
             ? messages.ui.tree.collapseGroup
@@ -155,11 +171,7 @@ function GroupRow<Group>({
       </button>
       <button
         type="button"
-        onClick={(event) => {
-          if (event.detail === 1) {
-            onToggle();
-          }
-        }}
+        onClick={onClick}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -170,7 +182,13 @@ function GroupRow<Group>({
         title={group.id}
       >
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-left text-xs font-mono text-base-content/60 group-hover:text-base-content/80">
+          <span
+            className={`block truncate text-left text-xs font-mono ${
+              isSelected
+                ? "text-primary"
+                : "text-base-content/60 group-hover:text-base-content/80"
+            }`}
+          >
             {group.label}
           </span>
         </span>
@@ -196,7 +214,7 @@ interface KeyRowProps {
   onRenameDraftChange: (value: string) => void;
   onCancelRename: () => void;
   onSubmitRename: () => Promise<void>;
-  onClick: () => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   onContextMenu: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   showKeyType: boolean;
   showTtl: boolean;
@@ -339,11 +357,7 @@ function KeyRow({
     >
       <button
         type="button"
-        onClick={(event) => {
-          if (event.detail === 1) {
-            onClick();
-          }
-        }}
+        onClick={onClick}
         onDoubleClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -381,6 +395,7 @@ function areGroupRowPropsEqual(
     previous.motionId === next.motionId &&
     previous.group === next.group &&
     previous.isExpanded === next.isExpanded &&
+    previous.isSelected === next.isSelected &&
     previous.isEditing === next.isEditing &&
     previous.renameDraft === next.renameDraft &&
     previous.renameError === next.renameError &&

@@ -287,6 +287,7 @@ interface RedisWorkspaceStoreState {
   selectClusterNode: (nodeAddress: string | null) => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
   createKey: (input: RedisKeyCreateInput) => Promise<RedisKey>;
+  deleteKeys: (keys: RedisKey[]) => Promise<number>;
   deleteKey: (key: RedisKey) => Promise<void>;
   deleteGroup: (groupId: string, separator: string) => Promise<number>;
   renameKey: (key: RedisKey, nextKeyName: string) => Promise<RedisKey>;
@@ -1184,6 +1185,62 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       return createdKey;
     },
+    deleteKeys: async (keys) => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+      const uniqueKeysToDelete = Array.from(
+        new Set(keys.map((item) => item.key.trim()).filter(Boolean))
+      );
+
+      if (!activeConnection) {
+        throw new Error(getWorkspaceRuntime().notConnectedMessage);
+      }
+
+      if (!uniqueKeysToDelete.length) {
+        return 0;
+      }
+
+      await deleteRedisKeys(
+        { ...activeConnection, db: state.selectedDb },
+        uniqueKeysToDelete
+      );
+
+      const deletedKeys = new Set(uniqueKeysToDelete);
+      keyValueRequestId += 1;
+
+      set((currentState) => ({
+        keys: currentState.keys.filter((item) => !deletedKeys.has(item.key)),
+        selectedKey:
+          currentState.selectedKey &&
+          deletedKeys.has(currentState.selectedKey.key)
+            ? null
+            : currentState.selectedKey,
+        keyValue:
+          currentState.keyValue && deletedKeys.has(currentState.keyValue.key)
+            ? null
+            : currentState.keyValue,
+        isLoadingMoreKeyValue:
+          currentState.keyValue && deletedKeys.has(currentState.keyValue.key)
+            ? false
+            : currentState.isLoadingMoreKeyValue,
+        recentKeys: currentState.recentKeys.filter(
+          (item) =>
+            !(
+              item.connectionId === activeConnection.id &&
+              item.db === state.selectedDb &&
+              deletedKeys.has(item.key.key)
+            )
+        ),
+      }));
+
+      void recordTelemetryEvent("workspace.keys.delete");
+      void recordAuditEvent("workspace.keys.delete", {
+        keyCount: uniqueKeysToDelete.length,
+        keys: uniqueKeysToDelete.join(","),
+      });
+
+      return uniqueKeysToDelete.length;
+    },
     deleteKey: async (key) => {
       const state = get();
       const messages = getCurrentMessages();
@@ -1548,6 +1605,7 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       openNewConnectionModal: state.openNewConnectionModal,
       panelTab: state.panelTab,
       createKey: state.createKey,
+      deleteKeys: state.deleteKeys,
       deleteKey: state.deleteKey,
       deleteGroup: state.deleteGroup,
       clearSelectedKey: state.clearSelectedKey,
