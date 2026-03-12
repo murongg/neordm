@@ -49,18 +49,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
-
-      - name: Enable pnpm via Corepack
-        shell: bash
-        run: |
-          corepack enable
-          corepack prepare pnpm@10 --activate
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
