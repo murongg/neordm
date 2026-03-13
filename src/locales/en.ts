@@ -466,6 +466,9 @@ export const en: Messages = {
       maxKeysDescription: "SCAN limit per page",
       scanCount: "SCAN count",
       scanCountDescription: "COUNT hint per iteration",
+      autoRefreshInterval: "Auto-refresh interval (seconds)",
+      autoRefreshIntervalDescription:
+        "Refresh the selected key or key list every N seconds. Set 0 to disable.",
       safety: "Safety",
       confirmDelete: "Confirm before delete",
       confirmDeleteDescription: "Show dialog before DEL / FLUSHDB",

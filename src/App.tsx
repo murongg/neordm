@@ -14,6 +14,7 @@ import { WorkspaceTopbarPanel } from "./components/WorkspaceTopbarPanel";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "./i18n";
 import { prepareAIAgentExperience } from "./lib/aiPrefetch";
+import { parseAutoRefreshIntervalSeconds } from "./lib/autoRefresh";
 import { useAppUpdateStore } from "./store/useAppUpdateState";
 import {
   useAppPreferencesStore,
@@ -88,6 +89,26 @@ function isRefreshShortcut(event: KeyboardEvent) {
   );
 }
 
+function refreshWorkspaceContext() {
+  const workspace = useRedisWorkspaceStore.getState();
+
+  if (
+    !workspace.activeConnectionId ||
+    workspace.isLoadingKeys ||
+    workspace.isLoadingMoreKeys ||
+    workspace.isLoadingMoreKeyValue
+  ) {
+    return;
+  }
+
+  if (workspace.selectedKey) {
+    void workspace.refreshKeyValue();
+    return;
+  }
+
+  void workspace.refreshKeys();
+}
+
 function App() {
   const { mode: themeMode, setMode: setThemeMode } = useTheme();
   const { messages } = useI18n();
@@ -110,6 +131,9 @@ function App() {
     notConnectedMessage: messages.app.status.notConnected,
     persistLastConnectionId: preferences.persistLastConnectionId,
   });
+  const autoRefreshIntervalSeconds = parseAutoRefreshIntervalSeconds(
+    preferences.appSettings.general.autoRefreshInterval
+  );
   const panelTab = useRedisWorkspaceStore((state) => state.panelTab);
   useTrayStatusbar();
 
@@ -187,15 +211,7 @@ function App() {
       }
 
       event.preventDefault();
-
-      const workspace = useRedisWorkspaceStore.getState();
-
-      if (workspace.selectedKey) {
-        void workspace.refreshKeyValue();
-        return;
-      }
-
-      void workspace.refreshKeys();
+      refreshWorkspaceContext();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
@@ -204,6 +220,20 @@ function App() {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
   }, []);
+
+  useEffect(() => {
+    if (!preferences.hasHydratedSettings || autoRefreshIntervalSeconds <= 0) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      refreshWorkspaceContext();
+    }, autoRefreshIntervalSeconds * 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [autoRefreshIntervalSeconds, preferences.hasHydratedSettings]);
 
   return (
     <ToastProvider>

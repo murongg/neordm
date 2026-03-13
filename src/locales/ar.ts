@@ -279,6 +279,9 @@ export const ar: Messages = {
       maxKeysDescription: "حد SCAN لكل صفحة",
       scanCount: "SCAN count",
       scanCountDescription: "تلميح COUNT لكل تكرار",
+      autoRefreshInterval: "فاصل التحديث التلقائي (ثانية)",
+      autoRefreshIntervalDescription:
+        "يُحدّث المفتاح المحدد أو قائمة المفاتيح كل N ثانية. اضبط 0 للتعطيل.",
       safety: "الأمان",
       confirmDelete: "التأكيد قبل الحذف",
       confirmDeleteDescription: "إظهار مربع حوار قبل DEL / FLUSHDB",

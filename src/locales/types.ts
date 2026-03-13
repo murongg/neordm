@@ -489,6 +489,8 @@ export interface Messages {
       maxKeysDescription: string;
       scanCount: string;
       scanCountDescription: string;
+      autoRefreshInterval: string;
+      autoRefreshIntervalDescription: string;
       safety: string;
       confirmDelete: string;
       confirmDeleteDescription: string;

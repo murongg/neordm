@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import type { KeyValue, RedisConnection, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
+import { parseAutoRefreshIntervalSeconds } from "../lib/autoRefresh";
 import { getRedisErrorMessage } from "../lib/redis";
 import type { RedisListInsertPosition } from "../lib/redis";
 import { useAppSettings } from "../hooks/useAppSettings";
@@ -305,6 +306,8 @@ export function ValueEditor({
       keyValue.type === "set" ||
       keyValue.type === "zset") &&
     Boolean(keyValue.page);
+  const isAutoRefreshEnabled =
+    parseAutoRefreshIntervalSeconds(appSettings.general.autoRefreshInterval) > 0;
   const editorSettings: EditorRuntimeSettings = appSettings.editor;
   const viewerLoadMoreState =
     supportsPagedValue && keyValue.page?.nextCursor
@@ -342,6 +345,18 @@ export function ValueEditor({
       tone: "danger" as const,
     },
   ];
+  const effectiveHeaderToolbarConfig = headerToolbarConfig
+    ? {
+        ...headerToolbarConfig,
+        refreshAction: headerToolbarConfig.refreshAction
+          ? {
+              ...headerToolbarConfig.refreshAction,
+              isSpinning:
+                isAutoRefreshEnabled || headerToolbarConfig.refreshAction.isLoading,
+            }
+          : undefined,
+      }
+    : null;
 
   return (
     <div className="relative flex flex-col flex-1 min-h-0">
@@ -456,7 +471,7 @@ export function ValueEditor({
           </div>
           <div className="min-w-0 max-w-full self-start max-sm:w-full sm:min-w-[18rem]">
             <HeaderToolbar
-              config={headerToolbarConfig}
+              config={effectiveHeaderToolbarConfig}
               trailingActions={headerTrailingActions}
             />
           </div>

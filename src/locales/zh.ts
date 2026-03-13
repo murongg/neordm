@@ -450,6 +450,9 @@ export const zh: Messages = {
       maxKeysDescription: "每页 SCAN 限制",
       scanCount: "SCAN 数量",
       scanCountDescription: "每次迭代的 COUNT 提示",
+      autoRefreshInterval: "定时刷新间隔（秒）",
+      autoRefreshIntervalDescription:
+        "每隔 N 秒刷新当前选中的 key，未选中时刷新 key 列表。设为 0 表示关闭。",
       safety: "安全",
       confirmDelete: "删除前确认",
       confirmDeleteDescription: "在执行 DEL / FLUSHDB 前显示确认",

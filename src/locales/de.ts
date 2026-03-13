@@ -279,6 +279,9 @@ export const de: Messages = {
       maxKeysDescription: "SCAN-Limit pro Seite",
       scanCount: "SCAN count",
       scanCountDescription: "COUNT-Hinweis pro Iteration",
+      autoRefreshInterval: "Auto-Aktualisierungsintervall (Sekunden)",
+      autoRefreshIntervalDescription:
+        "Aktualisiert den ausgewählten Schlüssel oder die Schlüsselliste alle N Sekunden. 0 deaktiviert.",
       safety: "Sicherheit",
       confirmDelete: "Vor dem Löschen bestätigen",
       confirmDeleteDescription: "Dialog vor DEL / FLUSHDB anzeigen",

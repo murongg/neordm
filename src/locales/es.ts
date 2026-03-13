@@ -294,6 +294,9 @@ export const es: Messages = {
       maxKeysDescription: "Límite de SCAN por página",
       scanCount: "SCAN count",
       scanCountDescription: "Sugerencia COUNT por iteración",
+      autoRefreshInterval: "Intervalo de actualización automática (segundos)",
+      autoRefreshIntervalDescription:
+        "Actualiza la clave seleccionada o la lista de claves cada N segundos. Establece 0 para desactivar.",
       safety: "Seguridad",
       confirmDelete: "Confirmar antes de eliminar",
       confirmDeleteDescription: "Mostrar diálogo antes de DEL / FLUSHDB",

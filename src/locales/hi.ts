@@ -279,6 +279,9 @@ export const hi: Messages = {
       maxKeysDescription: "प्रति पेज SCAN सीमा",
       scanCount: "SCAN count",
       scanCountDescription: "हर iteration के लिए COUNT संकेत",
+      autoRefreshInterval: "ऑटो-रिफ्रेश अंतराल (सेकंड)",
+      autoRefreshIntervalDescription:
+        "चयनित key या key list को हर N सेकंड में रिफ्रेश करता है। बंद करने के लिए 0 सेट करें।",
       safety: "सुरक्षा",
       confirmDelete: "हटाने से पहले पुष्टि करें",
       confirmDeleteDescription: "DEL / FLUSHDB से पहले संवाद दिखाएँ",

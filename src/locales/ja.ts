@@ -294,6 +294,9 @@ export const ja: Messages = {
       maxKeysDescription: "ページごとの SCAN 上限",
       scanCount: "SCAN count",
       scanCountDescription: "反復ごとの COUNT ヒント",
+      autoRefreshInterval: "自動更新間隔（秒）",
+      autoRefreshIntervalDescription:
+        "選択中のキー、またはキー一覧を N 秒ごとに更新します。0 で無効になります。",
       safety: "安全性",
       confirmDelete: "削除前に確認",
       confirmDeleteDescription: "DEL / FLUSHDB 前に確認ダイアログを表示",

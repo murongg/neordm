@@ -54,6 +54,7 @@ interface KeyBrowserProps {
   connection?: RedisConnection;
   selectedDb: number;
   onSelectDb: (db: number) => void;
+  isAutoRefreshEnabled: boolean;
   isRefreshing: boolean;
   hasMoreKeys: boolean;
   isLoadingMoreKeys: boolean;
@@ -123,6 +124,21 @@ type VisibleTreeRow =
 const KEY_BROWSER_REORDER_ANIMATION_LIMIT = 240;
 const KEY_BROWSER_ROW_HEIGHT = 32;
 const KEY_BROWSER_VIRTUAL_OVERSCAN = 10;
+
+function getRefreshIconClassName(
+  isRefreshing: boolean,
+  isAutoRefreshEnabled: boolean
+) {
+  if (isRefreshing) {
+    return "animate-spin motion-reduce:animate-none";
+  }
+
+  if (isAutoRefreshEnabled) {
+    return "animate-[spin_2.8s_linear_infinite] opacity-70 motion-reduce:animate-none";
+  }
+
+  return "transition-transform duration-200";
+}
 
 function replaceTemplate(template: string, values: Record<string, string | number>) {
   return template.replace(/\{(\w+)\}/g, (_, key: string) =>
@@ -538,6 +554,7 @@ export function KeyBrowser({
   connection,
   selectedDb,
   onSelectDb,
+  isAutoRefreshEnabled,
   isRefreshing,
   hasMoreKeys,
   isLoadingMoreKeys,
@@ -617,6 +634,10 @@ export function KeyBrowser({
     newKey: string;
   } | null>(null);
   const hasConnection = Boolean(connection);
+  const refreshIconClassName = getRefreshIconClassName(
+    isRefreshing,
+    hasConnection && isAutoRefreshEnabled
+  );
   const isClusterConnection = connection?.mode === "cluster";
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollTop: 0,
@@ -2154,7 +2175,10 @@ export function KeyBrowser({
               aria-label={messages.keyBrowser.refresh}
               title={messages.keyBrowser.refresh}
             >
-              <RefreshCw size={11} className={isRefreshing ? "animate-spin" : ""} />
+              <RefreshCw
+                size={11}
+                className={refreshIconClassName}
+              />
             </button>
           </div>
         </div>
@@ -2465,7 +2489,7 @@ export function KeyBrowser({
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-base-content/6">
                     <RefreshCw
                       size={12}
-                      className={isRefreshing ? "animate-spin" : ""}
+                      className={refreshIconClassName}
                     />
                   </span>
                 </button>

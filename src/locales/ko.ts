@@ -279,6 +279,9 @@ export const ko: Messages = {
       maxKeysDescription: "페이지당 SCAN 제한",
       scanCount: "SCAN count",
       scanCountDescription: "반복당 COUNT 힌트",
+      autoRefreshInterval: "자동 새로고침 간격(초)",
+      autoRefreshIntervalDescription:
+        "선택한 키 또는 키 목록을 N초마다 새로고침합니다. 0으로 설정하면 비활성화됩니다.",
       safety: "안전",
       confirmDelete: "삭제 전 확인",
       confirmDeleteDescription: "DEL / FLUSHDB 전에 대화상자 표시",

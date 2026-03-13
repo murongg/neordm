@@ -279,6 +279,9 @@ export const ru: Messages = {
       maxKeysDescription: "Лимит SCAN на страницу",
       scanCount: "SCAN count",
       scanCountDescription: "Подсказка COUNT на итерацию",
+      autoRefreshInterval: "Интервал автообновления (секунды)",
+      autoRefreshIntervalDescription:
+        "Обновляет выбранный ключ или список ключей каждые N секунд. Установите 0, чтобы отключить.",
       safety: "Безопасность",
       confirmDelete: "Подтверждать удаление",
       confirmDeleteDescription: "Показывать диалог перед DEL / FLUSHDB",

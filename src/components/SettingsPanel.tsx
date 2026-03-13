@@ -402,6 +402,27 @@ function GeneralSettings() {
         </Row>
       </Section>
 
+      <Section title={general.keyBrowser}>
+        <Row
+          label={general.autoRefreshInterval}
+          description={general.autoRefreshIntervalDescription}
+        >
+          <input
+            type="number"
+            min="0"
+            step="1"
+            value={generalSettings.autoRefreshInterval}
+            onChange={(event) =>
+              setGeneralSettings((previous) => ({
+                ...previous,
+                autoRefreshInterval: event.target.value,
+              }))
+            }
+            className="input input-xs w-24 bg-base-300 border-base-content/10 font-mono text-right user-select-text"
+          />
+        </Row>
+      </Section>
+
       <Section title={general.safety}>
         <Row
           label={general.confirmDelete}

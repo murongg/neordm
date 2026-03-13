@@ -1,5 +1,6 @@
 import { memo, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
+import { parseAutoRefreshIntervalSeconds } from "../lib/autoRefresh";
 import { useAppPreferencesStore } from "../store/useAppPreferencesState";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 import { KeyBrowser } from "./KeyBrowser";
@@ -8,6 +9,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
   const preferences = useAppPreferencesStore(
     useShallow((state) => ({
       confirmBeforeDelete: state.appSettings.general.confirmDelete,
+      autoRefreshInterval: state.appSettings.general.autoRefreshInterval,
       keySeparator: state.keySeparator,
       defaultTtl: state.appSettings.editor.defaultTtl,
       showKeyType: state.appSettings.appearance.showKeyType,
@@ -49,12 +51,15 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       ),
     [workspace.activeConnectionId, workspace.connections]
   );
+  const isAutoRefreshEnabled =
+    parseAutoRefreshIntervalSeconds(preferences.autoRefreshInterval) > 0;
 
   return (
     <KeyBrowser
       connection={activeConnection}
       selectedDb={workspace.selectedDb}
       onSelectDb={workspace.selectDb}
+      isAutoRefreshEnabled={isAutoRefreshEnabled}
       isRefreshing={workspace.isLoadingKeys}
       onRefresh={workspace.refreshKeys}
       onClearSelection={workspace.clearSelectedKey}

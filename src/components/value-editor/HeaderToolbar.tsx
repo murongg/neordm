@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from "react";
-import { LoaderCircle, Plus, RotateCw, Search } from "lucide-react";
+import { Plus, RotateCw, Search } from "lucide-react";
 
 export interface HeaderToolbarSearchConfig {
   value: string;
@@ -18,6 +18,7 @@ export interface HeaderToolbarRefreshActionConfig {
   onClick: () => void;
   disabled?: boolean;
   isLoading?: boolean;
+  isSpinning?: boolean;
 }
 
 export interface HeaderToolbarConfig {
@@ -62,6 +63,12 @@ export function HeaderToolbar({
   config,
   trailingActions = [],
 }: HeaderToolbarProps) {
+  const refreshIconClassName = config?.refreshAction?.isLoading
+    ? "animate-spin motion-reduce:animate-none"
+    : config?.refreshAction?.isSpinning
+      ? "animate-[spin_2.8s_linear_infinite] opacity-70 motion-reduce:animate-none"
+      : "transition-transform duration-200";
+
   return (
     <div className="flex min-w-0 flex-wrap items-center justify-end gap-1.5">
       {config?.search ? (
@@ -102,11 +109,10 @@ export function HeaderToolbar({
           title={config.refreshAction.label}
           className={getActionClassName(config.refreshAction)}
         >
-          {config.refreshAction.isLoading ? (
-            <LoaderCircle size={12} className="animate-spin" />
-          ) : (
-            <RotateCw size={12} />
-          )}
+          <RotateCw
+            size={12}
+            className={refreshIconClassName}
+          />
         </button>
       ) : null}
 

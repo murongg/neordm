@@ -11,6 +11,7 @@ export interface GeneralAppSettings {
   confirmDelete: boolean;
   maxKeys: string;
   scanCount: string;
+  autoRefreshInterval: string;
   keySeparator: string;
 }
 
@@ -81,6 +82,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
     confirmDelete: true,
     maxKeys: "10000",
     scanCount: "200",
+    autoRefreshInterval: "0",
     keySeparator: ":",
   },
   appearance: {
@@ -167,6 +169,10 @@ function normalizeGeneralSettings(value: unknown): GeneralAppSettings {
     scanCount: normalizeString(
       source.scanCount,
       DEFAULT_APP_SETTINGS.general.scanCount
+    ),
+    autoRefreshInterval: normalizeString(
+      source.autoRefreshInterval,
+      DEFAULT_APP_SETTINGS.general.autoRefreshInterval
     ),
     keySeparator: normalizeString(
       source.keySeparator,
