@@ -15,6 +15,21 @@ export const StatusBarPanel = memo(function StatusBarPanel() {
       keyValue: state.keyValue,
     }))
   );
+  const { activeConnectionId, hasResolvedRedisVersion, redisVersion } =
+    useRedisWorkspaceStore(
+      useShallow((state) => ({
+        activeConnectionId: state.activeConnectionId,
+        hasResolvedRedisVersion: state.activeConnectionId
+          ? Object.prototype.hasOwnProperty.call(
+              state.serverVersions,
+              state.activeConnectionId
+            )
+          : false,
+        redisVersion: state.activeConnectionId
+          ? state.serverVersions[state.activeConnectionId] ?? null
+          : null,
+      }))
+    );
   const countLabel =
     keyValue &&
     selectedKey &&
@@ -25,6 +40,13 @@ export const StatusBarPanel = memo(function StatusBarPanel() {
           total: keyValue.page.totalCount,
         })
       : format(messages.app.status.keysCount, { count: keysCount });
+  const redisVersionLabel = !activeConnectionId
+    ? "Redis --"
+    : !hasResolvedRedisVersion
+    ? "Redis ..."
+    : redisVersion
+    ? `Redis ${redisVersion}`
+    : "Redis --";
 
   return (
     <div className="flex items-center justify-between px-4 h-7 border-t border-base-100/50 shrink-0">
@@ -45,7 +67,9 @@ export const StatusBarPanel = memo(function StatusBarPanel() {
         )}
       </div>
       <div className="ml-3 flex shrink-0 items-center gap-3">
-        <span className="text-[10px] font-mono text-base-content/30">Redis 7.2.3</span>
+        <span className="text-[10px] font-mono text-base-content/30">
+          {redisVersionLabel}
+        </span>
         <span className="text-[10px] font-mono text-base-content/20">{APP_NAME} v{APP_VERSION}</span>
       </div>
     </div>

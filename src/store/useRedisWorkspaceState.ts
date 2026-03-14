@@ -21,6 +21,7 @@ import {
   deleteRedisKeys,
   getRedisErrorMessage,
   getRedisKeyValuePage,
+  getRedisServerVersion,
   renameRedisKey,
   renameRedisKeys,
   scanRedisKeysPage,
@@ -219,6 +220,7 @@ interface RedisWorkspaceRuntime {
 interface RedisWorkspaceStoreState {
   connections: RedisConnection[];
   activeConnectionId: string;
+  serverVersions: Record<string, string | null>;
   selectedDb: number;
   selectedClusterNodeAddress: string | null;
   keys: RedisKey[];
@@ -245,6 +247,11 @@ interface RedisWorkspaceStoreState {
     connectionId: string,
     updater: (connection: RedisConnection) => RedisConnection
   ) => void;
+  resetConnectionServerVersion: (connectionId: string) => void;
+  loadConnectionServerVersion: (
+    connection: RedisConnection,
+    options?: { force?: boolean }
+  ) => Promise<string | null>;
   syncConnectionStatus: (
     connectionId: string,
     status: RedisConnection["status"],
@@ -308,6 +315,7 @@ const defaultWorkspaceRuntime: RedisWorkspaceRuntime = {
 let workspaceRuntime = defaultWorkspaceRuntime;
 let keysRequestId = 0;
 let keyValueRequestId = 0;
+const serverVersionRequestIds = new Map<string, number>();
 let hasAttemptedAutoConnect = false;
 let hasInitializedRedisWorkspaceStore = false;
 
@@ -346,6 +354,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
   (set, get) => ({
     connections: [],
     activeConnectionId: "",
+    serverVersions: {},
     selectedDb: 0,
     selectedClusterNodeAddress: null,
     keys: [],
@@ -391,6 +400,67 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           connection.id === connectionId ? updater(connection) : connection
         ),
       }));
+    },
+    resetConnectionServerVersion: (connectionId) => {
+      serverVersionRequestIds.delete(connectionId);
+      set((state) => {
+        if (!Object.prototype.hasOwnProperty.call(state.serverVersions, connectionId)) {
+          return state;
+        }
+
+        const nextServerVersions = { ...state.serverVersions };
+        delete nextServerVersions[connectionId];
+
+        return {
+          serverVersions: nextServerVersions,
+        };
+      });
+    },
+    loadConnectionServerVersion: async (connection, options = {}) => {
+      const hasCachedVersion = Object.prototype.hasOwnProperty.call(
+        get().serverVersions,
+        connection.id
+      );
+
+      if (!options.force && hasCachedVersion) {
+        return get().serverVersions[connection.id] ?? null;
+      }
+
+      const requestId = (serverVersionRequestIds.get(connection.id) ?? 0) + 1;
+      serverVersionRequestIds.set(connection.id, requestId);
+
+      try {
+        const version = await getRedisServerVersion({
+          ...connection,
+          db: connection.mode === "cluster" ? 0 : connection.db,
+        });
+
+        if (serverVersionRequestIds.get(connection.id) !== requestId) {
+          return get().serverVersions[connection.id] ?? null;
+        }
+
+        set((state) => ({
+          serverVersions: {
+            ...state.serverVersions,
+            [connection.id]: version,
+          },
+        }));
+
+        return version;
+      } catch {
+        if (serverVersionRequestIds.get(connection.id) !== requestId) {
+          return get().serverVersions[connection.id] ?? null;
+        }
+
+        set((state) => ({
+          serverVersions: {
+            ...state.serverVersions,
+            [connection.id]: null,
+          },
+        }));
+
+        return null;
+      }
     },
     syncConnectionStatus: (connectionId, status, db) => {
       get().updateConnection(connectionId, (connection) => ({
@@ -527,11 +597,23 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     loadKeys: async (connection, db, options = {}) => {
       const requestId = ++keysRequestId;
-      const { selectedKey, syncConnectionStatus } = get();
+      const {
+        selectedKey,
+        serverVersions,
+        syncConnectionStatus,
+        resetConnectionServerVersion,
+      } = get();
       const currentSelectedKey = options.preserveSelection ? selectedKey : null;
       const { appSettings } = getWorkspaceRuntime();
       const clusterNodeAddress =
         connection.mode === "cluster" ? get().selectedClusterNodeAddress : null;
+      const cachedServerVersion = serverVersions[connection.id];
+      const shouldRefreshServerVersion =
+        connection.status !== "connected" || cachedServerVersion == null;
+
+      if (shouldRefreshServerVersion) {
+        resetConnectionServerVersion(connection.id);
+      }
 
       set({
         isLoadingKeys: true,
@@ -581,6 +663,11 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           hasMoreKeys: Boolean(page.nextCursor),
         });
         syncConnectionStatus(connection.id, "connected", db);
+        void get()
+          .loadConnectionServerVersion(connection, {
+            force: shouldRefreshServerVersion,
+          })
+          .catch(() => undefined);
 
         if (currentSelectedKey) {
           const refreshedSelectedKey =
@@ -887,7 +974,17 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         recentKeys: state.recentKeys.filter(
           (item) => item.connectionId !== connectionId
         ),
+        serverVersions: (() => {
+          if (!Object.prototype.hasOwnProperty.call(state.serverVersions, connectionId)) {
+            return state.serverVersions;
+          }
+
+          const nextServerVersions = { ...state.serverVersions };
+          delete nextServerVersions[connectionId];
+          return nextServerVersions;
+        })(),
       }));
+      serverVersionRequestIds.delete(connectionId);
 
       if (
         activeConnectionId !== connectionId &&

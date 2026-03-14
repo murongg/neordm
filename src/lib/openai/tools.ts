@@ -347,8 +347,25 @@ function getValueSummary(value: Awaited<ReturnType<typeof getRedisKeyValue>>["va
 
 function parseRedisInfoSection(output: string) {
   const result: Record<string, string> = {};
+  let normalizedOutput = output.trim();
 
-  output.split(/\r?\n/).forEach((line) => {
+  if (
+    normalizedOutput.length >= 2 &&
+    normalizedOutput.startsWith('"') &&
+    normalizedOutput.endsWith('"')
+  ) {
+    try {
+      const parsedOutput = JSON.parse(normalizedOutput);
+
+      if (typeof parsedOutput === "string") {
+        normalizedOutput = parsedOutput;
+      }
+    } catch {
+      normalizedOutput = output;
+    }
+  }
+
+  normalizedOutput.split(/\r?\n/).forEach((line) => {
     if (!line || line.startsWith("#")) {
       return;
     }

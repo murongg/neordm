@@ -130,6 +130,54 @@ export interface RedisKeyValuePage extends KeyValue {
 
 export const REDIS_PUBSUB_EVENT = "redis://pubsub";
 
+function normalizeRedisCommandText(output: string) {
+  const trimmedOutput = output.trim();
+
+  if (
+    trimmedOutput.length >= 2 &&
+    trimmedOutput.startsWith('"') &&
+    trimmedOutput.endsWith('"')
+  ) {
+    try {
+      const parsedOutput = JSON.parse(trimmedOutput);
+
+      if (typeof parsedOutput === "string") {
+        return parsedOutput;
+      }
+    } catch {
+      return output;
+    }
+  }
+
+  return output;
+}
+
+function parseRedisInfoSection(output: string) {
+  const result: Record<string, string> = {};
+  const normalizedOutput = normalizeRedisCommandText(output);
+
+  normalizedOutput.split(/\r?\n/).forEach((line) => {
+    if (!line || line.startsWith("#")) {
+      return;
+    }
+
+    const separatorIndex = line.indexOf(":");
+
+    if (separatorIndex === -1) {
+      return;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+
+    if (key) {
+      result[key] = value;
+    }
+  });
+
+  return result;
+}
+
 type RedisConnectionInvokeInput = Pick<
   RedisConnection,
   | "host"
@@ -329,6 +377,13 @@ export async function runRedisCommand(
       command,
     },
   });
+}
+
+export async function getRedisServerVersion(
+  connection: RedisConnectionInvokeInput
+): Promise<string | null> {
+  const output = await runRedisCommand(connection, "INFO server");
+  return parseRedisInfoSection(output).redis_version ?? null;
 }
 
 export async function startRedisPubSubSession(
