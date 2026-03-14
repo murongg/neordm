@@ -22,6 +22,7 @@ export const ja: Messages = {
       ai: "AI エージェント",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "未接続",

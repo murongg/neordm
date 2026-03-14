@@ -215,6 +215,13 @@ pub(crate) struct RedisCommandInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSlowLogInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) limit: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisPubSubStartInput {
     pub(crate) connection: RedisConnectionTestInput,
 }
@@ -440,6 +447,26 @@ pub(crate) struct RedisKeyValuePageResponse {
     pub(crate) total_count: Option<u64>,
     pub(crate) loaded_count: u64,
     pub(crate) page_size: u32,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSlowLogEntry {
+    pub(crate) id: u64,
+    pub(crate) started_at: u64,
+    pub(crate) duration_us: u64,
+    pub(crate) arguments: Vec<String>,
+    pub(crate) client_address: Option<String>,
+    pub(crate) client_name: Option<String>,
+    pub(crate) node_address: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisSlowLogResponse {
+    pub(crate) total_count: u64,
+    pub(crate) limit: u32,
+    pub(crate) entries: Vec<RedisSlowLogEntry>,
 }
 
 #[derive(Clone, Debug, Serialize)]

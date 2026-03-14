@@ -2,6 +2,7 @@ mod core;
 mod http;
 mod keys;
 mod pubsub;
+mod slowlog;
 mod stream;
 mod values;
 
@@ -16,6 +17,7 @@ pub(crate) use pubsub::{
     subscribe_redis_pubsub_channels, subscribe_redis_pubsub_patterns,
     unsubscribe_redis_pubsub_channels, unsubscribe_redis_pubsub_patterns, RedisPubSubState,
 };
+pub(crate) use slowlog::get_redis_slowlog;
 pub(crate) use stream::{
     ack_redis_stream_entries, append_redis_stream_entry, claim_redis_stream_entries,
     create_redis_stream_consumer_group, delete_redis_stream_consumer, delete_redis_stream_entries,

@@ -24,6 +24,7 @@ export const ru: Messages = {
       ai: "AI-агент",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "Нет подключения",

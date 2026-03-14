@@ -24,6 +24,7 @@ export const ar: Messages = {
       ai: "وكيل الذكاء الاصطناعي",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "غير متصل",

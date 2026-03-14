@@ -72,6 +72,7 @@ export interface Messages {
       ai: string;
       cli: string;
       pubsub: string;
+      slowlog: string;
     };
     status: {
       notConnected: string;
@@ -329,6 +330,26 @@ export interface Messages {
     noMessages: string;
     noMessagesHint: string;
     publishResult: string;
+  };
+  slowlog: {
+    searchPlaceholder: string;
+    limit: string;
+    loaded: string;
+    total: string;
+    maxDuration: string;
+    avgDuration: string;
+    startedAt: string;
+    duration: string;
+    client: string;
+    node: string;
+    command: string;
+    arguments: string;
+    details: string;
+    empty: string;
+    emptyHint: string;
+    noResultsHint: string;
+    selectEntry: string;
+    selectEntryHint: string;
   };
   connectionModal: {
     title: string;

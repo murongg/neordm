@@ -7,6 +7,7 @@ import type {
   RedisPubSubEvent,
   RedisKey,
   RedisKeyType,
+  RedisSlowLogResponse,
   RedisStreamConsumer,
   RedisStreamConsumerGroup,
   RedisStreamEntriesResult,
@@ -122,6 +123,10 @@ export interface RedisKeyValuePageOptions {
 export interface RedisStreamEntriesOptions {
   pageSize?: number;
   cursor?: string | null;
+}
+
+export interface RedisSlowLogOptions {
+  limit?: number;
 }
 
 export interface RedisKeyValuePage extends KeyValue {
@@ -384,6 +389,18 @@ export async function getRedisServerVersion(
 ): Promise<string | null> {
   const output = await runRedisCommand(connection, "INFO server");
   return parseRedisInfoSection(output).redis_version ?? null;
+}
+
+export async function getRedisSlowLog(
+  connection: RedisConnectionInvokeInput,
+  options: RedisSlowLogOptions = {}
+): Promise<RedisSlowLogResponse> {
+  return invoke("get_redis_slowlog", {
+    input: {
+      connection: toConnectionInput(connection),
+      limit: options.limit,
+    },
+  });
 }
 
 export async function startRedisPubSubSession(

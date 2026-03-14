@@ -24,6 +24,7 @@ export const de: Messages = {
       ai: "KI-Agent",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "Nicht verbunden",

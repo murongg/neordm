@@ -24,6 +24,7 @@ export const pt: Messages = {
       ai: "Agente IA",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "Não conectado",

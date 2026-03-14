@@ -151,6 +151,22 @@ export interface RedisPubSubMessage {
   timestamp: number;
 }
 
+export interface RedisSlowLogEntry {
+  id: number;
+  startedAt: number;
+  durationUs: number;
+  arguments: string[];
+  clientAddress?: string | null;
+  clientName?: string | null;
+  nodeAddress?: string | null;
+}
+
+export interface RedisSlowLogResponse {
+  totalCount: number;
+  limit: number;
+  entries: RedisSlowLogEntry[];
+}
+
 export type RedisPubSubEvent =
   | {
       kind: "message";
@@ -166,7 +182,7 @@ export type RedisPubSubEvent =
       reason?: string | null;
     };
 
-export type PanelTab = "editor" | "ai" | "cli" | "pubsub";
+export type PanelTab = "editor" | "ai" | "cli" | "pubsub" | "slowlog";
 
 export interface ChatMessage {
   id: string;

@@ -214,6 +214,21 @@ export function CommandPalette({
           workspace.setPanelTab("pubsub");
         },
       },
+      {
+        id: "action:panel-slowlog",
+        group: "actions",
+        title: messages.app.tabs.slowlog,
+        subtitle: labels.panel,
+        icon: <Clock3 size={14} />,
+        searchText: buildSearchText([
+          messages.app.tabs.slowlog,
+          labels.panel,
+          "panel slowlog slow log slow query",
+        ]),
+        onSelect: () => {
+          workspace.setPanelTab("slowlog");
+        },
+      },
     ];
 
     if (activeConnection) {
@@ -260,6 +275,7 @@ export function CommandPalette({
     messages.app.tabs.cli,
     messages.app.tabs.editor,
     messages.app.tabs.pubsub,
+    messages.app.tabs.slowlog,
     messages.common.settings,
     messages.sidebar.newConnection,
     onOpenSettings,

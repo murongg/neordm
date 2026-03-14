@@ -20,6 +20,7 @@ export const en: Messages = {
       ai: "AI Agent",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "Not connected",
@@ -305,6 +306,28 @@ export const en: Messages = {
     noMessages: "No messages yet",
     noMessagesHint: "Subscribe to a channel to start streaming live messages.",
     publishResult: "Published to {count} subscriber(s)",
+  },
+  slowlog: {
+    searchPlaceholder: "Filter commands, clients, or nodes",
+    limit: "Limit",
+    loaded: "Loaded",
+    total: "Total",
+    maxDuration: "Max duration",
+    avgDuration: "Average",
+    startedAt: "Started",
+    duration: "Duration",
+    client: "Client",
+    node: "Node",
+    command: "Command",
+    arguments: "Arguments",
+    details: "Slow log entries",
+    empty: "No slow log entries",
+    emptyHint:
+      "Generate traffic against Redis or lower your slowlog threshold to capture entries.",
+    noResultsHint: "Adjust the filter or clear it to see the loaded slow log entries.",
+    selectEntry: "Select an entry",
+    selectEntryHint:
+      "Choose a slow log entry to inspect its full command and arguments.",
   },
   connectionModal: {
     title: "New Connection",

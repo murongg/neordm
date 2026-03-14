@@ -24,6 +24,7 @@ export const hi: Messages = {
       ai: "AI एजेंट",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "कनेक्ट नहीं",

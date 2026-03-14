@@ -24,6 +24,7 @@ export const ko: Messages = {
       ai: "AI 에이전트",
       cli: "CLI",
       pubsub: "Pub/Sub",
+      slowlog: "Slow Log",
     },
     status: {
       notConnected: "연결 안 됨",

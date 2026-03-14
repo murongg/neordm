@@ -29,6 +29,7 @@ const loadAIAgentPanel = () => import("./components/AIAgentPanel");
 const loadConnectionModalHost = () => import("./components/ConnectionModalHost");
 const loadRedisCLIPanel = () => import("./components/RedisCLIPanel");
 const loadRedisPubSubPanel = () => import("./components/RedisPubSubPanel");
+const loadRedisSlowLogPanel = () => import("./components/RedisSlowLogPanel");
 const loadSettingsPanel = () => import("./components/SettingsPanel");
 
 const LazyAIAgentPanel = lazy(async () => ({
@@ -42,6 +43,9 @@ const LazyRedisCLIPanel = lazy(async () => ({
 }));
 const LazyRedisPubSubPanel = lazy(async () => ({
   default: (await loadRedisPubSubPanel()).RedisPubSubPanel,
+}));
+const LazyRedisSlowLogPanel = lazy(async () => ({
+  default: (await loadRedisSlowLogPanel()).RedisSlowLogPanel,
 }));
 const LazySettingsPanel = lazy(async () => ({
   default: (await loadSettingsPanel()).SettingsPanel,
@@ -116,6 +120,7 @@ function App() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
   const [hasMountedPubSubPanel, setHasMountedPubSubPanel] = useState(false);
+  const [hasMountedSlowLogPanel, setHasMountedSlowLogPanel] = useState(false);
   const [isMacOS] = useState(() => isMacOSPlatform());
   useInitializeAppPreferencesStore();
   const preferences = useAppPreferencesStore(
@@ -142,6 +147,7 @@ function App() {
       void loadConnectionModalHost();
       void loadRedisCLIPanel();
       void loadRedisPubSubPanel();
+      void loadRedisSlowLogPanel();
       void useAppUpdateStore.getState().checkForUpdates({ silent: true });
     }, 1500);
   }, []);
@@ -170,6 +176,14 @@ function App() {
     }
 
     setHasMountedPubSubPanel(true);
+  }, [panelTab]);
+
+  useEffect(() => {
+    if (panelTab !== "slowlog") {
+      return;
+    }
+
+    setHasMountedSlowLogPanel(true);
   }, [panelTab]);
 
   useEffect(() => {
@@ -293,6 +307,22 @@ function App() {
                     aria-hidden={panelTab !== "pubsub"}
                   >
                     <LazyRedisPubSubPanel />
+                  </div>
+                </Suspense>
+              ) : null}
+              {hasMountedSlowLogPanel ? (
+                <Suspense
+                  fallback={panelTab === "slowlog" ? <PanelFallback /> : null}
+                >
+                  <div
+                    className={
+                      panelTab === "slowlog"
+                        ? "flex flex-1 flex-col min-h-0"
+                        : "hidden"
+                    }
+                    aria-hidden={panelTab !== "slowlog"}
+                  >
+                    <LazyRedisSlowLogPanel />
                   </div>
                 </Suspense>
               ) : null}
