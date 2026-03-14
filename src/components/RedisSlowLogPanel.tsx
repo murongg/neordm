@@ -19,9 +19,12 @@ import { getRedisErrorMessage, getRedisSlowLog } from "../lib/redis";
 import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 import type { RedisSlowLogEntry, RedisSlowLogResponse } from "../types";
+import { useToast } from "./ToastProvider";
 import {
   DATA_TABLE_CELL_CLASS,
   DATA_TABLE_HEADER_CLASS,
+  DATA_TABLE_INDEX_CELL_CLASS,
+  DATA_TABLE_INDEX_HEADER_CLASS,
   DATA_TABLE_PANEL_CLASS,
   DATA_TABLE_ROW_CLASS,
   DataTable,
@@ -29,6 +32,10 @@ import {
 } from "./DataTable";
 
 const LIMIT_OPTIONS = [32, 64, 128, 256];
+const SLOWLOG_HEADER_CLASS = `${DATA_TABLE_HEADER_CLASS} py-3`;
+const SLOWLOG_CELL_CLASS = `${DATA_TABLE_CELL_CLASS} py-3`;
+const SLOWLOG_INDEX_HEADER_CLASS = `${DATA_TABLE_INDEX_HEADER_CLASS} py-3`;
+const SLOWLOG_INDEX_CELL_CLASS = `${DATA_TABLE_INDEX_CELL_CLASS} py-3`;
 
 function formatDuration(durationUs: number) {
   if (durationUs >= 1_000) {
@@ -53,6 +60,10 @@ function formatStartedAt(timestampSeconds: number) {
   });
 }
 
+function formatStartedAtForCopy(timestampSeconds: number) {
+  return new Date(timestampSeconds * 1000).toLocaleString();
+}
+
 function formatCommandArgument(value: string) {
   return /[\s"'\\\n\r\t]/.test(value) ? JSON.stringify(value) : value;
 }
@@ -73,8 +84,54 @@ function createEntrySearchText(entry: RedisSlowLogEntry) {
     .toLowerCase();
 }
 
+function CopyableSlowLogCell({
+  displayValue,
+  copyValue,
+  className,
+  onCopy,
+}: {
+  displayValue: string;
+  copyValue?: string;
+  className?: string;
+  onCopy: (text: string) => Promise<void>;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setCopied(false);
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [copied]);
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void onCopy(copyValue ?? displayValue).then(() => {
+          setCopied(true);
+        });
+      }}
+      title={displayValue}
+      className={`block w-full cursor-copy truncate text-left font-mono transition-colors duration-150 motion-reduce:transition-none ${
+        copied ? "text-success" : ""
+      } ${className ?? ""}`}
+    >
+      {displayValue}
+    </button>
+  );
+}
+
 export const RedisSlowLogPanel = memo(function RedisSlowLogPanel() {
   const { messages } = useI18n();
+  const { showToast } = useToast();
   const workspace = useRedisWorkspaceStore(
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
@@ -164,55 +221,79 @@ export const RedisSlowLogPanel = memo(function RedisSlowLogPanel() {
   const summaryLabel = response
     ? `${messages.slowlog.loaded} ${filteredEntries.length.toLocaleString()} · ${messages.slowlog.total} ${response.totalCount.toLocaleString()}`
     : `${messages.slowlog.loaded} 0`;
+  const copyText = useCallback(
+    async (text: string) => {
+      await navigator.clipboard.writeText(text);
+      showToast({
+        message: messages.common.copied,
+        tone: "success",
+      });
+    },
+    [messages.common.copied, showToast]
+  );
 
   const columns = useMemo<DataTableColumn<RedisSlowLogEntry>[]>(() => {
     const commandColumn: DataTableColumn<RedisSlowLogEntry> = {
       id: "command",
       header: messages.slowlog.command,
       colClassName: "w-auto",
-      headerClassName: DATA_TABLE_HEADER_CLASS,
-      cellClassName: DATA_TABLE_CELL_CLASS,
+      headerClassName: SLOWLOG_HEADER_CLASS,
+      cellClassName: SLOWLOG_CELL_CLASS,
       renderCell: (entry) => {
         const commandText = formatSlowLogCommand(entry.arguments);
 
         return (
-          <div className="min-w-0">
-            <div
-              title={commandText}
-              className="truncate font-mono text-[11px] text-base-content/84"
-            >
-              {commandText}
-            </div>
-            <div className="mt-1 font-mono text-[10px] text-base-content/34">
-              #{entry.id.toLocaleString()}
-            </div>
-          </div>
+          <CopyableSlowLogCell
+            displayValue={commandText}
+            className="text-[11px] text-base-content/84"
+            onCopy={copyText}
+          />
         );
       },
     };
     const nextColumns: DataTableColumn<RedisSlowLogEntry>[] = [
       {
+        id: "id",
+        header: messages.valueEditor.headers.index,
+        colClassName: "w-20",
+        headerClassName: SLOWLOG_INDEX_HEADER_CLASS,
+        cellClassName: SLOWLOG_INDEX_CELL_CLASS,
+        renderCell: (entry) => (
+          <CopyableSlowLogCell
+            displayValue={entry.id.toLocaleString()}
+            className="text-center text-[10px] text-base-content/30"
+            onCopy={copyText}
+          />
+        ),
+      },
+      {
         id: "startedAt",
         header: messages.slowlog.startedAt,
         colClassName: "w-40",
-        headerClassName: DATA_TABLE_HEADER_CLASS,
-        cellClassName: DATA_TABLE_CELL_CLASS,
+        headerClassName: SLOWLOG_HEADER_CLASS,
+        cellClassName: SLOWLOG_CELL_CLASS,
         renderCell: (entry) => (
-          <span className="font-mono text-[11px] text-base-content/62">
-            {formatStartedAt(entry.startedAt)}
-          </span>
+          <CopyableSlowLogCell
+            displayValue={formatStartedAt(entry.startedAt)}
+            copyValue={formatStartedAtForCopy(entry.startedAt)}
+            className="text-[11px] text-base-content/62"
+            onCopy={copyText}
+          />
         ),
       },
       {
         id: "duration",
         header: messages.slowlog.duration,
         colClassName: "w-28",
-        headerClassName: DATA_TABLE_HEADER_CLASS,
-        cellClassName: DATA_TABLE_CELL_CLASS,
+        headerClassName: SLOWLOG_HEADER_CLASS,
+        cellClassName: SLOWLOG_CELL_CLASS,
         renderCell: (entry) => (
-          <span className="font-mono text-[11px] text-base-content/82">
-            {formatDuration(entry.durationUs)}
-          </span>
+          <CopyableSlowLogCell
+            displayValue={formatDuration(entry.durationUs)}
+            copyValue={entry.durationUs.toString()}
+            className="text-[11px] text-base-content/82"
+            onCopy={copyText}
+          />
         ),
       },
       commandColumn,
@@ -220,20 +301,19 @@ export const RedisSlowLogPanel = memo(function RedisSlowLogPanel() {
         id: "client",
         header: messages.slowlog.client,
         colClassName: "w-52",
-        headerClassName: DATA_TABLE_HEADER_CLASS,
-        cellClassName: DATA_TABLE_CELL_CLASS,
+        headerClassName: SLOWLOG_HEADER_CLASS,
+        cellClassName: SLOWLOG_CELL_CLASS,
         renderCell: (entry) => {
           const clientText = entry.clientName
             ? `${entry.clientAddress ?? "--"} · ${entry.clientName}`
             : entry.clientAddress ?? "--";
 
           return (
-            <span
-              title={clientText}
-              className="block truncate font-mono text-[11px] text-base-content/52"
-            >
-              {clientText}
-            </span>
+            <CopyableSlowLogCell
+              displayValue={clientText}
+              className="text-[11px] text-base-content/52"
+              onCopy={copyText}
+            />
           );
         },
       },
@@ -244,21 +324,29 @@ export const RedisSlowLogPanel = memo(function RedisSlowLogPanel() {
         id: "node",
         header: messages.slowlog.node,
         colClassName: "w-52",
-        headerClassName: DATA_TABLE_HEADER_CLASS,
-        cellClassName: DATA_TABLE_CELL_CLASS,
+        headerClassName: SLOWLOG_HEADER_CLASS,
+        cellClassName: SLOWLOG_CELL_CLASS,
         renderCell: (entry) => (
-          <span
-            title={entry.nodeAddress ?? "--"}
-            className="block truncate font-mono text-[11px] text-base-content/45"
-          >
-            {entry.nodeAddress ?? "--"}
-          </span>
+          <CopyableSlowLogCell
+            displayValue={entry.nodeAddress ?? "--"}
+            className="text-[11px] text-base-content/45"
+            onCopy={copyText}
+          />
         ),
       });
     }
 
     return nextColumns;
-  }, [hasNodeAddress, messages.slowlog.client, messages.slowlog.command, messages.slowlog.duration, messages.slowlog.node, messages.slowlog.startedAt]);
+  }, [
+    hasNodeAddress,
+    messages.slowlog.client,
+    messages.slowlog.command,
+    messages.slowlog.duration,
+    messages.slowlog.node,
+    messages.slowlog.startedAt,
+    messages.valueEditor.headers.index,
+    copyText,
+  ]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-base-300">
@@ -353,6 +441,7 @@ export const RedisSlowLogPanel = memo(function RedisSlowLogPanel() {
             getRowKey={(entry) =>
               `${activeConnection.id}:${entry.id}:${entry.startedAt}`
             }
+            size="sm"
             rowClassName={DATA_TABLE_ROW_CLASS}
             containerClassName={`${DATA_TABLE_PANEL_CLASS} flex h-full min-h-0 flex-col`}
             scrollAreaClassName="min-h-0 flex-1 overflow-auto"
