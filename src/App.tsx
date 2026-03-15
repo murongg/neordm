@@ -93,7 +93,7 @@ function isRefreshShortcut(event: KeyboardEvent) {
   );
 }
 
-function refreshWorkspaceContext() {
+async function refreshWorkspaceContext() {
   const workspace = useRedisWorkspaceStore.getState();
 
   if (
@@ -105,12 +105,30 @@ function refreshWorkspaceContext() {
     return;
   }
 
-  if (workspace.selectedKey) {
-    void workspace.refreshKeyValue();
+  const shouldRefreshKeyValue = Boolean(workspace.selectedKey);
+  const activeConnectionId = workspace.activeConnectionId;
+
+  try {
+    await workspace.refreshKeys();
+  } catch {
     return;
   }
 
-  void workspace.refreshKeys();
+  if (!shouldRefreshKeyValue) {
+    return;
+  }
+
+  const nextWorkspace = useRedisWorkspaceStore.getState();
+
+  if (
+    nextWorkspace.activeConnectionId !== activeConnectionId ||
+    !nextWorkspace.selectedKey ||
+    nextWorkspace.isLoadingMoreKeyValue
+  ) {
+    return;
+  }
+
+  void nextWorkspace.refreshKeyValue();
 }
 
 function App() {
@@ -225,7 +243,7 @@ function App() {
       }
 
       event.preventDefault();
-      refreshWorkspaceContext();
+      void refreshWorkspaceContext();
     };
 
     window.addEventListener("keydown", handleKeyDown, true);
@@ -241,7 +259,7 @@ function App() {
     }
 
     const timer = window.setInterval(() => {
-      refreshWorkspaceContext();
+      void refreshWorkspaceContext();
     }, autoRefreshIntervalSeconds * 1000);
 
     return () => {

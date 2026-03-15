@@ -2333,16 +2333,6 @@ export function KeyBrowser({
           </div>
         ) : (
           <>
-            {isRefreshing ? (
-              <div className="px-3 pb-2 pt-1">
-                <div className="flex items-center gap-2 rounded-xl border border-base-content/8 bg-base-100/50 px-3 py-2">
-                  <LoaderCircle size={12} className="animate-spin text-base-content/45" />
-                  <span className="text-[10px] font-mono text-base-content/45">
-                    {messages.keyBrowser.refreshing}
-                  </span>
-                </div>
-              </div>
-            ) : null}
             {topSpacerHeight > 0 ? (
               <div
                 data-key-browser-blank="true"
