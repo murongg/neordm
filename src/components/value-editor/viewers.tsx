@@ -50,22 +50,28 @@ export function StringViewer({
   value,
   settings,
   onSave,
+  onRefresh,
+  onHeaderToolbarChange,
 }: {
   value: string;
   settings: EditorRuntimeSettings;
   onSave?: (nextValue: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
+  onHeaderToolbarChange?: (config: HeaderToolbarConfig | null) => void;
 }) {
   const { messages } = useI18n();
   const [isEditing, setIsEditing] = useState(false);
   const [editVal, setEditVal] = useState(value);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     setEditVal(value);
     setIsEditing(false);
     setError("");
     setIsSaving(false);
+    setIsRefreshing(false);
   }, [value]);
 
   const maxPreviewBytes = parseMaxValueSizeBytes(settings.maxValueSize);
@@ -104,9 +110,57 @@ export function StringViewer({
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    if (!onRefresh || isRefreshing || isEditing || isSaving) {
+      return;
+    }
+
+    setError("");
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } catch (refreshError) {
+      setError(getRedisErrorMessage(refreshError));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isEditing, isRefreshing, isSaving, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig | null>(
+    () =>
+      onRefresh
+        ? {
+            refreshAction: {
+              label: messages.common.refresh,
+              onClick: () => {
+                void handleRefresh();
+              },
+              disabled: isRefreshing || isEditing || isSaving,
+              isLoading: isRefreshing,
+            },
+          }
+        : null,
+    [
+      handleRefresh,
+      isEditing,
+      isRefreshing,
+      isSaving,
+      messages.common.refresh,
+      onRefresh,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : headerToolbarConfig ? (
+    <HeaderToolbar config={headerToolbarConfig} />
+  ) : undefined;
+
   if (isEditing) {
     return (
-      <div className="flex h-full flex-col gap-2">
+      <div className="flex h-full min-h-0 flex-col gap-2">
+        {localToolbar ? <div className="flex shrink-0">{localToolbar}</div> : null}
         <JsonCodeEditor
           value={editVal}
           onChange={setEditVal}
@@ -156,31 +210,39 @@ export function StringViewer({
   }
 
   return (
-    <div className="relative group">
-      <button
-        disabled={!onSave}
-        onClick={() => {
-          setEditVal(
-            isJson && settings.autoFormatJson ? formatJsonDraft(value) : value
-          );
-          setError("");
-          setIsEditing(true);
-        }}
-        className="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer disabled:pointer-events-none disabled:opacity-0"
-      >
-        <Edit3 size={11} />
-      </button>
-      <pre
-        className={`text-xs font-mono bg-base-200 rounded-xl p-4 overflow-auto user-select-text leading-relaxed ${
-          settings.wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
-        }`}
-      >
-        {isJson && settings.syntaxHighlighting ? (
-          <JsonHighlight code={previewValue} />
-        ) : (
-          <span className="text-base-content">{previewValue}</span>
-        )}
-      </pre>
+    <div className="flex h-full min-h-0 flex-col gap-2">
+      {localToolbar ? <div className="flex shrink-0">{localToolbar}</div> : null}
+      {error ? (
+        <p className="rounded-lg border border-error/15 bg-error/8 px-3 py-2 text-xs text-error">
+          {error}
+        </p>
+      ) : null}
+      <div className="relative min-h-0 flex-1 group">
+        <button
+          disabled={!onSave}
+          onClick={() => {
+            setEditVal(
+              isJson && settings.autoFormatJson ? formatJsonDraft(value) : value
+            );
+            setError("");
+            setIsEditing(true);
+          }}
+          className="absolute top-2 right-2 btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 cursor-pointer disabled:pointer-events-none disabled:opacity-0"
+        >
+          <Edit3 size={11} />
+        </button>
+        <pre
+          className={`h-full text-xs font-mono bg-base-200 rounded-xl p-4 overflow-auto user-select-text leading-relaxed ${
+            settings.wordWrap ? "whitespace-pre-wrap break-all" : "whitespace-pre"
+          }`}
+        >
+          {isJson && settings.syntaxHighlighting ? (
+            <JsonHighlight code={previewValue} />
+          ) : (
+            <span className="text-base-content">{previewValue}</span>
+          )}
+        </pre>
+      </div>
     </div>
   );
 }
@@ -189,10 +251,14 @@ export function JsonEditorViewer({
   value,
   settings,
   onSave,
+  onRefresh,
+  onHeaderToolbarChange,
 }: {
   value: string;
   settings: EditorRuntimeSettings;
   onSave?: (nextValue: string) => Promise<void>;
+  onRefresh?: () => Promise<void>;
+  onHeaderToolbarChange?: (config: HeaderToolbarConfig | null) => void;
 }) {
   const { messages } = useI18n();
   const shouldAutoFormat =
@@ -204,16 +270,21 @@ export function JsonEditorViewer({
   const [error, setError] = useState(() => getJsonDraftError(value));
   const [saveError, setSaveError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     setDraft(shouldAutoFormat ? formatJsonDraft(value) : value);
     setError(getJsonDraftError(value));
     setSaveError("");
     setIsSaving(false);
+    setIsRefreshing(false);
   }, [shouldAutoFormat, value]);
 
+  const sourceDraft = shouldAutoFormat ? formatJsonDraft(value) : value;
+  const hasUnsavedChanges = draft !== sourceDraft;
+
   const handleReset = () => {
-    setDraft(shouldAutoFormat ? formatJsonDraft(value) : value);
+    setDraft(sourceDraft);
     setError(getJsonDraftError(value));
     setSaveError("");
   };
@@ -235,8 +306,56 @@ export function JsonEditorViewer({
     }
   };
 
+  const handleRefresh = useCallback(async () => {
+    if (!onRefresh || isRefreshing || isSaving || hasUnsavedChanges) {
+      return;
+    }
+
+    setSaveError("");
+    setIsRefreshing(true);
+
+    try {
+      await onRefresh();
+    } catch (refreshError) {
+      setSaveError(getRedisErrorMessage(refreshError));
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [hasUnsavedChanges, isRefreshing, isSaving, onRefresh]);
+
+  const headerToolbarConfig = useMemo<HeaderToolbarConfig | null>(
+    () =>
+      onRefresh
+        ? {
+            refreshAction: {
+              label: messages.common.refresh,
+              onClick: () => {
+                void handleRefresh();
+              },
+              disabled: isRefreshing || isSaving || hasUnsavedChanges,
+              isLoading: isRefreshing,
+            },
+          }
+        : null,
+    [
+      handleRefresh,
+      hasUnsavedChanges,
+      isRefreshing,
+      isSaving,
+      messages.common.refresh,
+      onRefresh,
+    ]
+  );
+
+  useSyncHeaderToolbar(headerToolbarConfig, onHeaderToolbarChange);
+
+  const localToolbar = onHeaderToolbarChange ? undefined : headerToolbarConfig ? (
+    <HeaderToolbar config={headerToolbarConfig} />
+  ) : undefined;
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-3">
+      {localToolbar ? <div className="flex shrink-0">{localToolbar}</div> : null}
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"

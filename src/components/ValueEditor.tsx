@@ -494,6 +494,8 @@ export function ValueEditor({
                 value={keyValue.value as string}
                 settings={editorSettings}
                 onSave={(nextValue) => onUpdateStringValue(keyValue.key, nextValue)}
+                onRefresh={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
               />
             )}
             {keyValue.type === "json" && (
@@ -501,6 +503,8 @@ export function ValueEditor({
                 value={keyValue.value as string}
                 settings={editorSettings}
                 onSave={(nextValue) => onUpdateJsonValue(keyValue.key, nextValue)}
+                onRefresh={onRefreshKeyValue}
+                onHeaderToolbarChange={setHeaderToolbarConfig}
               />
             )}
             {keyValue.type === "stream" && (
