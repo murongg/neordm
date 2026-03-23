@@ -43,10 +43,18 @@ import type {
 const RECENT_CONNECTION_LIMIT = 6;
 const RECENT_KEY_LIMIT = 10;
 const KEY_VALUE_PAGE_SIZE = 200;
+const INITIAL_KEY_SCAN_PAGE_SIZE = 500;
 
 function parsePositiveInt(value: string, fallback: number) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function getInitialKeyScanPageSize(value: string) {
+  return Math.min(
+    parsePositiveInt(value, 10_000),
+    INITIAL_KEY_SCAN_PAGE_SIZE
+  );
 }
 
 function insertRedisKey(keys: RedisKey[], nextKey: RedisKey) {
@@ -637,7 +645,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         const page = await scanRedisKeysPage(
           { ...connection, db },
           {
-            pageSize: parsePositiveInt(appSettings.general.maxKeys, 10_000),
+            pageSize: getInitialKeyScanPageSize(appSettings.general.maxKeys),
             scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
             clusterNodeAddress,
           }
