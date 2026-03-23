@@ -697,7 +697,7 @@ export function ConnectionModal({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1.28fr)_minmax(250px,0.78fr)]">
             <div className="flex flex-col gap-3">
               <FormCard>
@@ -1157,14 +1157,16 @@ export function ConnectionModal({
           </div>
         </div>
 
-        <ConnectionTestStatusAlert
-          status={testStatus}
-          message={testMessage}
-          successLabel={messages.connectionModal.success}
-          failureLabel={messages.connectionModal.failure}
-        />
+        <div className="shrink-0">
+          <ConnectionTestStatusAlert
+            status={testStatus}
+            message={testMessage}
+            successLabel={messages.connectionModal.success}
+            failureLabel={messages.connectionModal.failure}
+          />
+        </div>
 
-        <div className="flex justify-between gap-2 border-t border-base-content/8 px-5 py-3.5">
+        <div className="shrink-0 flex justify-between gap-2 border-t border-base-content/8 px-5 py-3.5">
           <button
             onClick={handleTestConnection}
             disabled={isTesting || isSaving}
