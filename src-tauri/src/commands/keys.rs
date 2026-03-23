@@ -9,7 +9,7 @@ use crate::redis_support::{
     normalize_key_type, open_connection,
 };
 use redis::cluster_routing::get_slot;
-use redis::Value;
+use redis::{FromRedisValue, Value};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 use std::collections::{HashMap, HashSet};
@@ -28,34 +28,59 @@ struct ClusterScanCursor {
     cursor: u64,
 }
 
-async fn scan_key_metadata(
+async fn scan_keys_metadata_batch(
     connection: &mut impl redis::aio::ConnectionLike,
-    key: String,
-    slot: Option<u16>,
-    node_address: Option<String>,
-) -> Option<RedisKeySummary> {
-    let metadata = redis::pipe()
-        .cmd("TYPE")
-        .arg(&key)
-        .cmd("TTL")
-        .arg(&key)
-        .query_async::<(String, i64)>(connection)
-        .await
-        .ok()?;
-
-    let (raw_type, ttl) = metadata;
-
-    if raw_type == "none" {
-        return None;
+    keys: &[String],
+    node_address: Option<&str>,
+    include_slot: bool,
+) -> Result<Vec<RedisKeySummary>, String> {
+    if keys.is_empty() {
+        return Ok(Vec::new());
     }
 
-    Some(RedisKeySummary {
-        key,
-        key_type: normalize_key_type(&raw_type),
-        ttl,
-        slot,
-        node_address,
-    })
+    let mut pipeline = redis::pipe();
+
+    for key in keys {
+        pipeline.cmd("TYPE").arg(key).cmd("TTL").arg(key);
+    }
+
+    let metadata = pipeline
+        .query_async::<Vec<Value>>(connection)
+        .await
+        .map_err(|error| format!("Failed to inspect scanned keys: {error}"))?;
+
+    let mut values = metadata.into_iter();
+    let mut summaries = Vec::with_capacity(keys.len());
+
+    for key in keys {
+        let Some(raw_type_value) = values.next() else {
+            break;
+        };
+        let Some(ttl_value) = values.next() else {
+            break;
+        };
+
+        let Ok(raw_type) = String::from_owned_redis_value(raw_type_value) else {
+            continue;
+        };
+        let Ok(ttl) = i64::from_owned_redis_value(ttl_value) else {
+            continue;
+        };
+
+        if raw_type == "none" {
+            continue;
+        }
+
+        summaries.push(RedisKeySummary {
+            key: key.clone(),
+            key_type: normalize_key_type(&raw_type),
+            ttl,
+            slot: include_slot.then(|| get_slot(key.as_bytes())),
+            node_address: node_address.map(str::to_owned),
+        });
+    }
+
+    Ok(summaries)
 }
 
 fn clamp_scan_page_size(value: Option<u32>) -> usize {
@@ -147,17 +172,15 @@ async fn scan_cluster_keys_page(
                 .await
                 .map_err(|error| format!("Failed to scan cluster node {host}:{port}: {error}"))?;
 
-            for key in batch {
-                let slot = get_slot(key.as_bytes());
-                if let Some(summary) =
-                    scan_key_metadata(&mut connection, key, Some(slot), Some(node_address.clone()))
-                        .await
-                {
-                    collected.push(summary);
+            let summaries =
+                scan_keys_metadata_batch(&mut connection, &batch, Some(node_address), true)
+                    .await?;
 
-                    if collected.len() >= page_size {
-                        break;
-                    }
+            for summary in summaries {
+                collected.push(summary);
+
+                if collected.len() >= page_size {
+                    break;
                 }
             }
 
@@ -225,13 +248,13 @@ async fn scan_direct_keys_page(
             .await
             .map_err(|error| format!("Failed to scan keys: {error}"))?;
 
-        for key in batch {
-            if let Some(summary) = scan_key_metadata(&mut connection, key, None, None).await {
-                keys.push(summary);
+        let summaries = scan_keys_metadata_batch(&mut connection, &batch, None, false).await?;
 
-                if keys.len() >= page_size {
-                    break;
-                }
+        for summary in summaries {
+            keys.push(summary);
+
+            if keys.len() >= page_size {
+                break;
             }
         }
 
