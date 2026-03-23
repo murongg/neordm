@@ -1,4 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { CommandPalette } from "./components/CommandPalette";
 import { useTheme } from "./hooks/useTheme";
 import { useTrayStatusbar } from "./hooks/useTrayStatusbar";
@@ -50,6 +51,7 @@ const LazyRedisSlowLogPanel = lazy(async () => ({
 const LazySettingsPanel = lazy(async () => ({
   default: (await loadSettingsPanel()).SettingsPanel,
 }));
+const MAIN_WINDOW_VISIBILITY_EVENT = "neordm://window/visibility";
 
 function scheduleIdleTask(task: () => void, timeout = 1200) {
   if (typeof window === "undefined") {
@@ -139,6 +141,7 @@ function App() {
   const [hasMountedAiPanel, setHasMountedAiPanel] = useState(false);
   const [hasMountedPubSubPanel, setHasMountedPubSubPanel] = useState(false);
   const [hasMountedSlowLogPanel, setHasMountedSlowLogPanel] = useState(false);
+  const [isMainWindowVisible, setIsMainWindowVisible] = useState(true);
   const [isMacOS] = useState(() => isMacOSPlatform());
   useInitializeAppPreferencesStore();
   const preferences = useAppPreferencesStore(
@@ -254,7 +257,42 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let disposed = false;
+    let unlisten: UnlistenFn | null = null;
+
+    const setupWindowVisibilityListener = async () => {
+      try {
+        unlisten = await listen<string>(
+          MAIN_WINDOW_VISIBILITY_EVENT,
+          ({ payload }) => {
+            setIsMainWindowVisible(payload !== "hidden");
+          }
+        );
+
+        if (disposed) {
+          unlisten();
+        }
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug("Main window visibility listener unavailable", error);
+        }
+      }
+    };
+
+    void setupWindowVisibilityListener();
+
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!preferences.hasHydratedSettings || autoRefreshIntervalSeconds <= 0) {
+      return;
+    }
+
+    if (!isMainWindowVisible) {
       return;
     }
 
@@ -265,7 +303,11 @@ function App() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [autoRefreshIntervalSeconds, preferences.hasHydratedSettings]);
+  }, [
+    autoRefreshIntervalSeconds,
+    isMainWindowVisible,
+    preferences.hasHydratedSettings,
+  ]);
 
   return (
     <ToastProvider>

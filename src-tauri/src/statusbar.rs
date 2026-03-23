@@ -46,6 +46,7 @@ const TRAY_QUICK_ACTIONS_SUBMENU_ID: &str = "tray_quick_actions_submenu";
 const TRAY_QUICK_ACTION_EVENT: &str = "neordm://tray/quick-action";
 const TRAY_STATUSBAR_EVENT: &str = "neordm://tray/action";
 const TRAY_STATUSBAR_CONTEXT_EVENT: &str = "neordm://tray/context";
+const MAIN_WINDOW_VISIBILITY_EVENT: &str = "neordm://window/visibility";
 const STATUSBAR_STORE_PATH: &str = "statusbar.json";
 const STATUSBAR_PINNED_KEYS_STORE_KEY: &str = "pinnedKeys";
 const STATUSBAR_ICON_BYTES: &[u8] = include_bytes!("../icons/statusbar_icon.png");
@@ -316,6 +317,8 @@ pub(crate) fn show_main_window(app: &AppHandle) {
         let _ = window.show();
         let _ = window.set_focus();
     }
+
+    emit_main_window_visibility(app, "visible");
 }
 
 pub(crate) fn hide_main_window(app: &AppHandle) {
@@ -325,6 +328,11 @@ pub(crate) fn hide_main_window(app: &AppHandle) {
 
     let _ = app.set_dock_visibility(false);
     let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+    emit_main_window_visibility(app, "hidden");
+}
+
+fn emit_main_window_visibility(app: &AppHandle, visibility: &str) {
+    let _ = app.emit_to(MAIN_WINDOW_LABEL, MAIN_WINDOW_VISIBILITY_EVENT, visibility);
 }
 
 fn emit_tray_quick_action(app: &AppHandle, action: &str) {
