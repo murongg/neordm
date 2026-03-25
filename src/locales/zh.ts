@@ -16,6 +16,7 @@ export const zh: Messages = {
   },
   app: {
     tabs: {
+      overview: "概览",
       editor: "编辑器",
       ai: "AI 助手",
       cli: "CLI",

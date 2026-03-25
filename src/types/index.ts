@@ -167,6 +167,29 @@ export interface RedisSlowLogResponse {
   entries: RedisSlowLogEntry[];
 }
 
+export interface RedisOverviewMetrics {
+  memoryUsedBytes: number | null;
+  memoryPeakBytes: number | null;
+  memoryRssBytes: number | null;
+  memoryFragmentationRatio: number | null;
+  connectedClients: number | null;
+  blockedClients: number | null;
+  instantOpsPerSec: number | null;
+  keyspaceHits: number | null;
+  keyspaceMisses: number | null;
+  cacheHitRate: number | null;
+  totalNetInputBytes: number | null;
+  totalNetOutputBytes: number | null;
+  expiredKeys: number | null;
+  evictedKeys: number | null;
+  redisVersion: string | null;
+  role: string | null;
+  uptimeSeconds: number | null;
+  tcpPort: number | null;
+  keyspaceSummary: string | null;
+  modeLabel: string;
+}
+
 export type RedisPubSubEvent =
   | {
       kind: "message";
@@ -182,7 +205,7 @@ export type RedisPubSubEvent =
       reason?: string | null;
     };
 
-export type PanelTab = "editor" | "ai" | "cli" | "pubsub" | "slowlog";
+export type PanelTab = "overview" | "editor" | "ai" | "cli" | "pubsub" | "slowlog";
 
 export interface ChatMessage {
   id: string;

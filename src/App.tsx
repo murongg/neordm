@@ -29,6 +29,7 @@ import {
 const loadAIAgentPanel = () => import("./components/AIAgentPanel");
 const loadConnectionModalHost = () => import("./components/ConnectionModalHost");
 const loadRedisCLIPanel = () => import("./components/RedisCLIPanel");
+const loadRedisOverviewPanel = () => import("./components/RedisOverviewPanel");
 const loadRedisPubSubPanel = () => import("./components/RedisPubSubPanel");
 const loadRedisSlowLogPanel = () => import("./components/RedisSlowLogPanel");
 const loadSettingsPanel = () => import("./components/SettingsPanel");
@@ -41,6 +42,9 @@ const LazyConnectionModalHost = lazy(async () => ({
 }));
 const LazyRedisCLIPanel = lazy(async () => ({
   default: (await loadRedisCLIPanel()).RedisCLIPanel,
+}));
+const LazyRedisOverviewPanel = lazy(async () => ({
+  default: (await loadRedisOverviewPanel()).RedisOverviewPanel,
 }));
 const LazyRedisPubSubPanel = lazy(async () => ({
   default: (await loadRedisPubSubPanel()).RedisPubSubPanel,
@@ -98,12 +102,18 @@ function isRefreshShortcut(event: KeyboardEvent) {
 async function refreshWorkspaceContext() {
   const workspace = useRedisWorkspaceStore.getState();
 
+  if (!workspace.activeConnectionId) {
+    return;
+  }
+
+  const refreshOverviewTask = workspace.refreshOverview().catch(() => undefined);
+
   if (
-    !workspace.activeConnectionId ||
     workspace.isLoadingKeys ||
     workspace.isLoadingMoreKeys ||
     workspace.isLoadingMoreKeyValue
   ) {
+    await refreshOverviewTask;
     return;
   }
 
@@ -113,8 +123,11 @@ async function refreshWorkspaceContext() {
   try {
     await workspace.refreshKeys();
   } catch {
+    await refreshOverviewTask;
     return;
   }
+
+  await refreshOverviewTask;
 
   if (!shouldRefreshKeyValue) {
     return;
@@ -167,6 +180,7 @@ function App() {
     return scheduleIdleTask(() => {
       void loadConnectionModalHost();
       void loadRedisCLIPanel();
+      void loadRedisOverviewPanel();
       void loadRedisPubSubPanel();
       void loadRedisSlowLogPanel();
       void useAppUpdateStore.getState().checkForUpdates({ silent: true });
@@ -334,6 +348,11 @@ function App() {
 
             {/* Panel content */}
             <div className="flex-1 flex flex-col min-h-0">
+              {panelTab === "overview" && (
+                <Suspense fallback={<PanelFallback />}>
+                  <LazyRedisOverviewPanel />
+                </Suspense>
+              )}
               {panelTab === "editor" && <ValueEditorPanel />}
               {hasMountedAiPanel ? (
                 <Suspense fallback={panelTab === "ai" ? <PanelFallback /> : null}>

@@ -222,6 +222,12 @@ pub(crate) struct RedisSlowLogInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisOverviewMetricsInput {
+    pub(crate) connection: RedisConnectionTestInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisPubSubStartInput {
     pub(crate) connection: RedisConnectionTestInput,
 }
@@ -467,6 +473,31 @@ pub(crate) struct RedisSlowLogResponse {
     pub(crate) total_count: u64,
     pub(crate) limit: u32,
     pub(crate) entries: Vec<RedisSlowLogEntry>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisOverviewMetricsResponse {
+    pub(crate) memory_used_bytes: Option<u64>,
+    pub(crate) memory_peak_bytes: Option<u64>,
+    pub(crate) memory_rss_bytes: Option<u64>,
+    pub(crate) memory_fragmentation_ratio: Option<f64>,
+    pub(crate) connected_clients: Option<u64>,
+    pub(crate) blocked_clients: Option<u64>,
+    pub(crate) instant_ops_per_sec: Option<u64>,
+    pub(crate) keyspace_hits: Option<u64>,
+    pub(crate) keyspace_misses: Option<u64>,
+    pub(crate) cache_hit_rate: Option<f64>,
+    pub(crate) total_net_input_bytes: Option<u64>,
+    pub(crate) total_net_output_bytes: Option<u64>,
+    pub(crate) expired_keys: Option<u64>,
+    pub(crate) evicted_keys: Option<u64>,
+    pub(crate) redis_version: Option<String>,
+    pub(crate) role: Option<String>,
+    pub(crate) uptime_seconds: Option<u64>,
+    pub(crate) tcp_port: Option<u16>,
+    pub(crate) keyspace_summary: Option<String>,
+    pub(crate) mode_label: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

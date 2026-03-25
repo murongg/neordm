@@ -20,6 +20,7 @@ export const de: Messages = {
   app: {
     ...en.app,
     tabs: {
+      overview: "Overview",
       editor: "Editor",
       ai: "KI-Agent",
       cli: "CLI",

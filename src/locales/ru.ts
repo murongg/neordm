@@ -20,6 +20,7 @@ export const ru: Messages = {
   app: {
     ...en.app,
     tabs: {
+      overview: "Overview",
       editor: "Редактор",
       ai: "AI-агент",
       cli: "CLI",

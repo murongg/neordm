@@ -20,6 +20,7 @@ export const ko: Messages = {
   app: {
     ...en.app,
     tabs: {
+      overview: "Overview",
       editor: "에디터",
       ai: "AI 에이전트",
       cli: "CLI",

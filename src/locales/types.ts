@@ -68,6 +68,7 @@ export interface Messages {
   };
   app: {
     tabs: {
+      overview: string;
       editor: string;
       ai: string;
       cli: string;

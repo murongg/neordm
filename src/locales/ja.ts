@@ -18,6 +18,7 @@ export const ja: Messages = {
   },
   app: {
     tabs: {
+      overview: "Overview",
       editor: "エディター",
       ai: "AI エージェント",
       cli: "CLI",

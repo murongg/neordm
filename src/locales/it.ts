@@ -20,6 +20,7 @@ export const it: Messages = {
   app: {
     ...en.app,
     tabs: {
+      overview: "Overview",
       editor: "Editor",
       ai: "Agente IA",
       cli: "CLI",

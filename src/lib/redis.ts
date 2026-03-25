@@ -4,6 +4,7 @@ import type {
   KeyValuePageState,
   RedisConnection,
   RedisClusterTopologyNode,
+  RedisOverviewMetrics,
   RedisPubSubEvent,
   RedisKey,
   RedisKeyType,
@@ -389,6 +390,16 @@ export async function getRedisServerVersion(
 ): Promise<string | null> {
   const output = await runRedisCommand(connection, "INFO server");
   return parseRedisInfoSection(output).redis_version ?? null;
+}
+
+export async function getRedisOverviewMetrics(
+  connection: RedisConnection
+): Promise<RedisOverviewMetrics> {
+  return invoke("get_redis_overview_metrics", {
+    input: {
+      connection: toConnectionInput(connection),
+    },
+  });
 }
 
 export async function getRedisSlowLog(

@@ -16,6 +16,7 @@ export const en: Messages = {
   },
   app: {
     tabs: {
+      overview: "Overview",
       editor: "Editor",
       ai: "AI Agent",
       cli: "CLI",

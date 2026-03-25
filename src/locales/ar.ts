@@ -20,6 +20,7 @@ export const ar: Messages = {
   app: {
     ...en.app,
     tabs: {
+      overview: "Overview",
       editor: "المحرر",
       ai: "وكيل الذكاء الاصطناعي",
       cli: "CLI",

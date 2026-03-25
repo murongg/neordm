@@ -1,5 +1,15 @@
 import { memo, useMemo } from "react";
-import { Bot, Clock3, Edit3, Rss, Search, Server, Terminal, Wifi } from "lucide-react";
+import {
+  Bot,
+  ChartNoAxesCombined,
+  Clock3,
+  Edit3,
+  Rss,
+  Search,
+  Server,
+  Terminal,
+  Wifi,
+} from "lucide-react";
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
 import { prepareAIAgentExperience } from "../lib/aiPrefetch";
@@ -48,6 +58,12 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
       className="flex items-center justify-between px-4 h-12 border-b border-base-100/50 shrink-0 select-none"
     >
       <div className="tabs tabs-box tabs-xs bg-base-200 rounded-lg p-0.5">
+        <button
+          onClick={() => workspace.setPanelTab("overview")}
+          className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "overview" ? "tab-active" : ""}`}
+        >
+          <ChartNoAxesCombined size={11} /> {messages.app.tabs.overview}
+        </button>
         <button
           onClick={() => workspace.setPanelTab("editor")}
           className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "editor" ? "tab-active" : ""}`}

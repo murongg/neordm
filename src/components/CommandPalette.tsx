@@ -10,6 +10,7 @@ import {
 } from "react";
 import {
   Bot,
+  ChartNoAxesCombined,
   Clock3,
   Database,
   Edit3,
@@ -159,6 +160,21 @@ export function CommandPalette({
         },
       },
       {
+        id: "action:panel-overview",
+        group: "actions",
+        title: messages.app.tabs.overview,
+        subtitle: labels.panel,
+        icon: <ChartNoAxesCombined size={14} />,
+        searchText: buildSearchText([
+          messages.app.tabs.overview,
+          labels.panel,
+          "panel overview dashboard metrics stats",
+        ]),
+        onSelect: () => {
+          workspace.setPanelTab("overview");
+        },
+      },
+      {
         id: "action:panel-editor",
         group: "actions",
         title: messages.app.tabs.editor,
@@ -274,6 +290,7 @@ export function CommandPalette({
     messages.app.tabs.ai,
     messages.app.tabs.cli,
     messages.app.tabs.editor,
+    messages.app.tabs.overview,
     messages.app.tabs.pubsub,
     messages.app.tabs.slowlog,
     messages.common.settings,

@@ -20,6 +20,7 @@ import {
   deleteRedisKey,
   deleteRedisKeys,
   getRedisErrorMessage,
+  getRedisOverviewMetrics,
   getRedisKeyValuePage,
   getRedisServerVersion,
   renameRedisKey,
@@ -38,22 +39,23 @@ import type {
   PanelTab,
   RedisConnection,
   RedisKey,
+  RedisOverviewMetrics,
 } from "../types";
 
 const RECENT_CONNECTION_LIMIT = 6;
 const RECENT_KEY_LIMIT = 10;
 const KEY_VALUE_PAGE_SIZE = 200;
-const INITIAL_KEY_SCAN_PAGE_SIZE = 500;
+const KEY_SCAN_PAGE_SIZE = 500;
 
 function parsePositiveInt(value: string, fallback: number) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function getInitialKeyScanPageSize(value: string) {
+function getKeyScanPageSize(value: string) {
   return Math.min(
     parsePositiveInt(value, 10_000),
-    INITIAL_KEY_SCAN_PAGE_SIZE
+    KEY_SCAN_PAGE_SIZE
   );
 }
 
@@ -212,6 +214,10 @@ interface LoadKeysOptions {
   preserveSelection?: boolean;
 }
 
+interface LoadOverviewOptions {
+  preserveValue?: boolean;
+}
+
 interface SelectConnectionOptions {
   db?: number;
 }
@@ -234,6 +240,8 @@ interface RedisWorkspaceStoreState {
   keys: RedisKey[];
   selectedKey: RedisKey | null;
   keyValue: KeyValue | null;
+  overview: RedisOverviewMetrics | null;
+  overviewErrorMessage: string | null;
   recentConnectionIds: string[];
   recentKeys: RecentKeyReference[];
   searchQuery: string;
@@ -243,6 +251,7 @@ interface RedisWorkspaceStoreState {
   isLoadingKeys: boolean;
   isLoadingMoreKeys: boolean;
   isLoadingMoreKeyValue: boolean;
+  isLoadingOverview: boolean;
   keysScanCursor: string | null;
   hasMoreKeys: boolean;
   hasHydratedConnections: boolean;
@@ -280,6 +289,10 @@ interface RedisWorkspaceStoreState {
     db: number,
     options?: LoadKeysOptions
   ) => Promise<void>;
+  loadOverview: (
+    connection: RedisConnection,
+    options?: LoadOverviewOptions
+  ) => Promise<void>;
   loadMoreKeys: () => Promise<void>;
   cancelLoadMoreKeys: () => void;
   loadMoreKeyValue: () => Promise<void>;
@@ -298,6 +311,7 @@ interface RedisWorkspaceStoreState {
   selectDb: (db: number) => Promise<void>;
   refreshKeys: () => Promise<void>;
   refreshKeyValue: () => Promise<void>;
+  refreshOverview: () => Promise<void>;
   clearSelectedKey: () => void;
   selectClusterNode: (nodeAddress: string | null) => Promise<void>;
   selectKey: (key: RedisKey) => Promise<void>;
@@ -323,6 +337,7 @@ const defaultWorkspaceRuntime: RedisWorkspaceRuntime = {
 let workspaceRuntime = defaultWorkspaceRuntime;
 let keysRequestId = 0;
 let keyValueRequestId = 0;
+let overviewRequestId = 0;
 const serverVersionRequestIds = new Map<string, number>();
 let hasAttemptedAutoConnect = false;
 let hasInitializedRedisWorkspaceStore = false;
@@ -368,15 +383,18 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     keys: [],
     selectedKey: null,
     keyValue: null,
+    overview: null,
+    overviewErrorMessage: null,
     recentConnectionIds: [],
     recentKeys: [],
     searchQuery: "",
-    panelTab: "editor",
+    panelTab: "overview",
     showConnectionModal: false,
     editingConnectionId: null,
     isLoadingKeys: false,
     isLoadingMoreKeys: false,
     isLoadingMoreKeyValue: false,
+    isLoadingOverview: false,
     keysScanCursor: null,
     hasMoreKeys: false,
     hasHydratedConnections: false,
@@ -645,7 +663,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         const page = await scanRedisKeysPage(
           { ...connection, db },
           {
-            pageSize: getInitialKeyScanPageSize(appSettings.general.maxKeys),
+            pageSize: getKeyScanPageSize(appSettings.general.maxKeys),
             scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
             clusterNodeAddress,
           }
@@ -715,6 +733,41 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         }
       }
     },
+    loadOverview: async (connection, options = {}) => {
+      const requestId = ++overviewRequestId;
+
+      set((state) => ({
+        overview: options.preserveValue ? state.overview : null,
+        overviewErrorMessage: null,
+        isLoadingOverview: true,
+      }));
+
+      try {
+        const overview = await getRedisOverviewMetrics(connection);
+
+        if (requestId !== overviewRequestId) {
+          return;
+        }
+
+        set({
+          overview,
+          overviewErrorMessage: null,
+        });
+      } catch (error) {
+        if (requestId !== overviewRequestId) {
+          return;
+        }
+
+        set({
+          overview: null,
+          overviewErrorMessage: getRedisErrorMessage(error),
+        });
+      } finally {
+        if (requestId === overviewRequestId) {
+          set({ isLoadingOverview: false });
+        }
+      }
+    },
     loadMoreKeys: async () => {
       const state = get();
       const activeConnection = getActiveConnectionFromState(state);
@@ -738,7 +791,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         const page = await scanRedisKeysPage(
           { ...activeConnection, db: state.selectedDb },
           {
-            pageSize: parsePositiveInt(appSettings.general.maxKeys, 10_000),
+            pageSize: getKeyScanPageSize(appSettings.general.maxKeys),
             scanCount: parsePositiveInt(appSettings.general.scanCount, 200),
             cursor: state.keysScanCursor,
             clusterNodeAddress:
@@ -790,9 +843,11 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         activeConnectionId: connectionId,
         selectedClusterNodeAddress: null,
         searchQuery: "",
+        panelTab: "overview",
       });
 
       if (!connection) {
+        overviewRequestId += 1;
         keyValueRequestId += 1;
         set({
           selectedDb: 0,
@@ -800,6 +855,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           keys: [],
           selectedKey: null,
           keyValue: null,
+          overview: null,
+          overviewErrorMessage: null,
+          isLoadingOverview: false,
           isLoadingMoreKeyValue: false,
           isLoadingMoreKeys: false,
           keysScanCursor: null,
@@ -818,6 +876,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         ),
       }));
       getWorkspaceRuntime().persistLastConnectionId(connection.id);
+      void get()
+        .loadOverview({ ...connection, db: targetDb })
+        .catch(() => undefined);
 
       try {
         await get().loadKeys({ ...connection, db: targetDb }, targetDb);
@@ -885,6 +946,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         editingConnectionId,
         connections,
         loadKeys,
+        loadOverview,
       } = get();
       const { persistLastConnectionId } = getWorkspaceRuntime();
 
@@ -902,8 +964,11 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           selectedDb: newConnection.db,
           selectedClusterNodeAddress: null,
           searchQuery: "",
+          panelTab: "overview",
           selectedKey: null,
           keyValue: null,
+          overview: null,
+          overviewErrorMessage: null,
           recentConnectionIds: pushRecentValue(
             state.recentConnectionIds,
             newConnection.id,
@@ -915,6 +980,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           hasMoreKeys: false,
         }));
         persistLastConnectionId(newConnection.id);
+        void loadOverview(newConnection).catch(() => undefined);
         void loadKeys(newConnection, newConnection.db).catch(() => undefined);
         return;
       }
@@ -947,12 +1013,14 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           selectedDb: updatedConnection.db,
           selectedClusterNodeAddress: null,
           searchQuery: "",
+          panelTab: "overview",
           recentConnectionIds: pushRecentValue(
             state.recentConnectionIds,
             updatedConnection.id,
             RECENT_CONNECTION_LIMIT
           ),
         }));
+        void loadOverview(updatedConnection).catch(() => undefined);
         void loadKeys(updatedConnection, updatedConnection.db).catch(() => undefined);
       }
     },
@@ -962,6 +1030,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         editingConnectionId,
         closeConnectionModal,
         loadKeys,
+        loadOverview,
       } = get();
       const { appSettings, persistLastConnectionId } = getWorkspaceRuntime();
       const previousConnections = get().connections;
@@ -1015,11 +1084,15 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       }
 
       keyValueRequestId += 1;
+      overviewRequestId += 1;
       set({
         searchQuery: "",
         selectedClusterNodeAddress: null,
         selectedKey: null,
         keyValue: null,
+        overview: null,
+        overviewErrorMessage: null,
+        isLoadingOverview: false,
         keys: [],
         isLoadingMoreKeyValue: false,
         isLoadingMoreKeys: false,
@@ -1035,9 +1108,12 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           isLoadingKeys: false,
           isLoadingMoreKeys: false,
           isLoadingMoreKeyValue: false,
+          isLoadingOverview: false,
           activeConnectionId: "",
           selectedDb: 0,
           selectedClusterNodeAddress: null,
+          overview: null,
+          overviewErrorMessage: null,
           keysScanCursor: null,
           hasMoreKeys: false,
         });
@@ -1056,6 +1132,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         ),
       }));
       persistLastConnectionId(nextConnection.id);
+      void loadOverview(nextConnection).catch(() => undefined);
       void loadKeys(nextConnection, nextConnection.db).catch(() => undefined);
     },
     disconnectConnection: (connectionId) => {
@@ -1072,11 +1149,13 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
 
       keysRequestId += 1;
       keyValueRequestId += 1;
+      overviewRequestId += 1;
 
       set((state) => ({
         isLoadingKeys: false,
         isLoadingMoreKeys: false,
         isLoadingMoreKeyValue: false,
+        isLoadingOverview: false,
         activeConnectionId: "",
         selectedDb: 0,
         selectedClusterNodeAddress: null,
@@ -1084,6 +1163,8 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         keys: [],
         selectedKey: null,
         keyValue: null,
+        overview: null,
+        overviewErrorMessage: null,
         recentKeys: state.recentKeys.filter(
           (item) => item.connectionId !== connectionId
         ),
@@ -1157,6 +1238,24 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         activeConnection,
         state.selectedKey,
         state.selectedDb,
+        {
+          preserveValue: true,
+        }
+      );
+    },
+    refreshOverview: async () => {
+      const state = get();
+      const activeConnection = getActiveConnectionFromState(state);
+
+      if (!activeConnection) {
+        return;
+      }
+
+      await state.loadOverview(
+        {
+          ...activeConnection,
+          db: activeConnection.mode === "cluster" ? 0 : state.selectedDb,
+        },
         {
           preserveValue: true,
         }
@@ -1702,12 +1801,16 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       hasMoreKeys: state.hasMoreKeys,
       isLoadingKeys: state.isLoadingKeys,
       isLoadingMoreKeys: state.isLoadingMoreKeys,
+      isLoadingOverview: state.isLoadingOverview,
       keyValue: state.keyValue,
       keys: state.keys,
       loadKeys: state.loadKeys,
+      loadOverview: state.loadOverview,
       loadMoreKeys: state.loadMoreKeys,
       openEditConnectionModal: state.openEditConnectionModal,
       openNewConnectionModal: state.openNewConnectionModal,
+      overview: state.overview,
+      overviewErrorMessage: state.overviewErrorMessage,
       panelTab: state.panelTab,
       createKey: state.createKey,
       deleteKeys: state.deleteKeys,
@@ -1716,6 +1819,7 @@ export function useRedisWorkspaceState(options: UseRedisWorkspaceStateOptions) {
       clearSelectedKey: state.clearSelectedKey,
       refreshKeys: state.refreshKeys,
       refreshKeyValue: state.refreshKeyValue,
+      refreshOverview: state.refreshOverview,
       removeKeyFromState: state.removeKeyFromState,
       renameGroup: state.renameGroup,
       renameKey: state.renameKey,

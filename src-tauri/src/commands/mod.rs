@@ -1,6 +1,7 @@
 mod core;
 mod http;
 mod keys;
+mod overview;
 mod pubsub;
 mod slowlog;
 mod stream;
@@ -12,6 +13,7 @@ pub(crate) use keys::{
     get_redis_cluster_topology, get_redis_key_value, get_redis_key_value_page, list_redis_keys,
     rename_redis_key, rename_redis_keys, scan_redis_keys_page,
 };
+pub(crate) use overview::get_redis_overview_metrics;
 pub(crate) use pubsub::{
     publish_redis_pubsub_message, start_redis_pubsub_session, stop_redis_pubsub_session,
     subscribe_redis_pubsub_channels, subscribe_redis_pubsub_patterns,
