@@ -323,6 +323,30 @@ export async function getRedisKeyValue(
   });
 }
 
+export async function getRedisKeySummary(
+  connection: RedisConnectionInvokeInput,
+  key: string
+): Promise<RedisKey> {
+  return invoke("get_redis_key_summary", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+    },
+  });
+}
+
+export async function getRedisKeyType(
+  connection: RedisConnectionInvokeInput,
+  key: string
+): Promise<RedisKeyType | null> {
+  return invoke<RedisKeyType | null>("get_redis_key_type", {
+    input: {
+      connection: toConnectionInput(connection),
+      key,
+    },
+  });
+}
+
 export async function getRedisKeyValuePage(
   connection: RedisConnectionInvokeInput,
   key: string,

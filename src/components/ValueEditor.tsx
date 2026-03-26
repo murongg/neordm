@@ -12,10 +12,10 @@ import {
   Check,
   X,
   Save,
-  ChevronRight,
   LoaderCircle,
+  Database,
 } from "lucide-react";
-import type { KeyValue, RedisConnection, ZSetMember } from "../types";
+import type { KeyValue, RedisConnection, RedisKey, ZSetMember } from "../types";
 import { useI18n } from "../i18n";
 import { parseAutoRefreshIntervalSeconds } from "../lib/autoRefresh";
 import { getRedisErrorMessage } from "../lib/redis";
@@ -51,7 +51,9 @@ import {
 interface ValueEditorProps {
   activeConnection?: RedisConnection;
   selectedDb: number;
+  selectedKey: RedisKey | null;
   keyValue: KeyValue | null;
+  isLoadingKeyValue: boolean;
   onRefreshKeyValue: () => Promise<void>;
   onLoadMoreKeyValue: () => Promise<void>;
   onDeleteKey: (key: string) => Promise<void>;
@@ -89,7 +91,9 @@ interface ValueEditorProps {
 export function ValueEditor({
   activeConnection,
   selectedDb,
+  selectedKey,
   keyValue,
+  isLoadingKeyValue,
   onRefreshKeyValue,
   onLoadMoreKeyValue,
   onDeleteKey,
@@ -208,11 +212,27 @@ export function ValueEditor({
     }
   }, [keyType]);
 
+  if (!keyValue && selectedKey && isLoadingKeyValue) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-base-content/40 gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-base-200 flex items-center justify-center">
+          <LoaderCircle size={24} className="animate-spin" />
+        </div>
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-sm font-mono">{selectedKey.key}</p>
+          <p className="text-xs text-base-content/45">
+            {selectedKey.type ?? messages.valueEditor.emptyState}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (!keyValue) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-base-content/30 gap-3">
         <div className="w-16 h-16 rounded-2xl bg-base-200 flex items-center justify-center">
-          <ChevronRight size={24} />
+          <Database size={24} />
         </div>
         <p className="text-sm font-mono">{messages.valueEditor.emptyState}</p>
       </div>

@@ -452,9 +452,13 @@ export function CommandPalette({
           id: `key:${key.key}`,
           group: "keys",
           title: key.key,
-          subtitle: `${key.type}${
-            typeof key.ttl === "number" && key.ttl >= 0 ? ` · ttl ${key.ttl}` : ""
-          }${key.nodeAddress ? ` · ${key.nodeAddress}` : ""}`,
+          subtitle: [
+            key.type,
+            typeof key.ttl === "number" && key.ttl >= 0 ? `ttl ${key.ttl}` : null,
+            key.nodeAddress,
+          ]
+            .filter(Boolean)
+            .join(" · "),
           icon: <Hash size={14} />,
           searchText: buildSearchText([
             key.key,

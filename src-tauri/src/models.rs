@@ -412,11 +412,12 @@ pub(crate) struct HttpProxyResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisKeySummary {
     pub(crate) key: String,
     #[serde(rename = "type")]
-    pub(crate) key_type: String,
-    pub(crate) ttl: i64,
+    pub(crate) key_type: Option<String>,
+    pub(crate) ttl: Option<i64>,
     pub(crate) slot: Option<u16>,
     pub(crate) node_address: Option<String>,
 }

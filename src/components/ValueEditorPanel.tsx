@@ -11,6 +11,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
     useShallow((state) => ({
       activeConnectionId: state.activeConnectionId,
       connections: state.connections,
+      isLoadingKeyValue: state.isLoadingKeyValue,
       isLoadingMoreKeyValue: state.isLoadingMoreKeyValue,
       keyValue: state.keyValue,
       loadMoreKeyValue: state.loadMoreKeyValue,
@@ -19,6 +20,7 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
       removeKeyFromState: state.removeKeyFromState,
       selectClusterNode: state.selectClusterNode,
       selectedDb: state.selectedDb,
+      selectedKey: state.selectedKey,
       setKeyValue: state.setKeyValue,
     }))
   );
@@ -44,7 +46,9 @@ export const ValueEditorPanel = memo(function ValueEditorPanel() {
     <ValueEditor
       activeConnection={activeConnection}
       selectedDb={workspace.selectedDb}
+      selectedKey={workspace.selectedKey}
       keyValue={workspace.keyValue}
+      isLoadingKeyValue={workspace.isLoadingKeyValue}
       onRefreshKeyValue={workspace.refreshKeyValue}
       onLoadMoreKeyValue={workspace.loadMoreKeyValue}
       onDeleteKey={editor.deleteKey}

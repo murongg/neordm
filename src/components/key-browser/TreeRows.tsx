@@ -219,7 +219,7 @@ interface KeyRowProps {
   showKeyType: boolean;
   showTtl: boolean;
   typeConfig: Record<RedisKeyType, KeyTypeConfig>;
-  formatTtl: (ttl: number) => string;
+  formatTtl: (ttl?: number) => string;
   placeInputCursorAtEnd: (input: HTMLInputElement | null) => void;
 }
 
@@ -247,9 +247,12 @@ function KeyRow({
   formatTtl,
   placeInputCursorAtEnd,
 }: KeyRowProps) {
-  const cfg = typeConfig[redisKey.type];
+  const cfg = redisKey.type ? typeConfig[redisKey.type] : null;
   const ttl = formatTtl(redisKey.ttl);
   const isRowRenaming = isEditing && isRenaming;
+  const leadingIcon = cfg?.icon ?? (
+    <span className="block h-1.5 w-1.5 rounded-full bg-current opacity-45" />
+  );
   const rowTitle = [
     redisKey.key,
     typeof redisKey.slot === "number" ? `slot ${redisKey.slot}` : "",
@@ -257,7 +260,7 @@ function KeyRow({
   ]
     .filter(Boolean)
     .join("\n");
-  const rightSlot = isRowRenaming || showKeyType || (showTtl && ttl) ? (
+  const rightSlot = isRowRenaming || (showKeyType && cfg) || (showTtl && ttl) ? (
     <span className="flex min-w-0 shrink-0 items-center justify-end gap-1.5">
       {isRowRenaming ? (
         <LoaderCircle
@@ -266,7 +269,7 @@ function KeyRow({
         />
       ) : (
         <>
-          {showKeyType ? (
+          {showKeyType && cfg ? (
             <span
               className={`badge badge-xs border-0 font-mono lowercase ${cfg.badge}`}
             >
@@ -302,7 +305,7 @@ function KeyRow({
             isSelected ? "text-primary" : "text-base-content/30"
           }`}
         >
-          {cfg.icon}
+          {leadingIcon}
         </span>
         <div className="flex h-5 flex-1 min-w-0 items-center">
           <input
@@ -372,7 +375,7 @@ function KeyRow({
             isSelected ? "text-primary" : "text-base-content/30"
           }`}
         >
-          {cfg.icon}
+          {leadingIcon}
         </span>
         <span className="flex h-5 min-w-0 flex-1 items-center">
           <span className="block w-full truncate text-xs font-mono">

@@ -2,21 +2,19 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const source = readFileSync(resolve("src-tauri/src/commands/keys.rs"), "utf8");
+const scanDirectSection =
+  source.match(/async fn scan_direct_keys_page[\s\S]*?Ok\(RedisKeysScanPageResponse/s)?.[0] ??
+  "";
+const scanClusterSection =
+  source.match(/async fn scan_cluster_keys_page[\s\S]*?Ok\(RedisKeysScanPageResponse/s)?.[0] ??
+  "";
 
-if (!source.includes("async fn scan_keys_metadata_batch(")) {
-  throw new Error("Missing scan_keys_metadata_batch helper in keys.rs.");
+if (/cmd\("TYPE"\)|cmd\("TTL"\)|scan_keys_metadata_batch/.test(scanDirectSection)) {
+  throw new Error("Direct SCAN page must not fetch TYPE/TTL metadata eagerly.");
 }
 
-const batchedCallsites = source.match(/scan_keys_metadata_batch\(/g) ?? [];
-
-if (batchedCallsites.length < 3) {
-  throw new Error(
-    `Expected batched metadata helper definition plus scan callsites, found ${batchedCallsites.length}.`
-  );
+if (/cmd\("TYPE"\)|cmd\("TTL"\)|scan_keys_metadata_batch/.test(scanClusterSection)) {
+  throw new Error("Cluster SCAN page must not fetch TYPE/TTL metadata eagerly.");
 }
 
-if (source.includes("scan_key_metadata(&mut connection, key")) {
-  throw new Error("Found per-key metadata loading in SCAN path.");
-}
-
-console.log("Key scan batching check passed.");
+console.log("Key scan lightweight strategy check passed.");

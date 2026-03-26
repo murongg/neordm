@@ -71,6 +71,7 @@ interface KeyBrowserProps {
   showTtl: boolean;
   keys: RedisKey[];
   selectedKey: RedisKey | null;
+  onLoadKeyType: (key: RedisKey) => Promise<void>;
   onSelectKey: (key: RedisKey) => void;
   onDeleteKey: (key: RedisKey) => Promise<void>;
   onDeleteGroup: (groupId: string, separator: string) => Promise<number>;
@@ -208,7 +209,8 @@ const TYPE_CONFIG: Record<RedisKeyType, KeyTypeConfig> = {
   },
 };
 
-function formatTTL(ttl: number): string {
+function formatTTL(ttl?: number): string {
+  if (ttl == null) return "";
   if (ttl === -1) return "";
   if (ttl < 60) return `${ttl}s`;
   if (ttl < 3600) return `${Math.floor(ttl / 60)}m`;
@@ -571,6 +573,7 @@ export function KeyBrowser({
   showTtl,
   keys,
   selectedKey,
+  onLoadKeyType,
   onSelectKey,
   onDeleteKey,
   onDeleteGroup,
@@ -893,6 +896,13 @@ export function KeyBrowser({
     (totalRows - visibleEndIndex) * KEY_BROWSER_ROW_HEIGHT
   );
   const virtualRows = visibleRows.slice(visibleStartIndex, visibleEndIndex);
+  const visibleKeysMissingType = useMemo(
+    () =>
+      virtualRows.flatMap((row) =>
+        row.kind === "key" && row.redisKey.type == null ? [row.redisKey] : []
+      ),
+    [virtualRows]
+  );
   const selectedKeysForDelete = useMemo(
     () => keys.filter((item) => multiSelectedKeyNames.has(item.key)),
     [keys, multiSelectedKeyNames]
@@ -2071,8 +2081,18 @@ export function KeyBrowser({
     isRefreshing,
     scrollMetrics.scrollTop,
     scrollMetrics.viewportHeight,
-    totalRows,
+      totalRows,
   ]);
+
+  useEffect(() => {
+    if (!connection || !visibleKeysMissingType.length) {
+      return;
+    }
+
+    visibleKeysMissingType.forEach((redisKey) => {
+      void onLoadKeyType(redisKey);
+    });
+  }, [connection, onLoadKeyType, visibleKeysMissingType]);
 
   return (
     <>

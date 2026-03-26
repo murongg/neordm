@@ -30,6 +30,7 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       isLoadingKeys: state.isLoadingKeys,
       isLoadingMoreKeys: state.isLoadingMoreKeys,
       keys: state.keys,
+      loadKeyType: state.loadKeyType,
       loadMoreKeys: state.loadMoreKeys,
       refreshKeys: state.refreshKeys,
       renameGroup: state.renameGroup,
@@ -75,6 +76,11 @@ export const KeyBrowserPanel = memo(function KeyBrowserPanel() {
       showTtl={preferences.showTtl}
       keys={workspace.keys}
       selectedKey={workspace.selectedKey}
+      onLoadKeyType={(key) =>
+        activeConnection
+          ? workspace.loadKeyType(activeConnection, key, workspace.selectedDb)
+          : Promise.resolve()
+      }
       onLoadMoreKeys={workspace.loadMoreKeys}
       onSelectKey={workspace.selectKey}
       onDeleteKey={workspace.deleteKey}

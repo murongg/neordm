@@ -9,7 +9,7 @@ use crate::redis_support::{
     normalize_key_type, open_connection,
 };
 use redis::cluster_routing::get_slot;
-use redis::{FromRedisValue, Value};
+use redis::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 use std::collections::{HashMap, HashSet};
@@ -26,61 +26,6 @@ const MAX_VALUE_PAGE_SIZE: u32 = 2_000;
 struct ClusterScanCursor {
     node_index: usize,
     cursor: u64,
-}
-
-async fn scan_keys_metadata_batch(
-    connection: &mut impl redis::aio::ConnectionLike,
-    keys: &[String],
-    node_address: Option<&str>,
-    include_slot: bool,
-) -> Result<Vec<RedisKeySummary>, String> {
-    if keys.is_empty() {
-        return Ok(Vec::new());
-    }
-
-    let mut pipeline = redis::pipe();
-
-    for key in keys {
-        pipeline.cmd("TYPE").arg(key).cmd("TTL").arg(key);
-    }
-
-    let metadata = pipeline
-        .query_async::<Vec<Value>>(connection)
-        .await
-        .map_err(|error| format!("Failed to inspect scanned keys: {error}"))?;
-
-    let mut values = metadata.into_iter();
-    let mut summaries = Vec::with_capacity(keys.len());
-
-    for key in keys {
-        let Some(raw_type_value) = values.next() else {
-            break;
-        };
-        let Some(ttl_value) = values.next() else {
-            break;
-        };
-
-        let Ok(raw_type) = String::from_owned_redis_value(raw_type_value) else {
-            continue;
-        };
-        let Ok(ttl) = i64::from_owned_redis_value(ttl_value) else {
-            continue;
-        };
-
-        if raw_type == "none" {
-            continue;
-        }
-
-        summaries.push(RedisKeySummary {
-            key: key.clone(),
-            key_type: normalize_key_type(&raw_type),
-            ttl,
-            slot: include_slot.then(|| get_slot(key.as_bytes())),
-            node_address: node_address.map(str::to_owned),
-        });
-    }
-
-    Ok(summaries)
 }
 
 fn clamp_scan_page_size(value: Option<u32>) -> usize {
@@ -172,12 +117,14 @@ async fn scan_cluster_keys_page(
                 .await
                 .map_err(|error| format!("Failed to scan cluster node {host}:{port}: {error}"))?;
 
-            let summaries =
-                scan_keys_metadata_batch(&mut connection, &batch, Some(node_address), true)
-                    .await?;
-
-            for summary in summaries {
-                collected.push(summary);
+            for key in batch {
+                collected.push(RedisKeySummary {
+                    key: key.clone(),
+                    key_type: None,
+                    ttl: None,
+                    slot: Some(get_slot(key.as_bytes())),
+                    node_address: Some(node_address.clone()),
+                });
 
                 if collected.len() >= page_size {
                     break;
@@ -230,6 +177,35 @@ async fn resolve_key_location(
     }
 }
 
+async fn inspect_key_summary(
+    connection_input: &crate::models::RedisConnectionTestInput,
+    key: &str,
+) -> Result<RedisKeySummary, String> {
+    let mut connection = open_connection(connection_input).await?;
+    let (raw_type, ttl) = redis::pipe()
+        .cmd("TYPE")
+        .arg(key)
+        .cmd("TTL")
+        .arg(key)
+        .query_async::<(String, i64)>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to inspect key: {error}"))?;
+
+    if raw_type == "none" {
+        return Err("Key no longer exists".to_string());
+    }
+
+    let (slot, node_address) = resolve_key_location(connection_input, key).await?;
+
+    Ok(RedisKeySummary {
+        key: key.to_string(),
+        key_type: Some(normalize_key_type(&raw_type)),
+        ttl: Some(ttl),
+        slot,
+        node_address,
+    })
+}
+
 async fn scan_direct_keys_page(
     input: &RedisKeysScanPageInput,
     scan_count: u32,
@@ -248,10 +224,14 @@ async fn scan_direct_keys_page(
             .await
             .map_err(|error| format!("Failed to scan keys: {error}"))?;
 
-        let summaries = scan_keys_metadata_batch(&mut connection, &batch, None, false).await?;
-
-        for summary in summaries {
-            keys.push(summary);
+        for key in batch {
+            keys.push(RedisKeySummary {
+                key,
+                key_type: None,
+                ttl: None,
+                slot: None,
+                node_address: None,
+            });
 
             if keys.len() >= page_size {
                 break;
@@ -353,8 +333,8 @@ async fn list_cluster_keys(
 
                 collected.push(RedisKeySummary {
                     key: key.clone(),
-                    key_type: normalize_key_type(&raw_type),
-                    ttl,
+                    key_type: Some(normalize_key_type(&raw_type)),
+                    ttl: Some(ttl),
                     slot: Some(get_slot(key.as_bytes())),
                     node_address: Some(node_address.clone()),
                 });
@@ -454,8 +434,8 @@ pub async fn list_redis_keys(input: RedisKeysListInput) -> Result<Vec<RedisKeySu
 
         keys.push(RedisKeySummary {
             key,
-            key_type: normalize_key_type(&raw_type),
-            ttl,
+            key_type: Some(normalize_key_type(&raw_type)),
+            ttl: Some(ttl),
             slot: None,
             node_address: None,
         });
@@ -612,6 +592,27 @@ pub async fn get_redis_key_value(
         node_address,
         value,
     })
+}
+
+#[tauri::command]
+pub async fn get_redis_key_summary(input: RedisKeyLookupInput) -> Result<RedisKeySummary, String> {
+    inspect_key_summary(&input.connection, &input.key).await
+}
+
+#[tauri::command]
+pub async fn get_redis_key_type(input: RedisKeyLookupInput) -> Result<Option<String>, String> {
+    let mut connection = open_connection(&input.connection).await?;
+    let raw_type: String = redis::cmd("TYPE")
+        .arg(&input.key)
+        .query_async(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to inspect key type: {error}"))?;
+
+    if raw_type == "none" {
+        return Ok(None);
+    }
+
+    Ok(Some(normalize_key_type(&raw_type)))
 }
 
 #[tauri::command]

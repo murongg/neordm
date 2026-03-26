@@ -64,8 +64,8 @@ export interface RedisConnection {
 
 export interface RedisKey {
   key: string;
-  type: RedisKeyType;
-  ttl: number; // -1 = no expiry, -2 = expired
+  type?: RedisKeyType;
+  ttl?: number; // -1 = no expiry, -2 = expired
   slot?: number;
   nodeAddress?: string;
   size?: number;

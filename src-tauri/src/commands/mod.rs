@@ -10,8 +10,9 @@ mod values;
 pub(crate) use core::{greet, run_redis_command, test_redis_connection};
 pub(crate) use http::proxy_http_request;
 pub(crate) use keys::{
-    get_redis_cluster_topology, get_redis_key_value, get_redis_key_value_page, list_redis_keys,
-    rename_redis_key, rename_redis_keys, scan_redis_keys_page,
+    get_redis_cluster_topology, get_redis_key_summary, get_redis_key_type, get_redis_key_value,
+    get_redis_key_value_page, list_redis_keys, rename_redis_key, rename_redis_keys,
+    scan_redis_keys_page,
 };
 pub(crate) use overview::get_redis_overview_metrics;
 pub(crate) use pubsub::{
