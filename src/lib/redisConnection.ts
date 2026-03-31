@@ -17,6 +17,22 @@ export function formatRedisAddress(host: string, port: number) {
   return `${host}:${port}`;
 }
 
+function abbreviateMiddle(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  if (maxLength <= 3) {
+    return value.slice(0, maxLength);
+  }
+
+  const visible = maxLength - 1;
+  const headLength = Math.ceil(visible / 2);
+  const tailLength = Math.floor(visible / 2);
+
+  return `${value.slice(0, headLength)}…${value.slice(-tailLength)}`;
+}
+
 export function getRedisConnectionEndpointLabel(
   connection: Pick<
     RedisConnection,
@@ -36,6 +52,25 @@ export function getRedisConnectionEndpointLabel(
   }
 
   return formatRedisAddress(connection.host, connection.port);
+}
+
+export function getRedisConnectionCompactEndpointLabel(
+  connection: Pick<
+    RedisConnection,
+    "host" | "port" | "mode" | "sentinel" | "cluster"
+  >,
+  maxHostLength = 28
+) {
+  const fullLabel = getRedisConnectionEndpointLabel(connection);
+
+  if (connection.mode !== "direct") {
+    return fullLabel;
+  }
+
+  return formatRedisAddress(
+    abbreviateMiddle(connection.host, maxHostLength),
+    connection.port
+  );
 }
 
 export function getRedisConnectionDefaultName(

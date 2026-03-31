@@ -438,7 +438,7 @@ export const RedisOverviewPanel = memo(function RedisOverviewPanel() {
               </h1>
               <p className="mt-2 text-sm text-base-content/58">{copy.subtitle}</p>
               <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-base-content/52">
-                <span className="rounded-full bg-base-100 px-2.5 py-1 font-mono">
+                <span className="inline-block max-w-full truncate rounded-full bg-base-100 px-2.5 py-1 font-mono">
                   {getRedisConnectionEndpointLabel(activeConnection)}
                 </span>
                 <span className="rounded-full bg-base-100 px-2.5 py-1 font-mono">

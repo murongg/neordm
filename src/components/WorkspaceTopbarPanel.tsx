@@ -13,7 +13,10 @@ import {
 import { useShallow } from "zustand/react/shallow";
 import { useI18n } from "../i18n";
 import { prepareAIAgentExperience } from "../lib/aiPrefetch";
-import { getRedisConnectionEndpointLabel } from "../lib/redisConnection";
+import {
+  getRedisConnectionCompactEndpointLabel,
+  getRedisConnectionEndpointLabel,
+} from "../lib/redisConnection";
 import { useRedisWorkspaceStore } from "../store/useRedisWorkspaceState";
 
 interface WorkspaceTopbarPanelProps {
@@ -55,9 +58,9 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
   return (
     <div
       data-tauri-drag-region
-      className="flex items-center justify-between px-4 h-12 border-b border-base-100/50 shrink-0 select-none"
+      className="flex items-center gap-3 px-4 h-12 border-b border-base-100/50 shrink-0 select-none"
     >
-      <div className="tabs tabs-box tabs-xs bg-base-200 rounded-lg p-0.5">
+      <div className="tabs tabs-box tabs-xs bg-base-200 rounded-lg p-0.5 shrink-0">
         <button
           onClick={() => workspace.setPanelTab("overview")}
           className={`tab gap-1.5 cursor-pointer font-mono text-[11px] rounded-md transition-colors duration-150 ${workspace.panelTab === "overview" ? "tab-active" : ""}`}
@@ -105,11 +108,11 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
         </button>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="ml-auto flex min-w-0 items-center gap-3">
         <button
           type="button"
           onClick={onOpenCommandPalette}
-          className="btn btn-ghost btn-xs h-7 gap-1 rounded-lg px-2 font-mono text-[10px] text-base-content/55"
+          className="btn btn-ghost btn-xs h-7 shrink-0 gap-1 rounded-lg px-2 font-mono text-[10px] text-base-content/55"
           title={shortcutLabel}
         >
           <Search size={11} />
@@ -117,7 +120,7 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
         </button>
         {activeConnection && (
           <>
-            <div className="flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-1.5">
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
                   activeConnection.status === "connected"
@@ -127,21 +130,27 @@ export const WorkspaceTopbarPanel = memo(function WorkspaceTopbarPanel({
                     : "bg-base-content/20"
                 }`}
               />
-              <span className="text-xs font-mono text-base-content/50">
+              <span
+                className="min-w-0 truncate text-xs font-mono text-base-content/50"
+                title={activeConnection.name}
+              >
                 {activeConnection.name}
               </span>
-              <span className="text-xs font-mono text-base-content/30">
+              <span className="shrink-0 text-xs font-mono text-base-content/30">
                 · db{workspace.selectedDb}
               </span>
             </div>
-            <div className="flex items-center gap-1 text-base-content/30">
+            <div className="flex min-w-0 items-center gap-1 text-base-content/30">
               <Server size={11} />
-              <span className="text-[10px] font-mono">
-                {getRedisConnectionEndpointLabel(activeConnection)}
+              <span
+                className="text-[10px] font-mono truncate"
+                title={getRedisConnectionEndpointLabel(activeConnection)}
+              >
+                {getRedisConnectionCompactEndpointLabel(activeConnection)}
               </span>
             </div>
             {activeConnection.tls && (
-              <div className="flex items-center gap-0.5 text-success/60">
+              <div className="flex shrink-0 items-center gap-0.5 text-success/60">
                 <Wifi size={11} />
                 <span className="text-[10px] font-mono">
                   {messages.app.connection.tls}
