@@ -18,11 +18,12 @@ use crate::commands::{
     get_redis_overview_metrics, get_redis_slowlog, get_redis_stream_consumers,
     get_redis_stream_entries, get_redis_stream_groups, get_redis_stream_pending_entries, greet,
     list_redis_keys, proxy_http_request, publish_redis_pubsub_message, rename_redis_key,
-    rename_redis_keys, run_redis_command, scan_redis_keys_page, start_redis_pubsub_session,
-    stop_redis_pubsub_session, subscribe_redis_pubsub_channels, subscribe_redis_pubsub_patterns,
-    test_redis_connection, unsubscribe_redis_pubsub_channels, unsubscribe_redis_pubsub_patterns,
-    update_redis_hash_entry, update_redis_json_value, update_redis_list_value,
-    update_redis_string_value, update_redis_zset_entry, RedisPubSubState,
+    rename_redis_keys, run_redis_command, run_redis_lua_script, scan_redis_keys_page,
+    start_redis_pubsub_session, stop_redis_pubsub_session, subscribe_redis_pubsub_channels,
+    subscribe_redis_pubsub_patterns, test_redis_connection, unsubscribe_redis_pubsub_channels,
+    unsubscribe_redis_pubsub_patterns, update_redis_hash_entry, update_redis_json_value,
+    update_redis_list_value, update_redis_string_value, update_redis_zset_entry,
+    RedisPubSubState,
 };
 #[cfg(target_os = "macos")]
 use crate::statusbar::{
@@ -76,6 +77,7 @@ pub fn run() {
             get_redis_overview_metrics,
             get_redis_slowlog,
             run_redis_command,
+            run_redis_lua_script,
             start_redis_pubsub_session,
             stop_redis_pubsub_session,
             subscribe_redis_pubsub_channels,

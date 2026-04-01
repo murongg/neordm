@@ -7,7 +7,7 @@ mod slowlog;
 mod stream;
 mod values;
 
-pub(crate) use core::{greet, run_redis_command, test_redis_connection};
+pub(crate) use core::{greet, run_redis_command, run_redis_lua_script, test_redis_connection};
 pub(crate) use http::proxy_http_request;
 pub(crate) use keys::{
     get_redis_cluster_topology, get_redis_key_summary, get_redis_key_type, get_redis_key_value,
