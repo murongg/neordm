@@ -215,6 +215,17 @@ pub(crate) struct RedisCommandInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisLuaScriptInput {
+    pub(crate) connection: RedisConnectionTestInput,
+    pub(crate) script: String,
+    #[serde(default)]
+    pub(crate) keys: Vec<String>,
+    #[serde(default)]
+    pub(crate) args: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisSlowLogInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) limit: Option<u32>,

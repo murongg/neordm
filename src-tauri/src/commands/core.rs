@@ -1,4 +1,4 @@
-use crate::models::{RedisCommandInput, RedisConnectionTestInput};
+use crate::models::{RedisCommandInput, RedisConnectionTestInput, RedisLuaScriptInput};
 use crate::redis_support::{format_cli_output, open_connection};
 use redis::Value;
 
@@ -43,6 +43,34 @@ pub async fn run_redis_command(input: RedisCommandInput) -> Result<String, Strin
         .query_async(&mut connection)
         .await
         .map_err(|error| format!("Command failed: {error}"))?;
+
+    Ok(format_cli_output(result))
+}
+
+#[tauri::command]
+pub async fn run_redis_lua_script(input: RedisLuaScriptInput) -> Result<String, String> {
+    let script = input.script.trim();
+
+    if script.is_empty() {
+        return Err("Lua script is empty".to_string());
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let redis_script = redis::Script::new(script);
+    let mut invocation = redis_script.prepare_invoke();
+
+    for key in &input.keys {
+        invocation.key(key);
+    }
+
+    for arg in &input.args {
+        invocation.arg(arg);
+    }
+
+    let result: Value = invocation
+        .invoke_async(&mut connection)
+        .await
+        .map_err(|error| format!("Lua script failed: {error}"))?;
 
     Ok(format_cli_output(result))
 }
