@@ -7,7 +7,12 @@ import {
   type ToolCall,
   type ToolResultMessage,
 } from "@mariozechner/pi-ai";
-import { getRedisKeyValue, listRedisKeys, runRedisCommand } from "../redis";
+import {
+  getRedisKeyValue,
+  listRedisKeys,
+  runRedisCommand,
+  runRedisLuaScript,
+} from "../redis";
 import {
   getCliCommandName,
   isDangerousRedisCommand,
@@ -143,6 +148,33 @@ const RUN_REDIS_COMMAND_PARAMETERS = Type.Object(
   { additionalProperties: false }
 );
 
+const LUA_SCRIPT_PARAMETERS = Type.Object(
+  {
+    script: Type.String({
+      description: "Lua script source to execute with Redis EVAL semantics.",
+      minLength: 1,
+    }),
+    keys: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), {
+        description: "Redis keys passed to the script as KEYS.",
+        maxItems: 64,
+      })
+    ),
+    args: Type.Optional(
+      Type.Array(Type.String(), {
+        description: "Argument values passed to the script as ARGV.",
+        maxItems: 128,
+      })
+    ),
+    reason: Type.Optional(
+      Type.String({
+        description: "Optional short explanation shown in the confirmation UI.",
+      })
+    ),
+  },
+  { additionalProperties: false }
+);
+
 const SUGGEST_COMMAND_PARAMETERS = Type.Object(
   {
     command: Type.String({
@@ -176,6 +208,7 @@ type ScanKeysArgs = Static<typeof SCAN_KEYS_PARAMETERS>;
 type KeyArgs = Static<typeof KEY_PARAMETERS>;
 type ReadOnlyCommandArgs = Static<typeof READ_ONLY_COMMAND_PARAMETERS>;
 type RunRedisCommandArgs = Static<typeof RUN_REDIS_COMMAND_PARAMETERS>;
+type LuaScriptArgs = Static<typeof LUA_SCRIPT_PARAMETERS>;
 type SuggestCommandArgs = Static<typeof SUGGEST_COMMAND_PARAMETERS>;
 type ServerInfoArgs = Static<typeof SERVER_INFO_PARAMETERS>;
 
@@ -234,6 +267,14 @@ const TOOL_VALIDATION_WARMUP_SAMPLES: ToolCall[] = [
     name: AI_TOOL_NAMES.runReadOnlyCommand,
     arguments: {
       command: "PING",
+    },
+  },
+  {
+    type: "toolCall",
+    id: "warm-run-lua-script",
+    name: AI_TOOL_NAMES.runLuaScript,
+    arguments: {
+      script: "return ARGV[1]",
     },
   },
   {
@@ -740,6 +781,65 @@ async function executeRunRedisCommandTool(
   };
 }
 
+async function executeRunLuaScriptTool(
+  request: OpenAIAssistantRequest,
+  toolCall: ToolCall,
+  args: LuaScriptArgs
+) {
+  const errors = getCurrentMessages().ui.errors;
+  const script = args.script.trim();
+  const reason = args.reason?.trim() || null;
+  const keys = (args.keys ?? []).map((value) => value.trim());
+  const scriptArgs = args.args ?? [];
+  const connection = requireActiveConnection(request.activeConnection);
+
+  if (!script) {
+    throw new Error(errors.aiCommandRequired);
+  }
+
+  if (!request.confirmDangerousCommand) {
+    throw new Error(errors.aiDangerousNeedsConfirmation);
+  }
+
+  const commandPreview = [
+    `-- KEYS[${keys.length}] ${JSON.stringify(keys)}`,
+    `-- ARGV[${scriptArgs.length}] ${JSON.stringify(scriptArgs)}`,
+    script,
+  ].join("\n");
+
+  const approved = await request.confirmDangerousCommand({
+    toolCallId: toolCall.id,
+    toolName: formatToolName(toolCall.name),
+    command: commandPreview,
+    reason,
+  });
+
+  if (!approved) {
+    throw new Error(errors.aiDangerousCancelled);
+  }
+
+  const output = await runRedisLuaScript(
+    { ...connection, db: request.selectedDb },
+    script,
+    { keys, args: scriptArgs }
+  );
+
+  return {
+    result: {
+      script,
+      keys,
+      args: scriptArgs,
+      output,
+      reason,
+      confirmed: true,
+    },
+    details: {
+      didMutateRedis: true,
+      executedCommand: "LUA",
+    } satisfies AssistantToolResultDetails,
+  };
+}
+
 async function executeSuggestRedisCommandTool(
   _request: OpenAIAssistantRequest,
   args: SuggestCommandArgs,
@@ -813,6 +913,12 @@ export function createAssistantTools(autoSuggest: boolean): Tool[] {
       description:
         "Run one read-only Redis command on the active database and return the textual result.",
       parameters: READ_ONLY_COMMAND_PARAMETERS,
+    },
+    {
+      name: AI_TOOL_NAMES.runLuaScript,
+      description:
+        "Execute a Redis Lua script against the active database using structured script, KEYS, and ARGV input. Always requires user confirmation before running.",
+      parameters: LUA_SCRIPT_PARAMETERS,
     },
   ];
 
@@ -904,6 +1010,16 @@ export async function executeAssistantToolCall({
           validatedArgs as ReadOnlyCommandArgs
         );
         break;
+      case AI_TOOL_NAMES.runLuaScript: {
+        const execution = await executeRunLuaScriptTool(
+          request,
+          toolCall,
+          validatedArgs as LuaScriptArgs
+        );
+        result = execution.result;
+        details = execution.details;
+        break;
+      }
       case AI_TOOL_NAMES.suggestRedisCommand:
         result = await executeSuggestRedisCommandTool(
           request,

@@ -409,6 +409,24 @@ export async function runRedisCommand(
   });
 }
 
+export async function runRedisLuaScript(
+  connection: RedisConnectionInvokeInput,
+  script: string,
+  options: {
+    keys?: string[];
+    args?: string[];
+  } = {}
+): Promise<string> {
+  return invoke("run_redis_lua_script", {
+    input: {
+      connection: toConnectionInput(connection),
+      script,
+      keys: options.keys ?? [],
+      args: options.args ?? [],
+    },
+  });
+}
+
 export async function getRedisServerVersion(
   connection: RedisConnectionInvokeInput
 ): Promise<string | null> {

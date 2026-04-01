@@ -43,5 +43,6 @@ export const AI_TOOL_NAMES = {
   getServerInfo: "getServerInfo",
   runRedisCommand: "runRedisCommand",
   runReadOnlyCommand: "runReadOnlyCommand",
+  runLuaScript: "runLuaScript",
   suggestRedisCommand: "suggestRedisCommand",
 } as const;
