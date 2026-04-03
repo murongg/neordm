@@ -286,6 +286,26 @@ export async function listRedisKeys(
   });
 }
 
+export async function getRedisDbSize(
+  connection: RedisConnectionInvokeInput
+): Promise<number> {
+  return invoke<number>("get_redis_db_size", {
+    input: {
+      connection: toConnectionInput(connection),
+    },
+  });
+}
+
+export async function listRedisKeyNamesFast(
+  connection: RedisConnectionInvokeInput
+): Promise<string[]> {
+  return invoke<string[]>("list_redis_key_names_fast", {
+    input: {
+      connection: toConnectionInput(connection),
+    },
+  });
+}
+
 export async function scanRedisKeysPage(
   connection: RedisConnectionInvokeInput,
   options: RedisKeysScanPageOptions = {}
