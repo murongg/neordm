@@ -58,6 +58,18 @@ pub(crate) struct RedisConnectionTestInput {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct RedisDbSizeInput {
+    pub(crate) connection: RedisConnectionTestInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct RedisKeyNamesFastInput {
+    pub(crate) connection: RedisConnectionTestInput,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct RedisKeysListInput {
     pub(crate) connection: RedisConnectionTestInput,
     pub(crate) scan_count: Option<u32>,

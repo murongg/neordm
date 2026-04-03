@@ -1,8 +1,8 @@
 use crate::models::{
-    RedisClusterTopologyInput, RedisClusterTopologyNode, RedisKeyLookupInput, RedisKeyRenameInput,
-    RedisKeyRenamePairInput, RedisKeySummary, RedisKeyValuePageInput, RedisKeyValuePageResponse,
-    RedisKeyValueResponse, RedisKeysListInput, RedisKeysRenameInput, RedisKeysScanPageInput,
-    RedisKeysScanPageResponse,
+    RedisClusterTopologyInput, RedisClusterTopologyNode, RedisDbSizeInput, RedisKeyLookupInput,
+    RedisKeyNamesFastInput, RedisKeyRenameInput, RedisKeyRenamePairInput, RedisKeySummary,
+    RedisKeyValuePageInput, RedisKeyValuePageResponse, RedisKeyValueResponse, RedisKeysListInput,
+    RedisKeysRenameInput, RedisKeysScanPageInput, RedisKeysScanPageResponse,
 };
 use crate::redis_support::{
     find_cluster_node_address_for_slot, format_cli_output, get_cluster_topology,
@@ -13,6 +13,7 @@ use redis::Value;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map as JsonMap, Number, Value as JsonValue};
 use std::collections::{HashMap, HashSet};
+use tokio::time::{timeout, Duration};
 
 const DEFAULT_SCAN_COUNT: u32 = 200;
 const DEFAULT_MAX_KEYS: u32 = 10_000;
@@ -20,6 +21,8 @@ const DEFAULT_VALUE_PAGE_SIZE: u32 = 200;
 const MAX_SCAN_COUNT: u32 = 5_000;
 const MAX_TOTAL_KEYS: u32 = 50_000;
 const MAX_VALUE_PAGE_SIZE: u32 = 2_000;
+const SMALL_DB_FAST_PATH_LIMIT: u64 = 10_000;
+const SMALL_DB_FAST_PATH_TIMEOUT_MS: u64 = 750;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +61,15 @@ fn parse_cluster_scan_cursor(cursor: Option<&str>) -> Result<ClusterScanCursor, 
 
     serde_json::from_str::<ClusterScanCursor>(raw_cursor)
         .map_err(|error| format!("Invalid cluster scan cursor: {error}"))
+}
+
+fn should_use_small_db_fast_path(
+    connection: &crate::models::RedisConnectionTestInput,
+    db_size: u64,
+) -> bool {
+    connection.cluster.is_none()
+        && connection.sentinel.is_none()
+        && db_size <= SMALL_DB_FAST_PATH_LIMIT
 }
 
 async fn scan_cluster_keys_page(
@@ -444,6 +456,49 @@ pub async fn list_redis_keys(input: RedisKeysListInput) -> Result<Vec<RedisKeySu
             break;
         }
     }
+
+    Ok(keys)
+}
+
+#[tauri::command]
+pub async fn get_redis_db_size(input: RedisDbSizeInput) -> Result<u64, String> {
+    let mut connection = open_connection(&input.connection).await?;
+
+    redis::cmd("DBSIZE")
+        .query_async::<u64>(&mut connection)
+        .await
+        .map_err(|error| format!("Failed to get Redis DB size: {error}"))
+}
+
+#[tauri::command]
+pub async fn list_redis_key_names_fast(
+    input: RedisKeyNamesFastInput,
+) -> Result<Vec<String>, String> {
+    let db_size = get_redis_db_size(RedisDbSizeInput {
+        connection: input.connection.clone(),
+    })
+    .await?;
+
+    if !should_use_small_db_fast_path(&input.connection, db_size) {
+        return Err(
+            "Small-db fast path is only available for direct databases up to 10000 keys"
+                .to_string(),
+        );
+    }
+
+    let mut connection = open_connection(&input.connection).await?;
+    let mut keys = timeout(
+        Duration::from_millis(SMALL_DB_FAST_PATH_TIMEOUT_MS),
+        redis::cmd("KEYS")
+            .arg("*")
+            .query_async::<Vec<String>>(&mut connection),
+    )
+    .await
+    .map_err(|_| "Small-db fast path timed out".to_string())?
+    .map_err(|error| format!("Failed to load key names fast: {error}"))?;
+
+    keys.sort();
+    keys.dedup();
 
     Ok(keys)
 }
@@ -1015,4 +1070,47 @@ return "OK"
         .map_err(|error| format!("Failed to rename keys: {error}"))?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_use_small_db_fast_path;
+    use crate::models::{RedisClusterInput, RedisClusterNodeInput, RedisConnectionTestInput};
+
+    fn direct_connection() -> RedisConnectionTestInput {
+        RedisConnectionTestInput {
+            host: "127.0.0.1".to_string(),
+            port: 6379,
+            sentinel: None,
+            cluster: None,
+            username: None,
+            password: None,
+            db: 0,
+            tls: false,
+            ssh_tunnel: None,
+        }
+    }
+
+    #[test]
+    fn allows_direct_databases_at_threshold() {
+        assert!(should_use_small_db_fast_path(&direct_connection(), 10_000));
+    }
+
+    #[test]
+    fn rejects_direct_databases_above_threshold() {
+        assert!(!should_use_small_db_fast_path(&direct_connection(), 10_001));
+    }
+
+    #[test]
+    fn rejects_cluster_connections() {
+        let mut connection = direct_connection();
+        connection.cluster = Some(RedisClusterInput {
+            nodes: vec![RedisClusterNodeInput {
+                host: "127.0.0.1".to_string(),
+                port: 7000,
+            }],
+        });
+
+        assert!(!should_use_small_db_fast_path(&connection, 1_000));
+    }
 }
