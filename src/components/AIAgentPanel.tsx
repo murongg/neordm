@@ -43,6 +43,7 @@ export const AIAgentPanel = memo(function AIAgentPanel({
       onApproveCommand={aiChat.approveAiCommandConfirmation}
       onRejectCommand={aiChat.rejectAiCommandConfirmation}
       onSend={aiChat.sendChatMessage}
+      onStop={aiChat.stopChatResponse}
     />
   );
 });

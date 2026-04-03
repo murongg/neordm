@@ -84,6 +84,7 @@ interface AIAgentProps {
   onApproveCommand?: () => void;
   onRejectCommand?: () => void;
   onSend: (msg: string) => void | Promise<void>;
+  onStop?: () => void;
 }
 
 export function AIAgent({
@@ -96,6 +97,7 @@ export function AIAgent({
   onApproveCommand,
   onRejectCommand,
   onSend,
+  onStop,
 }: AIAgentProps) {
   const { messages: i18nMessages } = useI18n();
   const { showToast } = useToast();
@@ -362,14 +364,26 @@ export function AIAgent({
               className="input input-sm flex-1 bg-base-200 border-base-content/10 font-mono text-xs user-select-text"
               disabled={isResponding}
             />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isResponding}
-              className="btn btn-sm btn-primary cursor-pointer disabled:cursor-not-allowed"
-              aria-label={i18nMessages.ai.send}
-            >
-              <Send size={13} />
-            </button>
+            {isResponding ? (
+              <button
+                type="button"
+                onClick={onStop}
+                disabled={!onStop}
+                className="btn btn-sm btn-ghost cursor-pointer disabled:cursor-not-allowed"
+                aria-label={i18nMessages.common.cancel}
+              >
+                {i18nMessages.common.cancel}
+              </button>
+            ) : (
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isResponding}
+                className="btn btn-sm btn-primary cursor-pointer disabled:cursor-not-allowed"
+                aria-label={i18nMessages.ai.send}
+              >
+                <Send size={13} />
+              </button>
+            )}
           </div>
         </div>
       </div>
