@@ -20,11 +20,13 @@ import {
   deleteRedisKey,
   deleteRedisKeys,
   getRedisErrorMessage,
+  getRedisDbSize,
   getRedisKeyType,
   getRedisOverviewMetrics,
   getRedisKeySummary,
   getRedisKeyValuePage,
   getRedisServerVersion,
+  listRedisKeyNamesFast,
   renameRedisKey,
   renameRedisKeys,
   scanRedisKeysPage,
@@ -36,6 +38,13 @@ import {
   recordAuditEvent,
   recordTelemetryEvent,
 } from "../lib/privacyRuntime";
+import {
+  getKeyListSessionKey,
+  pushPerfSample,
+  resolveKeyListStrategy,
+  type KeyListPerfHint,
+  type KeyListStrategy,
+} from "./keyListLoadingStrategy";
 import type {
   KeyValue,
   PanelTab,
@@ -117,6 +126,79 @@ function enrichRedisKeyMetadata(
     ttl: value.ttl,
     slot: value.slot,
     nodeAddress: value.nodeAddress,
+  };
+}
+
+function toKeyNameSummaries(keys: string[]): RedisKey[] {
+  return keys.map((key) => ({ key }));
+}
+
+function mergeKeyListCache(
+  previous: Record<string, KeyListCacheEntry>,
+  sessionKey: string,
+  entry: KeyListCacheEntry
+) {
+  return {
+    ...previous,
+    [sessionKey]: entry,
+  };
+}
+
+function mergeKeyListStrategySession(
+  previous: Record<string, KeyListStrategySession>,
+  sessionKey: string,
+  strategy: KeyListStrategy,
+  dbSizeSnapshot: number | null
+) {
+  return {
+    ...previous,
+    [sessionKey]: {
+      strategy,
+      resolvedAt: Date.now(),
+      dbSizeSnapshot,
+    },
+  };
+}
+
+function mergeKeyListPerfHint(
+  previous: Record<string, KeyListPerfHint>,
+  sessionKey: string,
+  next: {
+    dbSize: number | null;
+    firstPaintMs: number;
+    fullLoadMs: number;
+    fastPathSucceeded: boolean;
+    fastPathFailed: boolean;
+  }
+) {
+  const current = previous[sessionKey] ?? {
+    dbSizeSnapshots: [],
+    firstPaintDurationsMs: [],
+    fullLoadDurationsMs: [],
+    fastPathSuccesses: 0,
+    fastPathFailures: 0,
+  };
+
+  return {
+    ...previous,
+    [sessionKey]: {
+      dbSizeSnapshots:
+        next.dbSize == null
+          ? current.dbSizeSnapshots
+          : pushPerfSample(current.dbSizeSnapshots, next.dbSize),
+      firstPaintDurationsMs: pushPerfSample(
+        current.firstPaintDurationsMs,
+        next.firstPaintMs
+      ),
+      fullLoadDurationsMs: pushPerfSample(
+        current.fullLoadDurationsMs,
+        next.fullLoadMs
+      ),
+      fastPathSuccesses:
+        current.fastPathSuccesses + (next.fastPathSucceeded ? 1 : 0),
+      fastPathFailures:
+        current.fastPathFailures + (next.fastPathFailed ? 1 : 0),
+    },
   };
 }
 
@@ -237,6 +319,20 @@ interface LoadOverviewOptions {
   preserveValue?: boolean;
 }
 
+interface KeyListStrategySession {
+  strategy: KeyListStrategy;
+  resolvedAt: number;
+  dbSizeSnapshot: number | null;
+}
+
+interface KeyListCacheEntry {
+  keys: RedisKey[];
+  fetchedAt: number;
+  dbSizeSnapshot: number | null;
+  strategyUsed: KeyListStrategy;
+  firstPaintMs: number;
+}
+
 interface SelectConnectionOptions {
   db?: number;
 }
@@ -274,6 +370,9 @@ interface RedisWorkspaceStoreState {
   isLoadingOverview: boolean;
   keysScanCursor: string | null;
   hasMoreKeys: boolean;
+  keyListStrategySessions: Record<string, KeyListStrategySession>;
+  keyListCaches: Record<string, KeyListCacheEntry>;
+  keyListPerfHints: Record<string, KeyListPerfHint>;
   hasHydratedConnections: boolean;
   hydrateConnections: (connections: RedisConnection[]) => void;
   markConnectionsHydrated: () => void;
@@ -438,6 +537,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     isLoadingOverview: false,
     keysScanCursor: null,
     hasMoreKeys: false,
+    keyListStrategySessions: {},
+    keyListCaches: {},
+    keyListPerfHints: {},
     hasHydratedConnections: false,
     hydrateConnections: (connections) => {
       set({
@@ -786,6 +888,7 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
     },
     loadKeys: async (connection, db, options = {}) => {
       const requestId = ++keysRequestId;
+      const startedAt = performance.now();
       const {
         selectedKey,
         serverVersions,
@@ -799,6 +902,9 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
       const cachedServerVersion = serverVersions[connection.id];
       const shouldRefreshServerVersion =
         connection.status !== "connected" || cachedServerVersion == null;
+      const sessionKey = getKeyListSessionKey(connection.id, db);
+      const state = get();
+      const cachedKeys = state.keyListCaches[sessionKey]?.keys ?? null;
 
       if (shouldRefreshServerVersion) {
         resetConnectionServerVersion(connection.id);
@@ -824,7 +930,162 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
         });
       }
 
+      const dbSize =
+        connection.mode === "direct"
+          ? await getRedisDbSize({ ...connection, db }).catch(() => null)
+          : null;
+      const strategy =
+        state.keyListStrategySessions[sessionKey]?.strategy ??
+        resolveKeyListStrategy({
+          connection,
+          dbSize,
+          hasCache: Boolean(cachedKeys?.length),
+          perfHint: state.keyListPerfHints[sessionKey] ?? null,
+        });
+
+      set((currentState) => ({
+        keyListStrategySessions: mergeKeyListStrategySession(
+          currentState.keyListStrategySessions,
+          sessionKey,
+          strategy,
+          dbSize
+        ),
+      }));
+
+      const refreshSelectedKeyAfterListLoad = async (nextKeys: RedisKey[]) => {
+        if (!currentSelectedKey) {
+          return;
+        }
+
+        const refreshedSelectedKey =
+          nextKeys.find((item) => item.key === currentSelectedKey.key) ?? null;
+
+        if (!refreshedSelectedKey) {
+          set({
+            selectedKey: null,
+            keyValue: null,
+            isLoadingKeyValue: false,
+            isLoadingMoreKeyValue: false,
+          });
+          return;
+        }
+
+        const summary = await get().loadKeySummary(connection, refreshedSelectedKey, db, {
+          preserveValue: true,
+        });
+        const latestState = get();
+
+        if (
+          latestState.activeConnectionId === connection.id &&
+          latestState.selectedDb === db &&
+          latestState.selectedKey?.key === refreshedSelectedKey.key
+        ) {
+          void get().loadKeyValueContent(connection, summary, db, {
+            preserveValue: true,
+          });
+        }
+      };
+
+      if (strategy === "direct-small-db-hot" && cachedKeys?.length) {
+        let nextKeys = mergeRedisKeys([], cachedKeys);
+
+        if (
+          currentSelectedKey &&
+          !nextKeys.some((item) => item.key === currentSelectedKey.key)
+        ) {
+          nextKeys = insertRedisKey(nextKeys, currentSelectedKey);
+        }
+
+        set({
+          keys: nextKeys,
+          selectedDb: db,
+          keysScanCursor: null,
+          hasMoreKeys: false,
+        });
+      }
+
       try {
+        if (strategy === "direct-small-db-cold") {
+          try {
+            const fastKeys = toKeyNameSummaries(
+              await listRedisKeyNamesFast({ ...connection, db })
+            );
+
+            if (requestId !== keysRequestId) {
+              return;
+            }
+
+            let nextKeys = mergeRedisKeys([], fastKeys);
+
+            if (
+              currentSelectedKey &&
+              !nextKeys.some((item) => item.key === currentSelectedKey.key)
+            ) {
+              nextKeys = insertRedisKey(nextKeys, currentSelectedKey);
+            }
+
+            const firstPaintMs = performance.now() - startedAt;
+            const fullLoadMs = performance.now() - startedAt;
+
+            set((currentState) => ({
+              keys: nextKeys,
+              selectedDb: db,
+              keysScanCursor: null,
+              hasMoreKeys: false,
+              keyListCaches: mergeKeyListCache(currentState.keyListCaches, sessionKey, {
+                keys: nextKeys.map(({ key }) => ({ key })),
+                fetchedAt: Date.now(),
+                dbSizeSnapshot: dbSize,
+                strategyUsed: strategy,
+                firstPaintMs: Math.round(firstPaintMs),
+              }),
+              keyListPerfHints: mergeKeyListPerfHint(
+                currentState.keyListPerfHints,
+                sessionKey,
+                {
+                  dbSize,
+                  firstPaintMs: Math.round(firstPaintMs),
+                  fullLoadMs: Math.round(fullLoadMs),
+                  fastPathSucceeded: true,
+                  fastPathFailed: false,
+                }
+              ),
+            }));
+            syncConnectionStatus(connection.id, "connected", db);
+            void get()
+              .loadConnectionServerVersion(connection, {
+                force: shouldRefreshServerVersion,
+              })
+              .catch(() => undefined);
+            await refreshSelectedKeyAfterListLoad(nextKeys);
+            return;
+          } catch {
+            if (requestId !== keysRequestId) {
+              return;
+            }
+
+            set((currentState) => ({
+              keyListStrategySessions: mergeKeyListStrategySession(
+                currentState.keyListStrategySessions,
+                sessionKey,
+                "direct-large-or-unknown",
+                dbSize
+              ),
+              keyListPerfHints: mergeKeyListPerfHint(
+                currentState.keyListPerfHints,
+                sessionKey,
+                {
+                  dbSize,
+                  firstPaintMs: 0,
+                  fullLoadMs: 0,
+                  fastPathSucceeded: false,
+                  fastPathFailed: true,
+                }
+              ),
+            }));
+          }
+        }
+
         const page = await scanRedisKeysPage(
           { ...connection, db },
           {
@@ -847,61 +1108,63 @@ export const useRedisWorkspaceStore = create<RedisWorkspaceStoreState>(
           nextKeys = insertRedisKey(nextKeys, currentSelectedKey);
         }
 
-        set({
+        const firstPaintMs = performance.now() - startedAt;
+        const fullLoadMs = performance.now() - startedAt;
+
+        set((currentState) => ({
           keys: nextKeys,
           selectedDb: db,
           keysScanCursor: page.nextCursor,
           hasMoreKeys: Boolean(page.nextCursor),
-        });
+          keyListCaches: page.nextCursor
+            ? currentState.keyListCaches
+            : mergeKeyListCache(currentState.keyListCaches, sessionKey, {
+                keys: nextKeys.map(({ key }) => ({ key })),
+                fetchedAt: Date.now(),
+                dbSizeSnapshot: dbSize,
+                strategyUsed: strategy,
+                firstPaintMs: Math.round(firstPaintMs),
+              }),
+          keyListPerfHints: mergeKeyListPerfHint(
+            currentState.keyListPerfHints,
+            sessionKey,
+            {
+              dbSize,
+              firstPaintMs: Math.round(firstPaintMs),
+              fullLoadMs: Math.round(fullLoadMs),
+              fastPathSucceeded: false,
+              fastPathFailed: false,
+            }
+          ),
+        }));
         syncConnectionStatus(connection.id, "connected", db);
         void get()
           .loadConnectionServerVersion(connection, {
             force: shouldRefreshServerVersion,
           })
           .catch(() => undefined);
-
-        if (currentSelectedKey) {
-          const refreshedSelectedKey =
-            nextKeys.find((item) => item.key === currentSelectedKey.key) ?? null;
-
-          if (!refreshedSelectedKey) {
-            set({
-              selectedKey: null,
-              keyValue: null,
-              isLoadingKeyValue: false,
-              isLoadingMoreKeyValue: false,
-            });
-          } else {
-            const summary = await get().loadKeySummary(connection, refreshedSelectedKey, db, {
-              preserveValue: true,
-            });
-            const latestState = get();
-
-            if (
-              latestState.activeConnectionId === connection.id &&
-              latestState.selectedDb === db &&
-              latestState.selectedKey?.key === refreshedSelectedKey.key
-            ) {
-              void get().loadKeyValueContent(connection, summary, db, {
-                preserveValue: true,
-              });
-            }
-          }
-        }
+        await refreshSelectedKeyAfterListLoad(nextKeys);
       } catch (error) {
         if (requestId !== keysRequestId) {
           return;
         }
 
-        set({
-          keys: [],
-          selectedKey: null,
-          keyValue: null,
-          isLoadingKeyValue: false,
-          isLoadingMoreKeyValue: false,
-          keysScanCursor: null,
-          hasMoreKeys: false,
-        });
+        if (strategy === "direct-small-db-hot" && cachedKeys?.length) {
+          set({
+            keysScanCursor: null,
+            hasMoreKeys: false,
+          });
+        } else {
+          set({
+            keys: [],
+            selectedKey: null,
+            keyValue: null,
+            isLoadingKeyValue: false,
+            isLoadingMoreKeyValue: false,
+            keysScanCursor: null,
+            hasMoreKeys: false,
+          });
+        }
         syncConnectionStatus(connection.id, "error", db);
         throw error;
       } finally {
