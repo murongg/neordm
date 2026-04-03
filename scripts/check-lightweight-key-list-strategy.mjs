@@ -36,4 +36,10 @@ if (!loadKeyValueSection.includes("enrichRedisKeyMetadata(item, value)")) {
   throw new Error("loadKeyValue must backfill key ttl from fetched key details.");
 }
 
+if (!storeSource.includes('strategy === "direct-small-db-cold"')) {
+  throw new Error(
+    "Automatic key list loading must still isolate the fast path behind the cold small-db strategy."
+  );
+}
+
 console.log("Lightweight key list strategy check passed.");
