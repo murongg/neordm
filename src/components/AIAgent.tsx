@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
   LoaderCircle,
+  Square,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -372,7 +373,7 @@ export function AIAgent({
                 className="btn btn-sm btn-ghost cursor-pointer disabled:cursor-not-allowed"
                 aria-label={i18nMessages.common.cancel}
               >
-                {i18nMessages.common.cancel}
+                <Square size={12} />
               </button>
             ) : (
               <button

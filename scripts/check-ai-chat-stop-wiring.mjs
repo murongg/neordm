@@ -32,4 +32,8 @@ if (!agentSource.includes("isResponding ? (")) {
   throw new Error("AIAgent must render a dedicated stop action while responding.");
 }
 
+if (!agentSource.includes("Square")) {
+  throw new Error("AIAgent stop action must use the Square icon.");
+}
+
 console.log("AI chat stop wiring check passed.");
